@@ -105,14 +105,14 @@
     return TIME_FMT.format(d);
   };
   const T = EN
-    ? { slNow: 'SL now', running: ' running', periods: ' periods', price: 'Price', loading: 'Loading…', candles: 'candles', asOf: 'as of', next: 'Next release',
+    ? { slNow: 'SL now', running: ' running', periods: ' periods', price: 'Price', loading: 'Loading…', candles: 'candles', lastCandle: (at, min) => `last candle ${at}, ${min} min ago`, stale: 'data stale', asOf: 'as of', next: 'Next release',
         failed: m => `Loading failed (${m}). Retrying in 30 s.` }
-    : { slNow: 'SL jetzt', running: ' lfd.', periods: ' Perioden', price: 'Kurs', loading: 'Lade…', candles: 'Kerzen', asOf: 'Stand', next: 'Nächster Termin',
+    : { slNow: 'SL jetzt', running: ' lfd.', periods: ' Perioden', price: 'Kurs', loading: 'Lade…', candles: 'Kerzen', lastCandle: (at, min) => `letzte Kerze ${at}, vor ${min} min`, stale: 'Daten veraltet', asOf: 'Stand', next: 'Nächster Termin',
         failed: m => `Laden fehlgeschlagen (${m}). Neuer Versuch in 30 s.` };
   const P = EN
-    ? { cvdSpot: 'CVD spot', cvdPerp: 'CVD perp', delta: 'Delta volume', oi: 'OI Binance (BTC)', oiBybit: 'OI Bybit (BTC)', oiZ: 'OI Z 7.5d', funding: 'Funding % / 8h', premium: 'Coinbase premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
+    ? { cvdSpot: 'CVD spot', cvdPerp: 'CVD perp', delta: 'Delta volume', oi: 'OI Binance (BTC)', oiBybit: 'OI Bybit (BTC)', oiZ: 'OI Z 7.5d (Binance only)', funding: 'Funding % / 8h', premium: 'Coinbase premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
         health: (ok, n, gaps) => `Perp check: ${ok}/${n} h equal to Binance, ${gaps} gaps` }
-    : { cvdSpot: 'CVD Spot', cvdPerp: 'CVD Perp', delta: 'Delta Volume', oi: 'OI Binance (BTC)', oiBybit: 'OI Bybit (BTC)', oiZ: 'OI Z 7,5 T', funding: 'Funding % / 8 h', premium: 'Coinbase-Premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
+    : { cvdSpot: 'CVD Spot', cvdPerp: 'CVD Perp', delta: 'Delta Volume', oi: 'OI Binance (BTC)', oiBybit: 'OI Bybit (BTC)', oiZ: 'OI-Z 7,5 T (nur Binance)', funding: 'Funding % / 8 h', premium: 'Coinbase-Premium %', domBtc: 'BTC.D %', domUsdt: 'USDT.D %',
         health: (ok, n, gaps) => `Perp-Prüfung: ${ok}/${n} h gleich mit Binance, ${gaps} Lücken` };
   // The chart library calls this for every price label on every frame: toLocaleString with options builds a new
   // formatter each call (Uzi 10.11.2026 "chart zu langsam": ~90 % of the frame time on a phone), so build them once.
@@ -896,11 +896,13 @@
                 placed.push({ item, x, y });
               }
               placed.sort((a, b) => b.item.usd - a.item.usd);  // biggest first, small ones drawn on top stay visible
-              // Exo style (PDF "Market Order Bubbles", Leviathan): sizes are multiples of the average order in view;
-              // only medium (x3) and large (x4.5) are drawn, small (x2) is off, colour strength follows the multiple.
-              const mean = placed.length ? placed.reduce((sum, p) => sum + p.item.usd, 0) / placed.length : 1;
-              const order = bubbles.exo ? placed.filter(p => p.item.usd >= EXO.bubbles.medium * mean)
-                : placed.slice(0, Math.max(BUBBLE.minCount, Math.round(mediaSize.width / BUBBLE.pxPer)));
+              // Exo style (PDF "Market Order Bubbles", Leviathan): medium (x3) and large (x4.5) are multiples of a reference order.
+              // TIM keeps only orders above a floor (floor_usd), so the true average order is unknown; the floor is the reference.
+              // (Before, the reference was the mean of the kept big orders: only ~5 of 400 passed x3 and the layer looked empty, 18.11.2026.)
+              const ref = Math.max(1, data.floor_usd || 100000);
+              const cap = Math.max(BUBBLE.minCount, Math.round(mediaSize.width / BUBBLE.pxPer));
+              const order = bubbles.exo ? placed.filter(p => p.item.usd >= EXO.bubbles.medium * ref).slice(0, cap)
+                : placed.slice(0, cap);
               if (!order.length) return;
               const max = Math.max(1, order[0].item.usd);
               ctx.textAlign = 'center';
@@ -908,15 +910,15 @@
               ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
               const texts = [];  // number boxes already drawn: a number that would cover one is left out (Uzi 11.11.2026)
               for (const { item, x, y } of order) {
-                const multiple = item.usd / mean;
-                const large = multiple >= EXO.bubbles.large;
-                const r = bubbles.exo ? (large ? BUBBLE.maxR : 6) * (0.85 + 0.15 * Math.min(1, multiple / (2 * EXO.bubbles.large)))
+                const multiple = item.usd / (bubbles.exo ? ref : 1);
+                const large = item.usd / ref >= EXO.bubbles.large;
+                const r = bubbles.exo ? Math.max(large ? 7 : 5, BUBBLE.maxR * Math.sqrt(item.usd / max))
                   : Math.max(BUBBLE.minR, BUBBLE.maxR * Math.sqrt(item.usd / max));
                 const buy = item.side > 0;
                 ctx.beginPath();
                 ctx.arc(x, y, r, 0, Math.PI * 2);
                 const bybit = item.venue === 'bybit';  // second venue (issue #162): hollow, dashed ring
-                const held = bubbles.exo ? Math.min(1, 0.35 + 0.65 * (multiple - EXO.bubbles.medium) / (EXO.bubbles.large * 1.5 - EXO.bubbles.medium)) > 0.6 : absorbed(item);
+                const held = bubbles.exo ? item.usd >= 0.4 * max : absorbed(item);
                 ctx.fillStyle = bybit ? 'rgba(11,15,22,0.35)' : buy ? `rgba(38,200,140,${held ? 0.55 : 0.18})` : `rgba(239,83,80,${held ? 0.55 : 0.18})`;
                 ctx.fill();
                 ctx.lineWidth = 1;
@@ -1005,6 +1007,47 @@
     },
   };
   candles.attachPrimitive(vwapFill);
+
+  // Gamma level with a standing order book wall (layer "gamma_ob", gamma_zones.py): a band from the moment the
+  // wall appeared to the right edge. The line and its name come from the normal level drawing.
+  const zoneFill = {
+    chart: null, series: null, requestUpdate: null, visible: false,
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.view]; },
+    view: {
+      zOrder() { return 'bottom'; },
+      renderer() {
+        return {
+          draw(target) {
+            if (!zoneFill.visible || !zoneFill.chart || !model || !model.drawings || !model.candles.length) return;
+            const zones = model.drawings.filter(d => d.group === 'gamma_ob' && Array.isArray(d.band));
+            if (!zones.length) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const scale = zoneFill.chart.timeScale();
+              const first = model.candles[0].time;
+              for (const zone of zones) {
+                const from = Math.max(first, zone.t1 || Math.floor(Date.parse(zone.start) / 1000));  // t1: start snapped to a candle
+                let x0 = scale.timeToCoordinate(local(from));
+                if (x0 === null) x0 = scale.timeToCoordinate(local(first));
+                const y0 = zoneFill.series.priceToCoordinate(zone.band[1]), y1 = zoneFill.series.priceToCoordinate(zone.band[0]);
+                if (x0 === null || y0 === null || y1 === null) continue;
+                const left = Math.max(0, x0), height = Math.max(4, y1 - y0);
+                ctx.fillStyle = 'rgba(255,210,74,0.26)';
+                ctx.fillRect(left, y0, mediaSize.width - left, height);
+                ctx.strokeStyle = 'rgba(255,210,74,0.55)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(left + 0.5, y0 + 0.5, mediaSize.width - left - 1, height - 1);
+              }
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(zoneFill);
 
   // Volume profile of the last N candles (EXO.vp: lookback 240, rows 130, value area 70 %, width 40, offset 13, right)
   // with node detection: high-volume nodes (local peaks) brighter, low-volume nodes (troughs) as dotted lines.
@@ -1417,7 +1460,10 @@
         return groups;
       }
     } catch (error) { /* private window: defaults */ }
-    return new Set(model ? model.default_groups : []);
+    if (!model) return new Set();
+    // First visit (nothing saved): the Lesen layout, not every default layer.
+    const all = new Set(Object.keys(model.groups));
+    return new Set(BASE.concat(READ).filter(key => all.has(key)));
   }
   function saveGroups(groups) {
     try {
@@ -1436,15 +1482,15 @@
     ? { label: 'Layout', tim: 'TIM layouts (each with levels and structure)', own: 'My layouts', changed: 'changed, not saved', save: 'Save as…', rename: 'Rename', remove: 'Delete',
         ask: 'Name of the layout:', taken: 'This name belongs to a TIM layout.', confirm: name => `Delete layout "${name}"?`,
         fpDelta: 'Footprint: delta bars', fpCells: 'Footprint: bid × ask', fpProfile: 'Footprint: profile', other: 'Other', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume profile',
-        standard: 'TIM standard', pro: 'Orderflow Pro (BTC 15m perp)', orderflow: 'Orderflow', profile: 'Profiles (VP, TPO)', levels: 'Levels',
+        standard: 'TIM standard (all default layers)', read: 'Read (few layers, start)', pro: 'Orderflow Pro (BTC 15m perp)', orderflow: 'Orderflow', profile: 'Profiles (VP, TPO)', levels: 'Levels',
         vwap: 'VWAP', structure: 'Structure', positioning: 'Positioning', macro: 'Macro', trades: "TIM's trades",
-        exo: 'Exo workspace: VWAP, bubbles, OI, CVD', exoVp: 'Exo profile: VP range, VPOC', exoTpo: 'Exo TPO: sessions and profiles' }
+        exo: 'Exo workspace: VWAP, bubbles, OI, CVD', exoVp: 'Exo profile: VP range, VPOC', exoTpo: 'Exo TPO: sessions and profiles', usdtd: 'USDT.D (dominance)' }
     : { label: 'Layout', tim: 'TIM-Layouts (immer mit Level und Struktur)', own: 'Eigene Layouts', changed: 'geändert, nicht gespeichert', save: 'Speichern unter…', rename: 'Umbenennen', remove: 'Löschen',
         ask: 'Name des Layouts:', taken: 'Dieser Name gehört zu einem TIM-Layout.', confirm: name => `Layout "${name}" löschen?`,
         fpDelta: 'Footprint: Delta-Balken', fpCells: 'Footprint: Bid × Ask', fpProfile: 'Footprint: Profil', other: 'Sonstiges', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume Profile',
-        standard: 'TIM Standard', pro: 'Orderflow Pro (BTC 15m Perp)', orderflow: 'Orderflow', profile: 'Profile (VP, TPO)', levels: 'Level',
+        standard: 'TIM Standard (alle Standard-Ebenen)', read: 'Lesen (wenige Ebenen, Start)', pro: 'Orderflow Pro (BTC 15m Perp)', orderflow: 'Orderflow', profile: 'Profile (VP, TPO)', levels: 'Level',
         vwap: 'VWAP', structure: 'Struktur', positioning: 'Positionierung', macro: 'Makro', trades: 'TIMs Trades',
-        exo: 'Exo-Workspace: VWAP, Bubbles, OI, CVD', exoVp: 'Exo-Profil: VP-Range, VPOC', exoTpo: 'Exo-TPO: Sessions und Profile' };
+        exo: 'Exo-Workspace: VWAP, Bubbles, OI, CVD', exoVp: 'Exo-Profil: VP-Range, VPOC', exoTpo: 'Exo-TPO: Sessions und Profile', usdtd: 'USDT.D (Dominanz)' };
   // Every layer belongs to exactly one category (Uzi 09.11.2026: each layout a category); a category is a
   // layout of its own, and the ticks under "edit layout" are sorted the same way.
   const CATEGORIES = [
@@ -1453,21 +1499,26 @@
     { name: L.levels, groups: ['day', 'week', 'month', 'quarter', 'year', 'session', 'ib'] },
     { name: L.vwap, groups: ['vwap', 'vwap_bands'] },
     { name: L.structure, groups: ['structure', 'trend', 'fib'] },
-    { name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma'] },
+    { name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma', 'gamma_ob'] },
     { name: L.macro, groups: ['dominance', 'macro'] },
     { name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long', 'plans_old'] },
+    { name: L.usdtd, groups: ['usdtd_swing', 'usdtd_sr', 'usdtd_ema'] },
   ];
   // The layouts are working views (Uzi 09.11.2026: one click for everything orderflow, TPO, footprint or
   // volume profile needs, and the levels and the structure in every one of them): BASE joins each layout.
   // groups: null = the server's default layers. fp: footprint style the layout sets (Orderflow Pro: profile,
   // Uzi 10.11.2026 "footprint im OF Pro als Profil"); without fp a TIM layout shows bid × ask.
   const BASE = ['day', 'week', 'month', 'naked', 'structure', 'trend'];
+  // Lesen (Hermes 17.11.2026: 21 of 35 layers were on at the first visit): the base levels, sessions, VWAP and
+  // TIM's mid-term plans, about nine layers. A first visit starts here; "TIM Standard" keeps every default layer.
+  const READ = ['session', 'vwap', 'plans_mid'];
   const TIM_LAYOUTS = [
+    { id: 'tim:read', name: L.read, groups: READ },
     { id: 'tim:orderflow', name: L.orderflow, market: 'perp', groups: ['fp', 'bubbles', 'cvd', 'oi', 'liqev', 'vwap'] },
     { id: 'tim:footprint', name: L.footprint, market: 'perp', fp: 'delta', groups: ['fp', 'bubbles', 'delta', 'oi'] },
     { id: 'tim:tpo', name: L.tpo, groups: ['tpo', 'running', 'session', 'ib'] },
     { id: 'tim:vp', name: L.vp, groups: ['vp', 'running', 'vwap', 'vwap_bands'] },
-    { id: 'tim:positioning', name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma'] },
+    { id: 'tim:positioning', name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma', 'gamma_ob'] },
     { id: 'tim:macro', name: L.macro, groups: ['dominance', 'macro', 'quarter', 'year'] },
     { id: 'tim:trades', name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long'] },
     { id: 'tim:pro', name: L.pro, symbol: 'BTCUSDT', tf: '15m', market: 'perp', fp: 'profile', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi'] },
@@ -1475,6 +1526,8 @@
     { id: 'tim:exo', name: L.exo, symbol: 'BTCUSDT', tf: '15m', market: 'perp', clean: true, groups: ['vwap', 'vwap_bands', 'bubbles_exo', 'liqev', 'oi', 'delta', 'cvd'] },
     { id: 'tim:exovp', name: L.exoVp, symbol: 'BTCUSDT', tf: '15m', market: 'perp', clean: true, fp: 'profile', groups: ['vwap', 'vwap_bands', 'vp_range', 'vpoc', 'bubbles_exo', 'delta'] },
     { id: 'tim:exotpo', name: L.exoTpo, symbol: 'BTCUSDT', tf: '30m', market: 'perp', clean: true, groups: ['tpo', 'session', 'running', 'naked', 'vp'] },
+    // USDT.D (Uzi 18.11.2026): own tab, 1h candles, swing marks with values, EMA 20/50, last support/resistance; structure and trend lines from BASE.
+    { id: 'tim:usdtd', name: L.usdtd, symbol: 'USDTD', tf: '1h', clean: true, groups: ['structure', 'trend', 'usdtd_swing', 'usdtd_sr', 'usdtd_ema'] },
     { id: 'tim:standard', name: L.standard, groups: null },
   ];
   function ownLayouts() {
@@ -1488,9 +1541,9 @@
   function activeLayout() {
     try {
       const id = localStorage.getItem(LAYOUT_ACTIVE);
-      if (id === null) return localStorage.getItem(STORE) === null ? 'tim:standard' : '';
+      if (id === null) return localStorage.getItem(STORE) === null ? 'tim:read' : '';
       return id === '-' ? '' : id;
-    } catch (error) { return 'tim:standard'; }
+    } catch (error) { return 'tim:read'; }  // no storage: shownGroups shows the Lesen layers
   }
   function setActiveLayout(id) { try { localStorage.setItem(LAYOUT_ACTIVE, id || '-'); } catch (error) { /* ignore */ } }
   function findLayout(id) {
@@ -1743,12 +1796,13 @@
     bubbles.visible = groups.has('bubbles') || groups.has('bubbles_exo');
     bubbles.exo = groups.has('bubbles_exo') && !groups.has('bubbles');
     vwapFill.visible = groups.has('vwap_bands');
+    zoneFill.visible = groups.has('gamma_ob');
     const rangeOn = groups.has('vp_range');
     const openRange = rangeOn && !vpr.visible && model && model.candles.length;  // newly switched on: make room right of the candles
     vpr.visible = rangeOn;
     if (openRange) chart.timeScale().setVisibleLogicalRange(viewRange(168));
     vpoc.visible = groups.has('vpoc');
-    for (const layer of [bubbles, vwapFill, vpr, vpoc]) if (layer.requestUpdate) layer.requestUpdate();
+    for (const layer of [bubbles, vwapFill, zoneFill, vpr, vpoc]) if (layer.requestUpdate) layer.requestUpdate();
   }
   function applyVisibility(groups) {
     planMarkers(groups);
@@ -1897,7 +1951,16 @@
       const health = h && h.checks ? ' · ' + P.health(h.checks_ok, h.checks, h.gaps) : '';
       const bandNotes = [model.cvd && model.cvd.note].filter(Boolean);
       const allNotes = [nextRelease(), notes, ...bandNotes].filter(Boolean).join(' · ');
-      status.textContent = `${model.candles.length} ${T.candles} · Level: ${model.level_source || '–'}${trades}${health} · ${new Date().toLocaleTimeString(LOCALE)}` + (allNotes ? ' · ' + allNotes : '');
+      let fresh = '';
+      status.classList.remove('tc-live-status--stale');
+      if (model.last_closed) {
+        const closed = new Date(model.last_closed);
+        const age = Math.max(0, Math.round((Date.now() - closed.getTime()) / 60000));
+        const stale = model.stale_after_seconds && age * 60 > model.stale_after_seconds;
+        fresh = T.lastCandle(closed.toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' }), age) + (stale ? ' · ' + T.stale : '') + ' · ';
+        if (stale) status.classList.add('tc-live-status--stale');
+      }
+      status.textContent = fresh + `${model.candles.length} ${T.candles} · Level: ${model.level_source || '–'}${trades}${health} · ${new Date().toLocaleTimeString(LOCALE)}` + (allNotes ? ' · ' + allNotes : '');
     } catch (error) {
       status.textContent = T.failed(error.message);
     } finally {
@@ -1964,9 +2027,9 @@
         const input = layers.querySelector("input[value='fp']"); if (input) input.checked = true;
       }
     }
-    if (action.dataset.action === 'reset') { try { localStorage.removeItem(STORE); } catch (error) { /* ignore */ }
-      try { localStorage.removeItem(KNOWN); } catch (error) { /* ignore */ }
+    if (action.dataset.action === 'reset') {  // back to TIM Standard, saved: an empty store would mean the Lesen start view
       const groups = new Set(model ? model.default_groups : []);
+      saveGroups(groups);
       layers.querySelectorAll('input').forEach(node => { node.checked = groups.has(node.value); });
       applyVisibility(groups); setActiveLayout('tim:standard'); buildLayouts(); }
   });

@@ -25,6 +25,7 @@ Alle Schwellen (Terzile, „groß“) werden nur aus dem Kalibrierfenster bestim
 |---|---|---|---|---|
 | V1 | DVOL steigt in 4 h im oberen Terzil → in den nächsten 24 h größere Spanne (ATR-normiert) als im Rest | `dvol_change` | Implizite Vola läuft realisierter oft voraus | Gegenseitige Abhängigkeit, Vola clustert ohnehin (GARCH-Basis nötig) |
 | V2 | Gamma-Regime negativ (Kurs unter Gamma-Flip) → größere Spanne in 24 h | vorhandenes Gamma-Log | Dealer short Gamma verstärken Bewegungen | Flip aus Bestand geschätzt, Dealer-Seite angenommen, nicht bekannt |
+| V3 | Ungerichtete Optionsaktivität der letzten 4 h (Gesamtprämie aller Trades, ohne Vorzeichen) im oberen Terzil → in den nächsten 4 h und 24 h größere Spanne (ATR-normiert) als im Rest | Summe `premium_usd` (4 h) | Papers stützen Optionen eher für Schwankung als für Richtung (Recherche 18.11.2026, `analysen/optionflow-2026-11-18/`); Uzi 18.11. „aufnehmen“ | Wirkt wie DVOL (V1), Zuwachs gegen V1 und gegen die Spanne der letzten 24 h nötig; Verfallstage verzerren (Verfallstag als Kontrollvariable) |
 
 V-Regeln ändern keinen Trade. Wenn sie halten, wären sie ein Kandidat für Stop-Weite oder Positionsgröße, nicht für Richtung.
 

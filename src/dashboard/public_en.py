@@ -31,6 +31,8 @@ NAV = (("/chart", "Chart"), ("/journal", "Paper journal"), ("/live", "Live accou
 REPO = "https://github.com/TIM-Intelegence-market/tim-ai-platform"
 
 GROUPS_EN = {
+    "usdtd_swing": "USDT.D: swing highs and lows with value", "usdtd_sr": "USDT.D: latest support and resistance",
+    "usdtd_ema": "USDT.D: EMA 20 and EMA 50",
     "day": "Day (1D)", "week": "Week (1W)", "month": "Month (1M)", "quarter": "Quarter (1Q)", "year": "Year (1Y)",
     "vwap": "VWAP (week, month, quarter, year)", "vwap_bands": "VWAP bands week (±1σ, ±2σ, shaded)", "naked": "naked POC",
     "running": "running POCs", "session": "Sessions", "ib": "Initial Balance",
@@ -43,9 +45,10 @@ GROUPS_EN = {
     "plans_short": "TIM plans SHORT 15m", "plans_mid": "TIM plans MID 1h", "plans_long": "TIM plans LONG 1D",
     "plans_old": "TIM plans, test versions 30m",
     "gamma": "Options gamma (Deribit)",
+    "gamma_ob": "Gamma zones with an order book wall (confirmed)",
     "liq": "Liquidation heatmap (estimate)",
     "liqev": "Liquidations (real, Binance + Bybit)",
-    "cvd": "CVD spot vs. perp", "delta": "Delta volume per candle (chosen market)", "oi": "Open interest per venue (Binance, Bybit) + Z-score (7.5 d)",
+    "cvd": "CVD spot vs. perp", "delta": "Delta volume per candle (chosen market)", "oi": "Open interest per venue (Binance, Bybit) + Z-score (7.5 d, Binance only)",
     "funding": "Funding rate (Binance perp)", "premium": "Coinbase premium (USD vs. USDT)",
     "dominance": "BTC and USDT dominance (daily)",
     "macro": "Release dates (US CPI, FOMC)",
@@ -98,13 +101,17 @@ TEXT_EN: tuple[tuple[str, str], ...] = (
     (r"^(Opt )?EM tief ", r"\1EM low "),
     (r"^darüber dämpfen Händler eher, darunter verstärken sie Bewegungen$",
      "above it dealer hedging tends to dampen moves, below it to amplify them (estimate)"),
-    (r"^größtes Call-Gamma über dem Preis$", "largest call gamma above the price (estimate)"),
-    (r"^größtes Put-Gamma unter dem Preis$", "largest put gamma below the price (estimate)"),
+    (r"^größtes Call-Gamma über dem Preis, wandert mit dem Preis$", "largest call gamma above the price, moves with the price (estimate)"),
+    (r"^größtes Put-Gamma unter dem Preis, wandert mit dem Preis$", "largest put gamma below the price, moves with the price (estimate)"),
+    (r"^(Opt )?Call-OI-Wand$", r"\1Call OI wall"),
+    (r"^(Opt )?Put-OI-Wand$", r"\1Put OI wall"),
+    (r"^größter offener (Call|Put)-Bestand über dem Preis \((\d+) (\w+)\)$", r"largest \1 open interest above the price (\2 \3)"),
+    (r"^größter offener (Call|Put)-Bestand unter dem Preis \((\d+) (\w+)\)$", r"largest \1 open interest below the price (\2 \3)"),
     (r"^Hauptverfall (\S+) \((\d+) % des OI\)$", r"main expiry \1 (\2 % of open interest)"),
     (r"^erwartete Bewegung bis Verfall, ATM-IV ([\d.]+) %$", r"expected move until expiry, ATM IV \1 %"),
     # Estimated liquidation clusters (liquidation_data.py).
-    (r"^Liq-Cluster oben$", "Liq cluster above"),
-    (r"^Liq-Cluster unten$", "Liq cluster below"),
+    (r"^Liq-Cluster oben \(Modell\)$", "Liq cluster above (model)"),
+    (r"^Liq-Cluster unten \(Modell\)$", "Liq cluster below (model)"),
     (r"^stärkste geschätzte Short-Liquidationen über dem Preis$", "strongest estimated short liquidations above the price"),
     (r"^stärkste geschätzte Long-Liquidationen unter dem Preis$", "strongest estimated long liquidations below the price"),
 )
@@ -118,6 +125,20 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
     (r"^Monero über den Binance-Perpetual", "Monero via the Binance perpetual XMRUSDT (USD-M futures): Binance ended XMR spot "
                                             "in February 2024. The perp price can differ slightly from spot because of funding; "
                                             "display only, no paper trading."),
+    (r"^Nasdaq: Footprint, Volume Profile und CVD sind eine Näherung", "Nasdaq: footprint, volume profile and CVD are an approximation from 1m candles, not real trades "
+                                                                       "(volume spread evenly over the candle range, buy share from where the close sits). No bubbles, OI or funding."),
+    (r"^Nasdaq-100 in Indexpunkten: Kerzen von QQQ über Twelve Data \(eigener API-Key\) mal ([\d,]+)",
+     r"Nasdaq-100 in index points: QQQ candles via Twelve Data (TIM's own API key) times \1 (last common daily close ^NDX/QQQ, "
+     r"renewed every 6 h); usually within 0.1 % of the real index. Candles only in US trading hours (Mon-Fri 9:30-16:00 New York). "
+     r"Display only, for comparison with BTC."),
+    (r"^Nasdaq-100 über Twelve Data", "Nasdaq-100 via Twelve Data (TIM's own API key) as the ETF QQQ (tracks the Nasdaq-100, price about a fortieth of the index; "
+                                     "the free plan does not deliver the NDX index): candles only in US trading hours "
+                                     "(Mon-Fri 9:30-16:00 New York), none at weekends and overnight. No trades, no footprint, "
+                                     "no paper trading; display only, for comparison with BTC."),
+    (r"^Nasdaq-100 \(\^NDX\) von Yahoo", "Nasdaq-100 (^NDX) from Yahoo Finance (public, unofficial, partly delayed; no Twelve Data key stored): candles only in US trading hours "
+                                         "(Mon-Fri 9:30-16:00 New York), none at weekends and overnight. Index volume is 0, no trades, no footprint, "
+                                         "no paper trading; display only, for comparison with BTC."),
+    (r"^Nasdaq-100: Zeitrahmen (\w+) gibt es nicht", r"Nasdaq-100: timeframe \1 is not available (the source offers 1m, 5m, 15m, 30m, 1h, 2h, 4h, 1d, 1w, 1M)."),
     (r"^Gamma: Deribit-Stand ist (\d+) min alt", r"Gamma: Deribit data is \1 min old, levels hidden."),
     (r"^Liquidations-Heatmap: Binance-Stand ist (\d+) min alt", r"Liquidation heatmap: Binance data is \1 min old, hidden."),
     (r"^Liquidations-Heatmap: Modell aus Open Interest", "Liquidation heatmap: a model from open interest and price, not real liquidations (real events: issue #162)."),
@@ -145,6 +166,10 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
 SOURCES_EN = {
     "TIM-Runtime (wie Plan-Journale)": "TIM runtime (same as the plan journals)",
     "Binance-Klines (nur Anzeige)": "Binance klines (display only)",
+    "Yahoo-Finance-Kerzen (nur Anzeige)": "Yahoo Finance candles (display only)",
+    "Twelve-Data-Kerzen (nur Anzeige)": "Twelve Data candles (display only)",
+    "Näherung aus 1m-Kerzen (keine Einzeltrades): Volumen gleich über die Kerzenspanne verteilt, Käuferanteil = Lage des Schlusses":
+        "Approximation from 1m candles (no single trades): volume spread evenly over the candle range, buy share = where the close sits",
     "Binance-Perp-Klines (nur Anzeige)": "Binance perp klines (display only)",
     "TIM agg_trades (Binance Spot aggTrades, eigene Datenbank)": "TIM agg_trades (Binance spot aggTrades, own database)",
     "Binance USD-M Perp aggTrades (BTCUSDT, öffentlich, TIM-Sammler)": "Binance USD-M perp aggTrades (BTCUSDT, public, TIM collector)",
@@ -205,7 +230,7 @@ def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
         if key in model:
             out[key] = SOURCES_EN.get(model[key], model[key])
     out["name"] = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana", "XMRUSDT": "Monero (XMR perp)",
-                   "PAXGUSDT": "Gold (PAXG)"}.get(str(model.get("symbol")), model.get("name"))
+                   "PAXGUSDT": "Gold (PAXG)", "NDX": "Nasdaq-100", "USDTD": "USDT dominance (USDT.D)"}.get(str(model.get("symbol")), model.get("name"))
     return out
 
 from src.dashboard.pwa import HEAD_TAGS as PWA_HEAD_TAGS  # noqa: E402

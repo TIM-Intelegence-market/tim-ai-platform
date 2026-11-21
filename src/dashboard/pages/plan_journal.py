@@ -87,6 +87,28 @@ def _shadow_reliability(journal: Mapping[str, Any]) -> tuple[dict[str, Any], int
     return score_reliability(swapped), planned
 
 
+MARKET_EVENT_DE = {"liquidations_kaskade": "Liquidations-Kaskade", "makro_termin": "Makro-Termin", "news_notiz": "Schlagzeile im Fenster",
+                   "markt_druck": "Bewegung mit Marktdruck", "unerklaert": "Bewegung ohne Erklärung", "ruhig": "ruhig (keine große Bewegung)"}
+
+
+def _market_event_section(stats: Mapping[str, Any]) -> str:
+    """P4 (16.11.2026): results per market-event label; counted only, no verdict under min_group trades."""
+    block = stats.get("market_event") or {}
+    groups = block.get("groups") or {}
+    rows = "".join(
+        f"<tr><td>{_safe(MARKET_EVENT_DE.get(label, label))}</td><td>{g['closed']}</td><td class='mono'>{_safe(_r_text(g['sum_net_r']))}</td>"
+        f"<td class='mono'>{_safe(_r_text(g['sum_cost_r']))}</td><td>{'genug Trades' if g['enough'] else 'zu wenig für eine Aussage'}</td></tr>"
+        for label, g in groups.items()) or "<tr><td colspan='5' class='empty'>Noch kein geschlossener Trade mit Etikett.</td></tr>"
+    return (
+        "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Lernschleife</p>"
+        "<h2>Ergebnis nach Marktereignis</h2><p class='cc-section__note'>Nach dem Ausstieg prüft TIM, ob während des Trades eine große Bewegung lief "
+        "(Abschnitt „Warum hat sich der Preis bewegt?“ im Chart), und vergibt ein Etikett. Das Etikett entsteht erst nach dem Trade und fließt in keine Entscheidung ein. "
+        f"Unter {block.get('min_group', 30)} Trades je Gruppe keine Aussage. Ohne Etikett: {block.get('unlabelled', 0)} "
+        "(Trade vor dem 16.11. oder Bewegungen noch nicht vollständig erfasst).</p></div></div>"
+        "<div class='table-wrap'><table><thead><tr><th>Marktereignis</th><th>Geschlossen</th><th>Netto-R</th><th>Kosten-R</th><th>Stichprobe</th></tr></thead>"
+        f"<tbody>{rows}</tbody></table></div></section>")
+
+
 def _shadow_section(journal: Mapping[str, Any], stats: Mapping[str, Any]) -> str:
     shadow, planned = _shadow_reliability(journal)
     def rate(value: Any) -> str:
@@ -129,6 +151,8 @@ def _row(entry: Mapping[str, Any], note: Mapping[str, Any] | None = None) -> str
         detail.append(f"Ausstieg {EXIT_LABELS.get(entry['exit_reason'], entry['exit_reason'])} {_local(entry.get('closed_at'))}")
     elif entry.get("closed_at"):
         detail.append(_local(entry["closed_at"]))
+    if entry.get("market_event"):
+        detail.append("Marktereignis: " + MARKET_EVENT_DE.get(str(entry["market_event"].get("label")), str(entry["market_event"].get("label"))))
     if entry.get("note"):
         detail.append(str(entry["note"]))
     if entry.get("data_gap"):
@@ -300,6 +324,7 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         "</div></section>"
     )
     body += _shadow_section(journal, stats)
+    body += _market_event_section(stats)
     rule = str(journal.get("rule") or RULE_TIM)
     rows = "".join(_row(e, notes.get(plan_notes.key(rule, e.get("id")))) for e in reversed(entries[-300:])) or "<tr><td colspan='16' class='empty'>Noch keine Pläne. Der erste Eintrag entsteht beim nächsten 30m-Schluss, sobald der Setup-Pfad einen Plan zeigt.</td></tr>"
     updated = _local(journal.get("updated_at")) if journal.get("updated_at") else "noch nie"

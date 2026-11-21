@@ -1,0 +1,552 @@
+{
+ "meta": {
+  "test": "Nachtrag Gegenprüfung",
+  "erzeugt_utc": "2026-11-16T15:09Z",
+  "konfiguration": {
+   "kandidaten": [
+    "C1",
+    "C3"
+   ],
+   "kosten": [
+    "K1",
+    "K2"
+   ],
+   "ziehungen_bootstrap": 10000,
+   "seed": 20261116
+  },
+  "befehl": "python3 -m src.research_lab.konsolidierung.nachtrag_gegenpruefung /home/user/work/data docs/research_lab/konsolidierung/ergebnisse",
+  "zeitraum": "Signale 2020-01 bis 2024-12; T15-Handelsliste 2017-08 bis 2019-12; Holdout nicht geladen",
+  "status": "abgeschlossen (Diagnose, keine Kriterien)",
+  "grenzen": [
+   "nach dem Einfrieren von Protokoll 1.0 gerechnet; ändert keine Stufe und kein Kriterium",
+   "N2 ändert den Quelltext nur im Speicher; N4 ist eine Rückrechnung (Genauigkeit etwa 10 %), keine neue Simulation von T15"
+  ],
+  "seed": 20261116,
+  "code_commit": "d5f00661dbfdc74ed6f0cb5d7035a30a38bde34c",
+  "code_unsauber": false
+ },
+ "ergebnis": {
+  "N1": {
+   "C1_train": {
+    "nur_monate_mit_trade_lauf": {
+     "monate": 35,
+     "e_r": {
+      "ci95": [
+       0.013301,
+       0.451358
+      ],
+      "ci90": [
+       0.04083,
+       0.412159
+      ],
+      "anteil_positiv": 0.9818
+     },
+     "summe_r": {
+      "ci95": [
+       4.080123,
+       128.056883
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 17.001011,
+      "p95": 31.066868,
+      "ziehungen": 2000
+     }
+    },
+    "alle_monate": {
+     "monate": 36,
+     "monate_mit_trade": 35,
+     "e_r": {
+      "ci95": [
+       0.016991,
+       0.446521
+      ],
+      "anteil_positiv": 0.9836
+     },
+     "summe_r": {
+      "ci95": [
+       5.260401,
+       128.488877
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 16.904973,
+      "p95": 30.301822,
+      "ziehungen": 2000
+     }
+    }
+   },
+   "C1_validation": {
+    "nur_monate_mit_trade_lauf": {
+     "monate": 24,
+     "e_r": {
+      "ci95": [
+       0.005281,
+       0.535591
+      ],
+      "ci90": [
+       0.04401,
+       0.492989
+      ],
+      "anteil_positiv": 0.9785
+     },
+     "summe_r": {
+      "ci95": [
+       1.130472,
+       109.040199
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 14.327348,
+      "p95": 27.782019,
+      "ziehungen": 2000
+     }
+    },
+    "alle_monate": {
+     "monate": 24,
+     "monate_mit_trade": 24,
+     "e_r": {
+      "ci95": [
+       0.005281,
+       0.535591
+      ],
+      "anteil_positiv": 0.9785
+     },
+     "summe_r": {
+      "ci95": [
+       1.130472,
+       109.040199
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 14.327348,
+      "p95": 27.782019,
+      "ziehungen": 2000
+     }
+    }
+   },
+   "C1_pooled": {
+    "nur_monate_mit_trade_lauf": {
+     "monate": 59,
+     "e_r": {
+      "ci95": [
+       0.080467,
+       0.414948
+      ],
+      "ci90": [
+       0.103349,
+       0.38549
+      ],
+      "anteil_positiv": 0.9988
+     },
+     "summe_r": {
+      "ci95": [
+       40.309473,
+       202.842381
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 19.331568,
+      "p95": 33.276194,
+      "ziehungen": 2000
+     }
+    },
+    "alle_monate": {
+     "monate": 60,
+     "monate_mit_trade": 59,
+     "e_r": {
+      "ci95": [
+       0.071378,
+       0.414283
+      ],
+      "anteil_positiv": 0.9978
+     },
+     "summe_r": {
+      "ci95": [
+       35.875821,
+       203.571236
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 19.763098,
+      "p95": 34.183783,
+      "ziehungen": 2000
+     }
+    }
+   },
+   "C3_train": {
+    "nur_monate_mit_trade_lauf": {
+     "monate": 35,
+     "e_r": {
+      "ci95": [
+       0.013746,
+       0.405924
+      ],
+      "ci90": [
+       0.041431,
+       0.372889
+      ],
+      "anteil_positiv": 0.982
+     },
+     "summe_r": {
+      "ci95": [
+       3.641492,
+       102.977459
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 15.638467,
+      "p95": 27.677453,
+      "ziehungen": 2000
+     }
+    },
+    "alle_monate": {
+     "monate": 36,
+     "monate_mit_trade": 35,
+     "e_r": {
+      "ci95": [
+       0.011114,
+       0.400142
+      ],
+      "anteil_positiv": 0.9812
+     },
+     "summe_r": {
+      "ci95": [
+       3.003684,
+       100.841254
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 15.35756,
+      "p95": 26.962916,
+      "ziehungen": 2000
+     }
+    }
+   },
+   "C3_validation": {
+    "nur_monate_mit_trade_lauf": {
+     "monate": 24,
+     "e_r": {
+      "ci95": [
+       -0.017553,
+       0.572359
+      ],
+      "ci90": [
+       0.025469,
+       0.525512
+      ],
+      "anteil_positiv": 0.9658
+     },
+     "summe_r": {
+      "ci95": [
+       -3.019865,
+       94.743436
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 14.031519,
+      "p95": 27.181293,
+      "ziehungen": 2000
+     }
+    },
+    "alle_monate": {
+     "monate": 24,
+     "monate_mit_trade": 24,
+     "e_r": {
+      "ci95": [
+       -0.017553,
+       0.572359
+      ],
+      "anteil_positiv": 0.9658
+     },
+     "summe_r": {
+      "ci95": [
+       -3.019865,
+       94.743436
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 14.031519,
+      "p95": 27.181293,
+      "ziehungen": 2000
+     }
+    }
+   },
+   "C3_pooled": {
+    "nur_monate_mit_trade_lauf": {
+     "monate": 59,
+     "e_r": {
+      "ci95": [
+       0.065555,
+       0.399892
+      ],
+      "ci90": [
+       0.093247,
+       0.372715
+      ],
+      "anteil_positiv": 0.9971
+     },
+     "summe_r": {
+      "ci95": [
+       28.306902,
+       167.766803
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 18.230988,
+      "p95": 31.209521,
+      "ziehungen": 2000
+     }
+    },
+    "alle_monate": {
+     "monate": 60,
+     "monate_mit_trade": 59,
+     "e_r": {
+      "ci95": [
+       0.064254,
+       0.402598
+      ],
+      "anteil_positiv": 0.9972
+     },
+     "summe_r": {
+      "ci95": [
+       27.607722,
+       169.402072
+      ]
+     },
+     "max_drawdown_r": {
+      "median": 18.25344,
+      "p95": 32.18853,
+      "ziehungen": 2000
+     }
+    }
+   }
+  },
+  "N2": {
+   "regel": "Abrechnungen bis 10 ms nach dem Einstiegszeitpunkt werden nicht belastet (Lauf: belastet)",
+   "C1_K1_train": {
+    "lauf": {
+     "n": 292,
+     "e_r": 0.220818
+    },
+    "streng": {
+     "n": 292,
+     "e_r": 0.222728
+    }
+   },
+   "C1_K1_validation": {
+    "lauf": {
+     "n": 207,
+     "e_r": 0.263985
+    },
+    "streng": {
+     "n": 207,
+     "e_r": 0.264328
+    }
+   },
+   "C1_K1_pooled": {
+    "lauf": {
+     "n": 499,
+     "e_r": 0.238725
+    },
+    "streng": {
+     "n": 499,
+     "e_r": 0.239985
+    }
+   },
+   "C1_K2_train": {
+    "lauf": {
+     "n": 290,
+     "e_r": 0.207205
+    },
+    "streng": {
+     "n": 290,
+     "e_r": 0.209563
+    }
+   },
+   "C1_K2_validation": {
+    "lauf": {
+     "n": 207,
+     "e_r": 0.236777
+    },
+    "streng": {
+     "n": 207,
+     "e_r": 0.238357
+    }
+   },
+   "C1_K2_pooled": {
+    "lauf": {
+     "n": 497,
+     "e_r": 0.219522
+    },
+    "streng": {
+     "n": 497,
+     "e_r": 0.221556
+    }
+   },
+   "C3_K1_train": {
+    "lauf": {
+     "n": 258,
+     "e_r": 0.202588
+    },
+    "streng": {
+     "n": 258,
+     "e_r": 0.204627
+    }
+   },
+   "C3_K1_validation": {
+    "lauf": {
+     "n": 166,
+     "e_r": 0.271294
+    },
+    "streng": {
+     "n": 166,
+     "e_r": 0.272412
+    }
+   },
+   "C3_K1_pooled": {
+    "lauf": {
+     "n": 424,
+     "e_r": 0.229487
+    },
+    "streng": {
+     "n": 424,
+     "e_r": 0.231166
+    }
+   },
+   "C3_K2_train": {
+    "lauf": {
+     "n": 256,
+     "e_r": 0.187966
+    },
+    "streng": {
+     "n": 256,
+     "e_r": 0.19051
+    }
+   },
+   "C3_K2_validation": {
+    "lauf": {
+     "n": 166,
+     "e_r": 0.243183
+    },
+    "streng": {
+     "n": 166,
+     "e_r": 0.244759
+    }
+   },
+   "C3_K2_pooled": {
+    "lauf": {
+     "n": 422,
+     "e_r": 0.209687
+    },
+    "streng": {
+     "n": 422,
+     "e_r": 0.211849
+    }
+   },
+   "c1_k2_einstiege_mit_abrechnung_im_fenster": {
+    "anzahl": 226,
+    "von": 497
+   }
+  },
+  "N3": {
+   "regel": "Training: Signal vor 2024-01-01, Ausstieg spätestens 2024-01-01; Validierung: Signal 2024, Ausstieg spätestens 2025-01-01 (gleiche Simulation, andere Grenze)",
+   "C1_K1": {
+    "training_2020_2023": {
+     "n": 394,
+     "e_r": 0.242589,
+     "summe_r": 95.580198,
+     "trefferquote": 0.383249
+    },
+    "validierung_2024": {
+     "n": 105,
+     "e_r": 0.224226,
+     "summe_r": 23.543708,
+     "trefferquote": 0.380952
+    }
+   },
+   "C1_K2": {
+    "training_2020_2023": {
+     "n": 392,
+     "e_r": 0.224789,
+     "summe_r": 88.117428,
+     "trefferquote": 0.382653
+    },
+    "validierung_2024": {
+     "n": 105,
+     "e_r": 0.199857,
+     "summe_r": 20.984964,
+     "trefferquote": 0.380952
+    }
+   },
+   "C3_K1": {
+    "training_2020_2023": {
+     "n": 341,
+     "e_r": 0.234128,
+     "summe_r": 79.837517,
+     "trefferquote": 0.381232
+    },
+    "validierung_2024": {
+     "n": 84,
+     "e_r": 0.213159,
+     "summe_r": 17.905373,
+     "trefferquote": 0.380952
+    }
+   },
+   "C3_K2": {
+    "training_2020_2023": {
+     "n": 339,
+     "e_r": 0.215794,
+     "summe_r": 73.154232,
+     "trefferquote": 0.380531
+    },
+    "validierung_2024": {
+     "n": 84,
+     "e_r": 0.185591,
+     "summe_r": 15.589611,
+     "trefferquote": 0.380952
+    }
+   }
+  },
+  "N4": {
+   "n": 157,
+   "e_r": 0.154056,
+   "mittlerer_stop_abstand_prozent_rueckgerechnet": 4.175768,
+   "mittlerer_stop_abstand_prozent_gespeichert": 4.154887,
+   "netto_bp_rueckgerechnet": 7.101277,
+   "netto_bp_gespeichert": 7.696528,
+   "produkt_der_mittel_bp": 64.330292,
+   "korrelation_r_stop": -0.130318,
+   "je_jahr": {
+    "2017": {
+     "n": 28,
+     "e_r": -0.027703,
+     "mittlerer_stop_abstand_prozent": 5.942292,
+     "netto_bp": -203.956153
+    },
+    "2018": {
+     "n": 65,
+     "e_r": 0.145831,
+     "mittlerer_stop_abstand_prozent": 4.563929,
+     "netto_bp": 54.440078
+    },
+    "2019": {
+     "n": 64,
+     "e_r": 0.241929,
+     "mittlerer_stop_abstand_prozent": 3.008688,
+     "netto_bp": 51.360434
+    }
+   },
+   "stop_unter_4_prozent": {
+    "n": 95,
+    "e_r": 0.33471,
+    "summe_r": 31.797447
+   },
+   "stop_ab_4_prozent": {
+    "n": 62,
+    "e_r": -0.122752,
+    "summe_r": -7.610625
+   }
+  }
+ }
+}

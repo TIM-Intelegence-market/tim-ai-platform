@@ -113,3 +113,14 @@ def test_a_chain_of_lines_cannot_grow_into_one_endless_zone():
     lines = [line(f"l{i}", 100.0 + 0.4 * i) for i in range(10)]  # each within tolerance of the one before
     out = lo.zones(lines, 90.0, tolerance=0.5)
     assert len(out) > 1 and all(z["high"] - z["low"] <= lo.ZONE_MAX * 0.5 for z in out)
+
+
+def test_every_zone_with_every_line_name_is_in_the_folded_list():
+    view = lo.build(_trending_series(), NOW)
+    html = lo.render_de(view, None)
+    assert len(view["all"]) == view["zones"]
+    assert [z["high"] for z in view["all"]] == sorted((z["high"] for z in view["all"]), reverse=True)
+    assert f"Alle {view['zones']} Zonen mit allen Linien" in html
+    for zone in view["all"]:
+        for label in zone["labels"]:
+            assert label in html  # nothing hides behind "+N weitere"

@@ -172,6 +172,23 @@ def _of_paper_step(root: Path) -> Mapping[str, Any]:
     return of_paper.step(root)
 
 
+def _of_m8_step(root: Path) -> Mapping[str, Any]:
+    """M8 shadow journal (Uzi 16.11.2026): runs wherever the orderflow paper journal runs; its first step fixes the
+    start (prospective, from the next full UTC day)."""
+    from src.research_lab.forward import of_paper
+
+    if not (Path(root) / of_paper.FOLDER / "start.json").exists():
+        return {"new_events": 0, "started": False}
+    return of_paper.step_m8(root)
+
+
+def _of_live_pull(root: Path) -> Mapping[str, Any]:
+    """Copy of the PS5 live journal (plan P4) and its comparison with stage A; only where ``pull.json`` exists."""
+    from src.research_lab.forward import of_live_mirror
+
+    return of_live_mirror.pull(root)
+
+
 @dataclass
 class Workshop:
     """IO side. ``root`` is the checkout the LaunchAgent runs from (on the Mac ~/TIM-live)."""
@@ -182,6 +199,8 @@ class Workshop:
                                                                   text=True, check=False).stdout)
     forward: Callable[[Path], Mapping[str, Any]] | None = None
     of_paper: Callable[[Path], Mapping[str, Any]] = _of_paper_step
+    of_m8: Callable[[Path], Mapping[str, Any]] = _of_m8_step
+    of_live_pull: Callable[[Path], Mapping[str, Any]] = _of_live_pull
 
     @property
     def research(self) -> Path:
@@ -304,6 +323,18 @@ class Workshop:
             result["decision"] = (week["proposal"] or {}).get("filter")
         except Exception as exc:  # the report is a summary; its failure must not hide the round
             result["report_error"] = f"{type(exc).__name__}: {exc}"[:200]
+        try:  # R-ABS-1 (absorption shadow, frozen 17.11.2026): read only, one file per week, changes nothing
+            from src.dashboard import absorption_shadow, orderflow_shadow
+            state = orderflow_shadow.load(self.root / orderflow_shadow.DEFAULT_PATH)
+            if state is not None:
+                folder = self.research / "reports"
+                folder.mkdir(parents=True, exist_ok=True)
+                out = absorption_shadow.evaluate(state)
+                (folder / f"absorption_{now.astimezone(LOCAL).strftime('%G-W%V')}.json").write_text(
+                    json.dumps(out, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+                result["absorption"] = out["verdict"]
+        except Exception as exc:
+            result["absorption_error"] = f"{type(exc).__name__}: {exc}"[:200]
         return result
 
     def evaluate_shadows(self, now: datetime) -> list[dict[str, Any]]:
@@ -390,10 +421,29 @@ class Workshop:
             state["of_paper"] = {"last_run": _iso(now), "last_result": paper}
             if paper.get("new_events") or paper["ok"] is False:
                 summary["of_paper"] = paper
+            started = datetime.now(timezone.utc)
+            try:
+                status = self.of_m8(self.root)
+                m8 = {"ok": True, "new_events": status.get("new_events", 0)}
+            except Exception as exc:  # shown in the status, retried next wake-up
+                m8 = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:500]}
+            m8["seconds"] = round((datetime.now(timezone.utc) - started).total_seconds(), 2)
+            state["of_m8"] = {"last_run": _iso(now), "last_result": m8}
+            if m8.get("new_events") or m8["ok"] is False:
+                summary["of_m8"] = m8
+            try:
+                mirror = dict(self.of_live_pull(self.root))
+                live = {"ok": True, "pulled": mirror.get("pulled"), "abgleich": (mirror.get("abgleich") or {}).get("ok")}
+            except Exception as exc:  # shown in the status, retried next wake-up
+                live = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:500]}
+            state["of_live"] = {"last_run": _iso(now), "last_result": live}
+            if live["ok"] is False or live.get("abgleich") is False:
+                summary["of_live"] = live
         if not dry_run:
             state["schema"], state["checked_at"] = SCHEMA, _iso(now)
             self.write_state(state)
             forward = summary.get("forward") or {}
-            if summary["ran"] or forward.get("new_events") or forward.get("ok") is False or "of_paper" in summary:
+            if summary["ran"] or forward.get("new_events") or forward.get("ok") is False or "of_paper" in summary or "of_m8" in summary \
+                    or "of_live" in summary:
                 self.log(summary)
         return summary

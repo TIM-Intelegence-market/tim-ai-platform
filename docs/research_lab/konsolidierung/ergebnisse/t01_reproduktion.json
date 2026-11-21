@@ -1,0 +1,187 @@
+{
+ "meta": {
+  "test": "T1",
+  "erzeugt_utc": "2026-11-16T13:32Z",
+  "konfiguration": {
+   "verglichen": "S7b- und S7-Tradelisten, 4 Varianten, 2 Abschnitte"
+  },
+  "befehl": "python3 -m src.research_lab.konsolidierung.lauf /home/user/work/data docs/research_lab/konsolidierung/ergebnisse s7b_train_2026-10-26T1305Z_trades.json s7_train_2026-10-26T1049Z_trades.json /home/user/work/bitunix",
+  "zeitraum": "Signale 2020-01 bis 2024-12 (Training < 2023-01-01, Validierung 2023-01-01 bis 2024-12-31); Holdout nicht geladen",
+  "status": "abgeschlossen",
+  "grenzen": [
+   "Vergleich nur mit den vom Labor gespeicherten Tradelisten (SHA-256 im Ergebnis)"
+  ],
+  "seed": 20261116,
+  "kandidat": "C1/C3 (Regel)",
+  "code_commit": "f1c39402a7cf360816b08cf871e7b2559cd5f4a9",
+  "code_unsauber": false,
+  "daten_version_sha256_datenaudit": "56b44a7f89643eafb7de1b163157a5eaf906203bb3432f625e14dd344a5eb2d2",
+  "dauer_s": 0.4
+ },
+ "ergebnis": {
+  "quellen": {
+   "s7b": {
+    "datei": "s7b_train_2026-10-26T1305Z_trades.json",
+    "sha256": "fa45d740da405a2fc96737a1a61d3fde151d81f68695f1951587ae0e85b88b26"
+   },
+   "s7": {
+    "datei": "s7_train_2026-10-26T1049Z_trades.json",
+    "sha256": "8106fd37f7c1aad38917d939b7a9e73791a175ab4b338f1580eb987af787be8e"
+   }
+  },
+  "s7b": {
+   "D20-T3/train": {
+    "gespeichert": 292,
+    "nachgerechnet": 292,
+    "gemeinsam": 292,
+    "nur_gespeichert": 0,
+    "nur_nachgerechnet": 0,
+    "max_abw_r": 0.0,
+    "grund_und_zeiten_gleich": true
+   },
+   "D20-T3/validation": {
+    "gespeichert": 207,
+    "nachgerechnet": 207,
+    "gemeinsam": 207,
+    "nur_gespeichert": 0,
+    "nur_nachgerechnet": 0,
+    "max_abw_r": 0.0,
+    "grund_und_zeiten_gleich": true
+   },
+   "D20-T4/train": {
+    "gespeichert": 266,
+    "nachgerechnet": 266,
+    "gemeinsam": 266,
+    "nur_gespeichert": 0,
+    "nur_nachgerechnet": 0,
+    "max_abw_r": 0.0,
+    "grund_und_zeiten_gleich": true
+   },
+   "D20-T4/validation": {
+    "gespeichert": 189,
+    "nachgerechnet": 189,
+    "gemeinsam": 189,
+    "nur_gespeichert": 0,
+    "nur_nachgerechnet": 0,
+    "max_abw_r": 0.0,
+    "grund_und_zeiten_gleich": true
+   },
+   "D55-T3/train": {
+    "gespeichert": 225,
+    "nachgerechnet": 225,
+    "gemeinsam": 225,
+    "nur_gespeichert": 0,
+    "nur_nachgerechnet": 0,
+    "max_abw_r": 0.0,
+    "grund_und_zeiten_gleich": true
+   },
+   "D55-T3/validation": {
+    "gespeichert": 160,
+    "nachgerechnet": 160,
+    "gemeinsam": 160,
+    "nur_gespeichert": 0,
+    "nur_nachgerechnet": 0,
+    "max_abw_r": 0.0,
+    "grund_und_zeiten_gleich": true
+   },
+   "D55-T4/train": {
+    "gespeichert": 198,
+    "nachgerechnet": 198,
+    "gemeinsam": 198,
+    "nur_gespeichert": 0,
+    "nur_nachgerechnet": 0,
+    "max_abw_r": 0.0,
+    "grund_und_zeiten_gleich": true
+   },
+   "D55-T4/validation": {
+    "gespeichert": 152,
+    "nachgerechnet": 152,
+    "gemeinsam": 152,
+    "nur_gespeichert": 0,
+    "nur_nachgerechnet": 0,
+    "max_abw_r": 0.0,
+    "grund_und_zeiten_gleich": true
+   }
+  },
+  "s7": {
+   "D20-T3/train": {
+    "gespeichert": 557,
+    "nachgerechnet": 557,
+    "gemeinsam": 557,
+    "nur_gespeichert": 0,
+    "nur_nachgerechnet": 0,
+    "max_abw_r": 0.0,
+    "grund_und_zeiten_gleich": true
+   },
+   "D20-T3/validation": {
+    "gespeichert": 420,
+    "nachgerechnet": 420,
+    "gemeinsam": 420,
+    "nur_gespeichert": 0,
+    "nur_nachgerechnet": 0,
+    "max_abw_r": 0.0,
+    "grund_und_zeiten_gleich": true
+   },
+   "D20-T4/train": {
+    "gespeichert": 509,
+    "nachgerechnet": 509,
+    "gemeinsam": 509,
+    "nur_gespeichert": 0,
+    "nur_nachgerechnet": 0,
+    "max_abw_r": 0.0,
+    "grund_und_zeiten_gleich": true
+   },
+   "D20-T4/validation": {
+    "gespeichert": 383,
+    "nachgerechnet": 383,
+    "gemeinsam": 383,
+    "nur_gespeichert": 0,
+    "nur_nachgerechnet": 0,
+    "max_abw_r": 0.0,
+    "grund_und_zeiten_gleich": true
+   },
+   "D55-T3/train": {
+    "gespeichert": 398,
+    "nachgerechnet": 398,
+    "gemeinsam": 398,
+    "nur_gespeichert": 0,
+    "nur_nachgerechnet": 0,
+    "max_abw_r": 0.0,
+    "grund_und_zeiten_gleich": true
+   },
+   "D55-T3/validation": {
+    "gespeichert": 292,
+    "nachgerechnet": 292,
+    "gemeinsam": 292,
+    "nur_gespeichert": 0,
+    "nur_nachgerechnet": 0,
+    "max_abw_r": 0.0,
+    "grund_und_zeiten_gleich": true
+   },
+   "D55-T4/train": {
+    "gespeichert": 361,
+    "nachgerechnet": 361,
+    "gemeinsam": 361,
+    "nur_gespeichert": 0,
+    "nur_nachgerechnet": 0,
+    "max_abw_r": 0.0,
+    "grund_und_zeiten_gleich": true
+   },
+   "D55-T4/validation": {
+    "gespeichert": 270,
+    "nachgerechnet": 270,
+    "gemeinsam": 270,
+    "nur_gespeichert": 0,
+    "nur_nachgerechnet": 0,
+    "max_abw_r": 0.0,
+    "grund_und_zeiten_gleich": true
+   }
+  },
+  "gesamt": {
+   "trades_gespeichert": 4879,
+   "trades_gemeinsam": 4879,
+   "max_abw_r": 0.0,
+   "bestanden": true
+  }
+ }
+}

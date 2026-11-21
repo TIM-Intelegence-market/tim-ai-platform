@@ -1,0 +1,131 @@
+{
+ "BTCUSDT": {
+  "schnappschuesse": 45,
+  "spread_bp": {
+   "median": 0.016,
+   "mittel": 0.016,
+   "p95": 0.016,
+   "max": 0.016
+  },
+  "tiefe_50_stufen_usdt_median": {
+   "ask": 7287200.0,
+   "bid": 7362099.0
+  },
+  "schlupf_marktorder_bp_gegen_mitte": {
+   "1000": {
+    "kauf_median": 0.008,
+    "verkauf_median": 0.008,
+    "kauf_p95": 0.008,
+    "verkauf_p95": 0.008,
+    "nicht_gedeckt_von_50_stufen": 0
+   },
+   "5000": {
+    "kauf_median": 0.008,
+    "verkauf_median": 0.008,
+    "kauf_p95": 0.008,
+    "verkauf_p95": 0.008,
+    "nicht_gedeckt_von_50_stufen": 0
+   },
+   "20000": {
+    "kauf_median": 0.008,
+    "verkauf_median": 0.008,
+    "kauf_p95": 0.008,
+    "verkauf_p95": 0.008,
+    "nicht_gedeckt_von_50_stufen": 0
+   },
+   "100000": {
+    "kauf_median": 0.008,
+    "verkauf_median": 0.008,
+    "kauf_p95": 0.011,
+    "verkauf_p95": 0.011,
+    "nicht_gedeckt_von_50_stufen": 0
+   }
+  }
+ },
+ "ETHUSDT": {
+  "schnappschuesse": 45,
+  "spread_bp": {
+   "median": 0.056,
+   "mittel": 0.056,
+   "p95": 0.056,
+   "max": 0.056
+  },
+  "tiefe_50_stufen_usdt_median": {
+   "ask": 4959066.0,
+   "bid": 5069976.0
+  },
+  "schlupf_marktorder_bp_gegen_mitte": {
+   "1000": {
+    "kauf_median": 0.028,
+    "verkauf_median": 0.028,
+    "kauf_p95": 0.028,
+    "verkauf_p95": 0.028,
+    "nicht_gedeckt_von_50_stufen": 0
+   },
+   "5000": {
+    "kauf_median": 0.028,
+    "verkauf_median": 0.028,
+    "kauf_p95": 0.028,
+    "verkauf_p95": 0.028,
+    "nicht_gedeckt_von_50_stufen": 0
+   },
+   "20000": {
+    "kauf_median": 0.028,
+    "verkauf_median": 0.028,
+    "kauf_p95": 0.028,
+    "verkauf_p95": 0.028,
+    "nicht_gedeckt_von_50_stufen": 0
+   },
+   "100000": {
+    "kauf_median": 0.054,
+    "verkauf_median": 0.046,
+    "kauf_p95": 0.085,
+    "verkauf_p95": 0.077,
+    "nicht_gedeckt_von_50_stufen": 0
+   }
+  }
+ },
+ "SOLUSDT": {
+  "schnappschuesse": 45,
+  "spread_bp": {
+   "median": 1.411,
+   "mittel": 1.411,
+   "p95": 1.412,
+   "max": 1.412
+  },
+  "tiefe_50_stufen_usdt_median": {
+   "ask": 11074589.0,
+   "bid": 11115874.0
+  },
+  "schlupf_marktorder_bp_gegen_mitte": {
+   "1000": {
+    "kauf_median": 0.706,
+    "verkauf_median": 0.706,
+    "kauf_p95": 0.706,
+    "verkauf_p95": 0.706,
+    "nicht_gedeckt_von_50_stufen": 0
+   },
+   "5000": {
+    "kauf_median": 0.706,
+    "verkauf_median": 0.706,
+    "kauf_p95": 0.706,
+    "verkauf_p95": 0.706,
+    "nicht_gedeckt_von_50_stufen": 0
+   },
+   "20000": {
+    "kauf_median": 0.706,
+    "verkauf_median": 0.706,
+    "kauf_p95": 0.706,
+    "verkauf_p95": 0.706,
+    "nicht_gedeckt_von_50_stufen": 0
+   },
+   "100000": {
+    "kauf_median": 0.706,
+    "verkauf_median": 0.706,
+    "kauf_p95": 0.706,
+    "verkauf_p95": 0.706,
+    "nicht_gedeckt_von_50_stufen": 0
+   }
+  }
+ }
+}

@@ -131,6 +131,18 @@ class DashboardServer:
                     except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
                         return self.respond(500, _error_page("Chart", exc).encode(), "text/html; charset=utf-8")
                     return self.respond(200, page.encode(), "text/html; charset=utf-8", csp=CHART_CSP)
+                if path == "/orderbuch":
+                    from src.dashboard.pages.orderbook import ORDERBOOK_CSP, render_orderbook_page
+
+                    try:
+                        page = render_orderbook_page(outer.state)
+                    except Exception as exc:  # noqa: BLE001 - bounded degradation instead of a dropped connection
+                        return self.respond(500, _error_page("Orderbuch", exc).encode(), "text/html; charset=utf-8")
+                    return self.respond(200, page.encode(), "text/html; charset=utf-8", csp=ORDERBOOK_CSP)
+                from src.dashboard.pages.orderbook import ORDERBOOK_SCRIPTS
+
+                if path in ORDERBOOK_SCRIPTS:
+                    return self.respond(200, ORDERBOOK_SCRIPTS[path], "text/javascript; charset=utf-8")
                 from src.dashboard.pwa import assets as pwa_assets
 
                 if path in pwa_assets():
@@ -146,13 +158,16 @@ class DashboardServer:
                         with outer.state.lock:
                             footprint = dict(outer.state.footprint)
                             gamma = dict(outer.state.gamma)
+                            gamma_zones = dict(outer.state.gamma_zones)
                             liquidation = dict(outer.state.liquidation)
                             perp, open_interest = perp_chart_inputs(outer.state, query.get("symbol", [None])[0])
                             bybit = dict(getattr(outer.state, "bybit_flow", None) or {})
                         from src.dashboard.chart_live import load_plan_journals
+                        from src.dashboard.gamma_zones import load as load_zone_watch
 
                         model = build_live_chart(query.get("symbol", [None])[0], query.get("tf", [None])[0], outer.state.chart_series(), footprint=footprint,
                                                  plan_journals=load_plan_journals(plan_journal_paths(outer.state)), gamma=gamma,
+                                                 gamma_zones=gamma_zones, gamma_zone_watch=load_zone_watch(outer.state.gamma_zone_watch_path),
                                                  liquidation=liquidation, perp=perp, open_interest=open_interest, bybit=bybit,
                                                  market=query.get("market", [None])[0],
                                                  context=chart_context(query.get("symbol", [None])[0]))
@@ -189,6 +204,17 @@ class DashboardServer:
                     except Exception as exc:  # noqa: BLE001 - malformed stored data must not drop the connection
                         return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")
                     return self.respond(200, json.dumps(prep, default=str).encode(), "application/json")
+                if path == "/api/gamma-zones":
+                    from src.dashboard.gamma_zones import load as load_zone_watch, summary as zone_summary
+
+                    symbol = str(query.get("symbol", ["BTCUSDT"])[0] or "BTCUSDT")
+                    with outer.state.lock:
+                        view = outer.state.gamma_zones.get(symbol)
+                    if not view:
+                        return self.respond(404, json.dumps({"error": "no gamma zones", "symbol": symbol}).encode(), "application/json")
+                    watch = load_zone_watch(outer.state.gamma_zone_watch_path)
+                    body = {**view, "watch": {**zone_summary(watch), "started_at": (watch or {}).get("started_at")}}
+                    return self.respond(200, json.dumps(body, ensure_ascii=False).encode(), "application/json")
                 if path == "/api/gamma":
                     from src.dashboard.gamma_data import with_age
 

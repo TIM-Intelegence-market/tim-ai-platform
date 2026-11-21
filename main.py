@@ -49,6 +49,8 @@ FOOTPRINT_INTERVAL_SECONDS = 120  # chart footprint / volume profile from aggreg
 ORDERFLOW_LIVE_INTERVAL_SECONDS = 10  # live orderflow state (src/orderflow/live_state.py) from new spot aggTrades
 VALIDATION_PROOF_MARGIN = timedelta(minutes=2)  # trades loaded past the 30-min validation target to prove the sequence reached it
 HERMES_NOTES_INTERVAL_SECONDS = 60  # plan second opinion and daily report (comment only)
+GAMMA_ZONES_CATCHUP_SECONDS = 5  # pause between small reading steps while the archive of the day is read in
+GAMMA_ZONES_INTERVAL_SECONDS = 60  # order book walls at gamma levels from our own recording (display and shadow log only)
 GAMMA_INTERVAL_SECONDS = 300  # options gamma from Deribit's public book (display and analysis context only)
 LIQUIDATION_INTERVAL_SECONDS = 300  # estimated liquidation heatmap from Binance futures open interest (display only)
 HEALTH_SNAPSHOT_FRESH_SECONDS = 1.0
@@ -629,7 +631,7 @@ class TIMApplication:
     async def _hermes_notes_loop(self) -> None:
         # DeepSeek über Hermes (Uzi 09.11.2026): Zweitmeinung zu neuen 15m/1h-Plänen und Tagesbericht um 8 und 22 Uhr.
         # Reads journals and the Lage, writes its own two files. Own loop: a slow answer never delays a journal.
-        from src.dashboard import daily_critic, daily_report, plan_opinion, waiting_on_uzi
+        from src.dashboard import daily_critic, daily_report, fault_diagnosis, plan_opinion, waiting_on_uzi
 
         def attention() -> list:
             from src.dashboard.cockpit.lage import build_lage
@@ -649,13 +651,39 @@ class TIMApplication:
                                         attention, waiting=waiting_on_uzi.items)
                 # Täglicher Kritiker (Uzi 11.11.2026): 7 Uhr, Projekt und Chart aus Nutzersicht, nur lesend.
                 await asyncio.to_thread(daily_critic.update, state.daily_critic_path,
-                                        daily_critic.state_sources(state, symbol=settings.symbol))
+                                        daily_critic.state_sources(state, symbol=settings.symbol),
+                                        backlog=state.critic_backlog_path)
+                # Störungs-Diagnose (Uzi 17.11.2026): bei neuer Störung erklärt Hermes sie, nur lesend.
+                fault_lines = await asyncio.to_thread(fault_diagnosis.state_lines, attention)
+                await asyncio.to_thread(fault_diagnosis.update, state.fault_diagnosis_path, fault_lines)
             except asyncio.CancelledError:
                 raise
             except Exception as error:  # noqa: BLE001 - a comment must not stop the runtime
                 log.warning("hermes notes update failed: %s", type(error).__name__)
             try:
                 await asyncio.wait_for(self.worker_stop.wait(), timeout=HERMES_NOTES_INTERVAL_SECONDS)
+            except TimeoutError:
+                pass
+
+    async def _gamma_zones_loop(self) -> None:
+        # Gamma levels with a standing order book wall (Uzi 21.11.2026). Reads the recorder's archive and the gamma
+        # snapshot, writes only its own shadow log; never on the ingestion path, no order.
+        from src.dashboard.gamma_zones import refresh as refresh_zones, update as update_zone_watch
+
+        while not self.worker_stop.is_set():
+            pause = GAMMA_ZONES_INTERVAL_SECONDS
+            try:
+                view = await asyncio.to_thread(refresh_zones, self.dashboard_state, settings.symbol)
+                if view and view.get("status") == "CATCHING_UP":
+                    pause = GAMMA_ZONES_CATCHUP_SECONDS
+                if view and view.get("status") in ("OK", "NO_GAMMA"):
+                    await asyncio.to_thread(update_zone_watch, self.dashboard_state.gamma_zone_watch_path, view, view.get("mid"))
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - a display layer must not stop the runtime
+                log.warning("gamma zones refresh failed: %s: %s", type(error).__name__, error)
+            try:
+                await asyncio.wait_for(self.worker_stop.wait(), timeout=pause)
             except TimeoutError:
                 pass
 
@@ -779,6 +807,7 @@ class TIMApplication:
         # Paper journal only: a failed step is logged and retried, never fatal.
         from functools import partial
 
+        from src.dashboard.move_context import DEFAULT_PATH as moves_path
         from src.dashboard.plan_journal import HORIZONS, RULE_STRUCT, RULE_VP, update as update_plan_journal
         from src.dashboard.trader_journal import update as update_trader_journal
         from src.dashboard.chart_history import JOURNAL_TIMEFRAMES, TIMEFRAMES, fetch_history
@@ -820,12 +849,12 @@ class TIMApplication:
             def positioning_fn(at):
                 return positioning_at(settings.symbol, at)
 
-            for name, step, path in (("plan journal", partial(update_plan_journal, trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_path),
-                                     ("plan journal struct", partial(update_plan_journal, rule=RULE_STRUCT), self.dashboard_state.plan_journal_struct_path),
-                                     ("plan journal vp", partial(update_plan_journal, rule=RULE_VP, footprint=footprint, gamma=gamma), self.dashboard_state.plan_journal_vp_path),
-                                     ("plan journal short", partial(update_plan_journal, timeframe=HORIZONS["SHORT"], trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_short_path),
-                                     ("plan journal mid", partial(update_plan_journal, timeframe=HORIZONS["MID"], trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_mid_path),
-                                     ("plan journal long", partial(update_plan_journal, timeframe=HORIZONS["LONG"]), self.dashboard_state.plan_journal_long_path),
+            for name, step, path in (("plan journal", partial(update_plan_journal, moves_path=moves_path, trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_path),
+                                     ("plan journal struct", partial(update_plan_journal, moves_path=moves_path, rule=RULE_STRUCT), self.dashboard_state.plan_journal_struct_path),
+                                     ("plan journal vp", partial(update_plan_journal, moves_path=moves_path, rule=RULE_VP, footprint=footprint, gamma=gamma), self.dashboard_state.plan_journal_vp_path),
+                                     ("plan journal short", partial(update_plan_journal, moves_path=moves_path, timeframe=HORIZONS["SHORT"], trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_short_path),
+                                     ("plan journal mid", partial(update_plan_journal, moves_path=moves_path, timeframe=HORIZONS["MID"], trades_fn=trades_fn, positioning_fn=positioning_fn), self.dashboard_state.plan_journal_mid_path),
+                                     ("plan journal long", partial(update_plan_journal, moves_path=moves_path, timeframe=HORIZONS["LONG"]), self.dashboard_state.plan_journal_long_path),
                                      ("trader journal", update_trader_journal, self.dashboard_state.trader_journal_path)):
                 try:
                     await asyncio.to_thread(step, path, series)
@@ -964,12 +993,18 @@ class TIMApplication:
         self.dashboard.start()
         if self.public_dashboard is not None:
             self.public_dashboard.start()
+        # USDT.D recorder (daemon thread, one CoinGecko read every 5 minutes): from process start on, not only after the
+        # first call of the USDT.D chart (gap 22:06-22:35 on 18.11.2026 after the Mac restart).
+        from src.dashboard.usdt_dominance import RECORDER as usdt_dominance_recorder
+
+        usdt_dominance_recorder.start()
         worker_task = asyncio.create_task(self._worker_loop(), name="tim-durable-enrichment-worker")
         evidence_task = asyncio.create_task(self._live_evidence_loop(), name="tim-live-evidence")
         journal_task = asyncio.create_task(self._plan_journal_loop(), name="tim-plan-journal")
         derived_task = asyncio.create_task(self._derived_candles_loop(), name="tim-derived-candles")
         footprint_task = asyncio.create_task(self._footprint_loop(), name="tim-chart-footprint")
         gamma_task = asyncio.create_task(self._gamma_loop(), name="tim-options-gamma")
+        gamma_zones_task = asyncio.create_task(self._gamma_zones_loop(), name="tim-gamma-zones")
         hermes_notes_task = asyncio.create_task(self._hermes_notes_loop(), name="tim-hermes-notes")
         liquidation_task = asyncio.create_task(self._liquidation_loop(), name="tim-liquidation-heatmap")
         perp_task = asyncio.create_task(self._perp_flow_loop(), name="tim-perp-flow")
@@ -988,6 +1023,7 @@ class TIMApplication:
             derived_task.cancel()
             footprint_task.cancel()
             gamma_task.cancel()
+            gamma_zones_task.cancel()
             hermes_notes_task.cancel()
             liquidation_task.cancel()
             perp_task.cancel()

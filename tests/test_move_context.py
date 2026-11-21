@@ -324,11 +324,37 @@ def test_headline_log_younger_than_window_is_missing():
 
 
 def test_stale_stock_feed_is_missing_not_closed():
-    stale = {"source": "t", "series": {"^NDX": {"name": "Nasdaq-100", "bars": [[int((CRASH - timedelta(days=2)).timestamp()), 1.0, 1.0]]}}}
-    row = M.build(_series(), {"stocks": stale}, END + timedelta(minutes=1))[0]
-    assert row["context"]["stocks"]["status"] == M.FEHLT
+    # Friday 15:00-16:00 UTC is inside the US session: no bar means a stale feed, not a closed market
+    start = datetime(2026, 11, 13, 15, 0, tzinfo=timezone.utc)
+    stale = {"series": {"^NDX": {"name": "Nasdaq-100", "bars": [[int((start - timedelta(days=2)).timestamp()), 1.0, 1.0]]}}}
+    assert M._stocks({"start": start, "end": start + timedelta(hours=1)}, stale)["status"] == M.FEHLT
 
 
 def test_relevance_matches_word_starts_only():
     assert M._relevant("Bitcoin liquidations spike") and M._relevant("SEC sues exchange")
     assert not M._relevant("A second warning on whether federal rates separate")
+
+
+def test_weekend_move_is_closed_even_before_monday_bars():
+    sunday = datetime(2026, 11, 15, 2, 0, tzinfo=timezone.utc)
+    assert not M.us_session_overlap(sunday, sunday + timedelta(hours=1))
+    assert M.us_session_overlap(datetime(2026, 11, 13, 15, 0, tzinfo=timezone.utc), datetime(2026, 11, 13, 16, 0, tzinfo=timezone.utc))
+    assert not M.us_session_overlap(datetime(2026, 11, 13, 22, 0, tzinfo=timezone.utc), datetime(2026, 11, 13, 23, 0, tzinfo=timezone.utc))
+    friday_bar = [[int(datetime(2026, 11, 13, 20, 30, tzinfo=timezone.utc).timestamp()), 1.0, 1.0]]
+    event = {"start": sunday, "end": sunday + timedelta(hours=1)}
+    assert M._stocks(event, {"series": {"^NDX": {"name": "Nasdaq-100", "bars": friday_bar}}})["status"] == "geschlossen"
+
+
+def test_heartbeat_only_while_candles_are_fresh(tmp_path):
+    """P4 review: a dead feed finds no move, so it must not count as a watching recorder."""
+    path = tmp_path / "moves.jsonl"
+    series = _series()
+    last = M._closed(series, "1h", END + timedelta(days=30))[-1]["close_time"]
+    M.update(path, series, {}, last + timedelta(minutes=30))
+    assert len(M.beats(path)) == 1
+    M.update(path, series, {}, last + timedelta(hours=5))  # feed stalled for hours: no beat
+    assert len(M.beats(path)) == 1
+    short = {tf: rows[-M.H1_MIN_PRIOR:] for tf, rows in series.items()}  # newest hour not yet scorable
+    other = tmp_path / "short.jsonl"
+    M.update(other, short, {}, last + timedelta(minutes=30))
+    assert M.beats(other) == []

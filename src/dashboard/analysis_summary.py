@@ -144,8 +144,13 @@ def _plans(journals: Mapping[str, Sequence[Mapping[str, Any]]]) -> list[dict[str
 
 
 def build_summary(series: Mapping[str, Sequence[Mapping[str, Any]]], journals: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
-                  now: datetime | None = None) -> dict[str, Any]:
-    """The facts behind the summary text (pure; ``series`` is the runtime chart series)."""
+                  now: datetime | None = None, trades: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """The facts behind the summary text (pure; ``series`` is the runtime chart series).
+
+    ``trades`` (TIM's aggTrades store, ``DashboardState.footprint``) gives the day profiles from real
+    trades, the same values as the chart lines, the Level-Übersicht and the Orderflow-Lage.
+    """
+    from src.dashboard.footprint_data import volume_profiles
     from src.dashboard.chart_model import analytical_series, clean_candles
     from src.dashboard.session_map import build_session_map
 
@@ -159,8 +164,13 @@ def build_summary(series: Mapping[str, Sequence[Mapping[str, Any]]], journals: M
         return result
     last = closes[-1]
     age = max(0, int((now - last["close_time"]).total_seconds()))
-    prep = build_session_map(clean, now)
+    try:
+        profiles = volume_profiles(trades, now) if trades else None
+    except (KeyError, TypeError, ValueError):  # a broken store falls back to the candle estimate
+        profiles = None
+    prep = build_session_map(clean, now, profiles=profiles)
     result.update(
+        profile_source=prep.get("profile_source", "Kerzen-Schätzung"),
         available=True, last=float(last["close"]), last_close_time=_iso(last["close_time"]), age_seconds=age,
         stale=age > STALE_SECONDS,
         bias=(prep.get("bias") or {}).get("bias") or "UNKNOWN",
@@ -311,7 +321,9 @@ def _render(summary: Mapping[str, Any], de: bool) -> str:
         levels = (f"Nächste Level darüber: {_level_text(summary['levels']['above'], True, 'above')}. "
                   f"Darunter: {_level_text(summary['levels']['below'], True, 'below')}.")
         structure_head = "Struktur je Zeitrahmen (BOS/MSS wie im Chart, nur per Schlusskurs):"
-        footer = ("Automatisch aus TIMs Analyse, neu bei jedem Laden der Seite. Nur Beobachtung und Papier, keine Order, keine Empfehlung.")
+        source = ("Tages-Value aus TIMs echten Trades (wie Chart und Level-Übersicht)" if summary.get("profile_source") == "echte Trades"
+                  else "Tages-Value aus Kerzen geschätzt (Trade-Speicher nicht verfügbar)")
+        footer = (f"Automatisch aus TIMs Analyse, neu bei jedem Laden der Seite. {source}. Nur Beobachtung und Papier, keine Order, keine Empfehlung.")
         stale = "<p class='sev sev--warn'>Achtung: Daten veraltet, die Zusammenfassung ist nicht aktuell.</p>" if summary.get("stale") else ""
     else:
         head = f"BTC ${_safe(price(summary['last']))} (30m close {_safe(stamp)} {_safe(zone)}). Higher timeframes: {_safe(bias)}."
@@ -319,7 +331,9 @@ def _render(summary: Mapping[str, Any], de: bool) -> str:
         levels = (f"Nearest levels above: {_level_text(summary['levels']['above'], False, 'above')}. "
                   f"Below: {_level_text(summary['levels']['below'], False, 'below')}.")
         structure_head = "Structure per timeframe (BOS/MSS as drawn in the chart, closes only):"
-        footer = "Generated automatically from TIM's analysis, refreshed on every page load. Observation and paper tracking only: no orders, not advice."
+        source = ("Day value from TIM's own trades (as in the chart)" if summary.get("profile_source") == "echte Trades"
+                  else "Day value estimated from candles (trade store not available)")
+        footer = f"Generated automatically from TIM's analysis, refreshed on every page load. {source}. Observation and paper tracking only: no orders, not advice."
         stale = "<p class='sev sev--warn'>Note: data is stale, this summary is not current.</p>" if summary.get("stale") else ""
     structure = _structure_items(summary.get("structure") or [], de)
     return (

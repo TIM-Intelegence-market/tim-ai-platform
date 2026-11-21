@@ -36,6 +36,9 @@ from pathlib import Path
 
 PUBLIC_WS = "wss://fapi.bitunix.com/public/"
 CHANNELS = ("trade", "depth_book1")
+# Bitunix public depth channels (docs 11.11.2026: 1, 5 or 15 levels, full snapshot per message). Uzi 17.11.2026
+# "go Orderbuch": deeper book on request (``--channels trade,depth_book1,depth_book15``); the default stays as it was.
+ALLOWED_CHANNELS = ("trade", "depth_book1", "depth_book5", "depth_book15")
 PING_SECONDS = 20.0
 MIN_FREE_BYTES = 2 * 1024**3
 _SYMBOL_RE = re.compile(r"^[A-Z0-9]{2,20}$")
@@ -52,6 +55,16 @@ def validate_symbols(symbols: Iterable[str]) -> tuple[str, ...]:
     for s in out:
         if not _SYMBOL_RE.fullmatch(s):
             raise ValueError(f"invalid symbol {s!r}")
+    return out
+
+
+def validate_channels(channels: Iterable[str]) -> tuple[str, ...]:
+    out = tuple(dict.fromkeys(channels))
+    if not out:
+        raise ValueError("at least one channel")
+    for c in out:
+        if c not in ALLOWED_CHANNELS:
+            raise ValueError(f"unknown channel {c!r} (allowed: {', '.join(ALLOWED_CHANNELS)})")
     return out
 
 
@@ -141,7 +154,7 @@ class DayWriter:
             raise StorageError("close: " + "; ".join(errors))
 
 
-def handle(raw: str | bytes, writer: DayWriter, recv_ms: int) -> str | None:
+def handle(raw: str | bytes, writer: DayWriter, recv_ms: int, channels: Iterable[str] = CHANNELS) -> str | None:
     """Store one server message. Returns the channel, ``"rejected"`` for a foreign symbol, None for control."""
     try:
         msg = json.loads(raw)
@@ -151,7 +164,7 @@ def handle(raw: str | bytes, writer: DayWriter, recv_ms: int) -> str | None:
         return None
     ch = msg.get("ch")
     symbol = msg.get("symbol")
-    if ch not in CHANNELS:
+    if ch not in channels:
         return None
     if not isinstance(symbol, str) or symbol not in writer.allowed:
         return "rejected"
@@ -190,7 +203,7 @@ def free_bytes(root: Path) -> int:
 async def record(
     root: Path, symbols: list[str], *, stop_after: float | None = None, connect: Callable | None = None,
     clock: Callable[[], float] = time.time, min_free_bytes: int = MIN_FREE_BYTES,
-    disk_free: Callable[[Path], int] = free_bytes,
+    disk_free: Callable[[Path], int] = free_bytes, channels: Iterable[str] = CHANNELS,
 ) -> dict[str, int]:
     """Record until cancelled (or ``stop_after`` seconds). Network errors reconnect; StorageError propagates."""
     if connect is None:
@@ -198,17 +211,18 @@ async def record(
 
         connect = websockets.connect
     symbols = list(validate_symbols(symbols))
+    channels = validate_channels(channels)
     root.mkdir(parents=True, exist_ok=True)
     status = Status(root)
     writer = DayWriter(root, symbols, run_id=int(clock() * 1000))
-    counts = {c: 0 for c in CHANNELS} | {"rejected": 0, "gaps": 0, "reconnects": 0}
+    counts = {c: 0 for c in channels} | {"rejected": 0, "gaps": 0, "reconnects": 0}
     started = clock()
     backoff = 1.0
     last_ok_ms = status.load_last_recv_ms()  # restart gap from the previous run
 
     def heartbeat(state: str) -> None:
         free = disk_free(root)
-        status.write({"state": state, "pid": os.getpid(), "symbols": symbols, "updated_ms": int(clock() * 1000),
+        status.write({"state": state, "pid": os.getpid(), "symbols": symbols, "channels": list(channels), "updated_ms": int(clock() * 1000),
                       "last_recv_ms": last_ok_ms, "free_bytes": free, "counts": counts})
         if free < min_free_bytes:
             raise StorageError(f"free space {free} below {min_free_bytes}")
@@ -218,7 +232,7 @@ async def record(
         while stop_after is None or clock() - started < stop_after:
             try:
                 async with connect(PUBLIC_WS, ping_interval=None, max_size=2**22) as ws:
-                    await ws.send(json.dumps(subscribe_message(symbols)))
+                    await ws.send(json.dumps(subscribe_message(symbols, channels)))
                     now_ms = int(clock() * 1000)
                     if last_ok_ms is not None:
                         for s in symbols:
@@ -234,7 +248,7 @@ async def record(
                             raw = None
                         if raw is not None:
                             recv_ms = int(clock() * 1000)
-                            ch = handle(raw, writer, recv_ms)
+                            ch = handle(raw, writer, recv_ms, channels)
                             if ch:
                                 counts[ch] += 1
                                 if ch != "rejected":

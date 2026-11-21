@@ -27,6 +27,7 @@ AREAS: list[Area] = [
         ("Überblick", "/"),
         ("Cockpit", "/cockpit"),
         ("TIM-Chart", "/chart"),
+        ("Orderbuch live", "/orderbuch"),
         ("Markt & Pläne", "/neu/markt"),
         ("Vorbereitung", "/prep"),
         ("Mein Tag", "/my-day"),
@@ -93,7 +94,7 @@ PAGE_PATHS = {
     "Insights": "/insights", "Independent Cases": "/independent-cases", "Qualification": "/qualification",
     "Prep": "/prep", "My Day": "/my-day", "Trader Journal": "/trader-journal", "Setup Path": "/setup-path",
     "Plan Journal": "/journal", "Plan Journal Struct": "/journal", "Plan Journal Level": "/journal",
-    "Chart": "/chart", "V2 Readiness": "/v2-readiness", "Security": "/security",
+    "Chart": "/chart", "Orderbuch": "/orderbuch", "V2 Readiness": "/v2-readiness", "Security": "/security",
     "Audit & Evidence": "/audit-evidence", "Graphify & MCP": "/mcp", "Graphify-Graph": "/graphify",
     "Research": "/research", "Pilotansicht": "/pilot", "Archiv": "/archiv", "Legende": "/legende",
 }

@@ -124,6 +124,9 @@ INSTRUMENT_SPECS = {
     # Monero on the Binance USD-M perpetual (Barti 11.11.2026, XMR journals in perp_journal.py): a perp can be
     # shorted without borrowing. Tick 0.01 USDT and lot 0.001 XMR as Binance lists XMRUSDT; check exchangeInfo before trusting it live.
     ("BINANCE", "USDM", "XMRUSDT"): {"tick_size": 0.01, "lot_step": 0.001, "short_executable": True},
+    # BTC perp shadow journals (perp_journal.py) are now labelled USDM instead of SPOT (R1, 16.11.2026). short_executable
+    # stays False on purpose: the label changes, the behaviour of these journals does not. Uzi decides about shorts later.
+    ("BINANCE", "USDM", "BTCUSDT"): {"tick_size": 0.01, "lot_step": 0.00001, "short_executable": False},
 }
 # The hypothesis register holds BTC research only. A plan on another symbol never borrows a BTC verdict.
 EVIDENCE_SYMBOLS = frozenset({"BTCUSDT"})
@@ -160,6 +163,9 @@ ENTRY_EXCLUDED = "ENTRY_EXCLUDED"
 # Horizon journals (SHORT / MID / LONG, Uzi 27.10.2026): after a stop, a stop that was only a wick
 # is marked once the next closes are known; the event may follow the terminal state like a correction.
 STOP_REVIEWED = "STOP_REVIEWED"
+# Preisbewegungen erklären (P4, Uzi 16.11.2026): after the close, the market event while the trade was open
+# (src.dashboard.move_label), once per trade; like a stop review it follows the terminal state and is never an input.
+MARKET_EVENT_LABELED = "MARKET_EVENT_LABELED"
 WICK_CLOSES = 2  # closes of the plan timeframe after the stop that are checked
 LOCK_TOLERANCE = 0.001  # horizon journals: a new entry within 0,1 % of a lost one counts as the same level
 LOCK_MIN_CLOSES = 4  # ... and stays locked for at least this many closes of the plan timeframe
@@ -901,6 +907,12 @@ def score_reliability(closed: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             "score_type": "UNCALIBRATED_CONFIDENCE", "verdict": None if monotone is None else ("steigend" if monotone else "nicht steigend")}
 
 
+def _market_event(closed: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    from src.dashboard.move_label import by_label
+
+    return by_label(closed)
+
+
 def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
     """Counts and sums. Entries excluded by a reviewed correction are left out and counted separately."""
     every = list(journal.get("entries") or [])
@@ -939,6 +951,8 @@ def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
                      "sum_net_r": round(sum(e.get("net_r") or 0.0 for e in excluded), 3)},
         # Master-Analyse 09.11.2026 (P2b): the engine score is a heuristic; this table shows what it was worth.
         "score_reliability": score_reliability(closed),
+        # P4 (16.11.2026): results per market-event label, counted only; under 30 trades no statement.
+        "market_event": _market_event(closed),
         "counter_trend": {
             "plans": sum(counter_trend(e.get("direction"), e.get("market_state")) for e in entries),
             "closed": len(against),
@@ -1127,6 +1141,13 @@ def fold(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             if entry.get("exit_reason") != "STOP" or entry.get("stop_review"):
                 raise journal_log.LogError(f"plan {entry['id']}: stop review only once and only after a stop")
             entry["stop_review"] = {k: v for k, v in payload.items() if k != "id"}
+        elif kind == MARKET_EVENT_LABELED:
+            entry = by_id.get(payload.get("id"))
+            if entry is None:
+                raise journal_log.LogError(f"market event for unknown plan {payload.get('id')}")
+            if entry.get("status") != "CLOSED" or entry.get("market_event"):
+                raise journal_log.LogError(f"plan {entry['id']}: market event only once and only after the close")
+            entry["market_event"] = {**{k: v for k, v in payload.items() if k != "id"}, "at": event.get("recorded_at")}
         elif kind == STRUCTURE_PLANS_DROPPED:
             counts = journal.setdefault("structure_skips", {})
             for reason in payload.get("reasons") or []:
@@ -1192,7 +1213,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
            gamma: Mapping[str, Any] | None = None, profile_fn: Callable[[Sequence[Mapping[str, Any]], datetime], Mapping[str, Any] | None] | None = None,
            source: str | None = None, market_type: str | None = None,
            trades_fn: Callable[[datetime, datetime], Sequence[Any]] | None = None,
-           positioning_fn: Callable[[datetime], Any] | None = None) -> dict[str, Any]:
+           positioning_fn: Callable[[datetime], Any] | None = None, moves_path: Path | None = None) -> dict[str, Any]:
     """One journal step: fold the log, follow outcomes, record plans at a new
     close of ``timeframe`` (30m by default; 15m / 1h / 1d for the horizon journals,
     see HORIZONS), append the resulting events, then write the view.
@@ -1207,6 +1228,9 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
     from candles. ``source`` names the journal's market in the view (default: Setup-Pfad on spot).
     ``market_type`` (XMR journals, 11.11.2026) sets the market type of new plans, e.g. "USDM" for a perp; the
     chart model always says SPOT. Without it nothing changes (BTC journals).
+
+    ``moves_path`` (P4, 16.11.2026) is the BTC move record of ``move_context``; with it, closed trades get their
+    market-event label (``move_label``) once the moves around them are recorded. Without it no label is written.
 
     A broken event log raises journal_log.LogError and nothing is written."""
     now = now or datetime.now(timezone.utc)
@@ -1252,7 +1276,7 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                 except Exception as error:  # noqa: BLE001
                     logging.getLogger(__name__).warning("score shadow: no positioning (%s)", type(error).__name__)
             model = build_chart_model(series, timeframe, now=latest, visible=PLAN_VISIBLE, profile=profile, trades=trades,
-                                      positioning=positioning)
+                                      positioning=positioning, market_type=market_type or "SPOT")
             plans = plans_from_model(model)
             dropped: list[str] = []
             if rule == RULE_STRUCT:
@@ -1293,6 +1317,18 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
     for review in stop_reviews(journal, clean_candles(plan_candles, timeframe), now):
         new_events.append({"event_id": journal_log.event_id(STOP_REVIEWED, review["id"]), "kind": STOP_REVIEWED, "aggregate_id": review["id"],
                            "recorded_at": _iso(now), "source_hash": source_hash, "source_range": source_range, "payload": review})
+    if moves_path is not None:
+        from src.dashboard.move_label import labels as market_event_labels
+
+        try:  # a look back after the close: it must never stop a journal step
+            due = market_event_labels(journal, moves_path, now)
+        except Exception as error:  # noqa: BLE001
+            due = []
+            logging.getLogger(__name__).warning("market event label skipped (%s)", type(error).__name__)
+        for label in due:
+            new_events.append({"event_id": journal_log.event_id(MARKET_EVENT_LABELED, label["id"]), "kind": MARKET_EVENT_LABELED,
+                               "aggregate_id": label["id"], "recorded_at": _iso(now), "source_hash": source_hash,
+                               "source_range": source_range, "payload": label})
     written = journal_log.append(events_path, new_events, state)
     events = state.events + written
     # The view is always the fold: cursor-only progress that was not written is re-derived next time.

@@ -115,11 +115,17 @@ LAYERS: dict[str, list[Mark]] = {
     "plans_long": [(("line", PLAN_ENTRY, "solid"), "Pläne der 1D-Regel (LONG-Horizont)", "Plans of the 1D rule (LONG horizon)")],
     "plans_old": [(("line", PLAN_ENTRY, "dashed"), "frühere Testversionen auf 30m (TIM-, Struktur-, VP-Regel)", "Earlier test versions on 30m (TIM, structure, VP rule)")],
     "gamma": [
-        (("line", *GAMMA["call_wall"]), "Call Wall (grün): größter Call-Bestand, oft Widerstand", "Call wall (green): largest call open interest, often resistance"),
-        (("line", *GAMMA["put_wall"]), "Put Wall (rot): größter Put-Bestand, oft Unterstützung", "Put wall (red): largest put open interest, often support"),
-        (("line", *GAMMA["flip"]), "Gamma Flip (gelb): darüber dämpfen Händler, darunter verstärken sie", "Gamma flip (yellow): above it dealers dampen moves, below they amplify"),
+        (("line", *GAMMA["call_wall"]), "Call Wall (grün): größtes Call-Gamma über dem Preis; wandert mit dem Preis", "Call wall (green): largest call gamma above the price; moves with the price"),
+        (("line", *GAMMA["put_wall"]), "Put Wall (rot): größtes Put-Gamma unter dem Preis; wandert mit dem Preis", "Put wall (red): largest put gamma below the price; moves with the price"),
+        (("line", *GAMMA["oi_call"]), "Call-/Put-OI-Wand (grün/rot gestrichelt): Strike mit dem größten offenen Bestand je Seite, ändert sich selten", "Call/put OI wall (green/red, dashed): strike with the largest open interest per side, changes rarely"),
+        (("line", *GAMMA["flip"]), "Gamma Flip (gelb): darüber dämpfen Händler eher, darunter verstärken sie; hängt stark an den Annahmen", "Gamma flip (yellow): above it dealers tend to dampen moves, below to amplify; depends strongly on the assumptions"),
         (("line", *GAMMA["max_pain"]), "Max Pain (grau gestrichelt)", "Max pain (grey, dashed)"),
         (("line", *GAMMA["em_high"]), "erwartete Spanne oben/unten aus den Optionspreisen (gepunktet)", "Expected move up/down from option prices (dotted)"),
+        (("line", *GAMMA["flip"]), "Alles Schätzung aus Deribit (Annahme: Händler long Calls, short Puts); Wirkung auf den BTC-Preis ungetestet. Jede Linie beginnt dort, wo das Level seinen jetzigen Wert bekam", "All estimates from Deribit (assumption: dealers long calls, short puts); effect on the BTC price untested. Each line starts where the level reached its current value"),
+    ],
+    "gamma_ob": [
+        (("line", "#ffd24a", "solid"), "Gelbes Band: Gamma-Level, an dem im Orderbuch (Binance Perp, eigene Aufzeichnung) seit mindestens 30 Minuten eine große Auftragsmauer steht", "Yellow band: gamma level with a large order book wall (Binance perp, own recording) standing for at least 30 minutes"),
+        (("line", "#ffd24a", "solid"), "Mauer = Preisstufe mit mindestens 5-fach so viel wartenden Aufträgen wie üblich; Aufträge können jederzeit zurückgezogen werden. Nur BTC, nur Anzeige; ob die Zonen halten, wird mitgezählt (Urteil ab 30 Berührungen)", "Wall = price step with at least 5 times the usual resting orders; orders can be pulled at any time. BTC only, display only; whether the zones hold is being counted (verdict from 30 visits)"),
     ],
     "liq": [
         (("line", LIQ["above"], "dashed"), "Schätzung: Liquidations-Cluster über dem Kurs (Shorts), orange", "Estimate: liquidation cluster above price (shorts), orange"),
@@ -149,6 +155,9 @@ LAYERS: dict[str, list[Mark]] = {
         (("line", "#f7931a", "solid"), "BTC-Dominanz (orange), täglich", "BTC dominance (orange), daily"),
         (("line", "#26a17b", "solid"), "USDT-Dominanz (grün): steigt meist, wenn Geld aus Krypto in Stablecoins geht", "USDT dominance (green): usually rises when money leaves crypto for stablecoins"),
     ],
+    "usdtd_swing": [(("line", "#e6e9ef", "solid"), "USDT.D: Swing-Hoch (Pfeil ab) und Swing-Tief (Pfeil auf) mit Wert, wie im TradingView-Bild", "USDT.D: swing high (arrow down) and swing low (arrow up) with value, as on the TradingView picture")],
+    "usdtd_sr": [(("line", "#8a94a6", "dashed"), "USDT.D: letztes Swing-Hoch (Widerstand) und -Tief (Unterstützung), Marke, kein Signal", "USDT.D: latest swing high (resistance) and low (support), a mark, not a signal")],
+    "usdtd_ema": [(("line", "#f5c542", "solid"), "USDT.D: EMA 20 (gelb) und EMA 50 (türkis)", "USDT.D: EMA 20 (yellow) and EMA 50 (teal)")],
     "macro": [
         (("square", "#f0b429"), "US-CPI oder FOMC, bereits veröffentlicht (gelbes Quadrat über der Kerze)", "US CPI or FOMC, already released (yellow square above the candle)"),
         (("square", "#8491a3"), "kommender Termin (graues Quadrat rechts der letzten Kerze, bis 14 Tage voraus)", "Upcoming release (grey square right of the last candle, up to 14 days ahead)"),
