@@ -36,9 +36,9 @@ from src.dashboard.chart_model import _nice_step, analytical_series, clean_candl
 # candles come from the USD-M perpetual (same kline format, /fapi/v1/klines); see XMR_NOTE.
 # NDX = Nasdaq-100 index (Uzi 16.11.2026: "den NASDAQ auch im Chart"). Binance has no index market, so its
 # candles come from the public Yahoo Finance chart endpoint (^NDX, same source as the P3 stock bars), see INDEX_NOTE.
-SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XMRUSDT", "PAXGUSDT", "NDX")
+SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XMRUSDT", "PAXGUSDT", "NDX", "USDTD")
 SYMBOL_NAMES = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana", "XMRUSDT": "Monero (XMR-Perp)",
-                "PAXGUSDT": "Gold (PAXG)", "NDX": "Nasdaq-100"}
+                "PAXGUSDT": "Gold (PAXG)", "NDX": "Nasdaq-100", "USDTD": "USDT-Dominanz (USDT.D)"}
 INDEX_SYMBOLS = {"NDX": "^NDX"}  # chart symbol -> Yahoo symbol
 YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval={interval}&range={range}"
 # view timeframe -> (Yahoo interval, Yahoo range, aggregate N source bars); others (3m, 6h, 12h, 3d) are not offered for the index
@@ -49,7 +49,7 @@ YAHOO_FRAMES = {"1m": ("1m", "7d", 1), "5m": ("5m", "60d", 1), "15m": ("15m", "6
 PERP_ONLY = frozenset({"XMRUSDT"})
 SPOT_KLINES = "https://api.binance.com/api/v3/klines?"
 PERP_KLINES = "https://fapi.binance.com/fapi/v1/klines?"
-SYMBOL_TABS = {"PAXGUSDT": "GOLD", "NDX": "NASDAQ"}
+SYMBOL_TABS = {"PAXGUSDT": "GOLD", "NDX": "NASDAQ", "USDTD": "USDT.D"}
 GOLD_NOTE = ("Gold über PAXG (tokenisiertes Gold, 1 PAXG = 1 Feinunze): handelt rund um die Uhr, echtes Gold nicht; "
              "Wochenend-Kerzen und dünnere Liquidität können Level gegenüber XAUUSD verschieben.")
 XMR_NOTE = ("Monero über den Binance-Perpetual XMRUSDT (USD-M Futures): Binance hat XMR-Spot im Februar 2024 "
@@ -85,6 +85,9 @@ FAIL_PAUSE = 30.0  # seconds without exchange requests after a failure (one slow
 # Colour per group; the page legend uses the same names.
 GROUP_STYLE = {
     "macro": ("#f0b429", "solid"),
+    "usdtd_swing": ("#e6e9ef", "solid"),
+    "usdtd_sr": ("#8a94a6", "dashed"),
+    "usdtd_ema": ("#f5c542", "solid"),
     "day": ("#4c8dff", "solid"),
     "week": ("#b07cff", "solid"),
     "month": ("#ff9f43", "solid"),
@@ -125,6 +128,9 @@ GROUP_NAMES = {
     "funding": "Funding Rate (Binance Perp)", "premium": "Coinbase-Premium (USD vs. USDT)",
     "dominance": "BTC- und USDT-Dominanz (täglich)",
     "macro": "Termine (US-CPI, FOMC)",
+    "usdtd_swing": "USDT.D: Swing-Hochs und -Tiefs mit Wert",
+    "usdtd_sr": "USDT.D: letzte Unterstützung und Widerstand",
+    "usdtd_ema": "USDT.D: EMA 20 und EMA 50",
 }
 # Footprint, volume profile, delta and bubbles from spot or perp trades (Beirat 29.10.2026, F5); since 09.11.2026
 # the levels, value areas, TPO and VWAP follow the chosen market too (plans stay on spot).
@@ -136,7 +142,7 @@ TPO_BINS = 40  # price rows per day profile
 TPO_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"  # 48 half-hour periods from 00:00 UTC
 # The earlier 30m test versions start hidden: their many closed trades crowd the candles (Uzi 27.10.2026).
 DEFAULT_GROUPS = ("day", "week", "month", "naked", "vwap", "vwap_bands", "structure", "trend", "tpo", "vp", "fp", "bubbles",
-                  "plans_short", "plans_mid", "plans_long", "gamma", "gamma_ob", "liq", "liqev", "cvd", "oi", "macro")
+                  "plans_short", "plans_mid", "plans_long", "gamma", "gamma_ob", "liq", "liqev", "cvd", "oi", "macro", "usdtd_swing", "usdtd_sr", "usdtd_ema")
 # TIM's paper plans on the chart (Uzi 27.10.2026: "man kann nicht richtig sehen wo die Entrys von TIM waren").
 # Journal key -> (layer, short label); the earlier 30m test versions share one layer.
 PLAN_JOURNALS = {"short": ("plans_short", "SHORT"), "mid": ("plans_mid", "MID"), "long": ("plans_long", "LONG"),
@@ -1086,6 +1092,40 @@ def merge_bubbles(first: dict[str, Any], second: dict[str, Any] | None, second_v
     return merged
 
 
+
+def _usdt_dominance_model(model: dict[str, Any], timeframe: str, context: Mapping[str, Any] | None, now: datetime) -> dict[str, Any]:
+    """USDT.D tab (Uzi 18.11.2026): own candles from recorded CoinGecko samples, swing marks, EMA, BOS/MSS and trend lines."""
+    from src.dashboard import usdt_dominance as ud
+
+    model["notes"].append(ud.SOURCE_NOTE)
+    if timeframe not in ud.OFFERED:
+        model["notes"].append(f"USDT.D: Zeitrahmen {timeframe} gibt es nicht (5m bis 1M).")
+        return model
+    ctx = (context or {}).get("usdtd") if context else None
+    seconds = INTERVAL_SECONDS[timeframe]
+    rows = ud.candle_rows(ctx, timeframe, seconds, now)
+    model["groups"] = GROUP_NAMES
+    if ctx and ctx.get("error"):
+        model["notes"].append(f"CoinGecko nicht erreichbar ({ctx['error']}): Aufzeichnung wartet, letzte Werte bleiben.")
+    candles = clean_candles(rows, timeframe)
+    if len(candles) < 2:
+        model["notes"].append("Noch zu wenige Aufzeichnungen für diesen Zeitrahmen (Kerzen bis 12 h füllen sich alle 5 Minuten; 1d und mehr haben Verlauf).")
+        return model
+    for c in candles:
+        c["closed"] = bool(c.get("closed", True))
+    model["candles"] = [{"time": _epoch(c["open_time"]), "open": c["open"], "high": c["high"], "low": c["low"], "close": c["close"],
+                         "volume": 0.0, "closed": c["closed"]} for c in candles]
+    model["last"] = candles[-1]["close"]
+    model["last_closed"] = next((c["close_time"].isoformat() for c in reversed(candles) if c["closed"]), None)
+    model["stale_after_seconds"] = seconds + 900
+    model["candle_market"] = "spot"
+    drawings = structure_drawings(candles, timeframe) + trend_drawings(candles, timeframe) + ud.indicator_drawings(candles, timeframe)
+    model["drawings"] = place_drawings(drawings, [_epoch(c["open_time"]) for c in candles])
+    model["tpo"], model["volume_profile"], model["footprint"] = [], [], {"step": None, "bars": [], "note": None}
+    model["bubbles"] = {"items": [], "min_usd": None, "max_usd": None, "note": None}
+    return model
+
+
 def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
                      cache: KlineCache | None = None, now: datetime | None = None, footprint: Mapping[str, Any] | None = None,
                      plan_journals: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
@@ -1139,6 +1179,8 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
                              "markets": {"names": MARKETS, "active": DEFAULT_MARKET, "available": []}, "cvd": None, "oi": None,
                              "funding": None, "premium": None, "dominance": None, "macro": [], "macro_ahead": [], "liquidations": None,
                              "interval_seconds": INTERVAL_SECONDS.get(timeframe)}
+    if symbol == "USDTD":
+        return _usdt_dominance_model(model, timeframe, context, now)
     if symbol == "PAXGUSDT":
         model["notes"].append(GOLD_NOTE)
     if symbol == "XMRUSDT":

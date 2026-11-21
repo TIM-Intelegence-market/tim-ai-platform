@@ -155,6 +155,9 @@ LAYERS: dict[str, list[Mark]] = {
         (("line", "#f7931a", "solid"), "BTC-Dominanz (orange), täglich", "BTC dominance (orange), daily"),
         (("line", "#26a17b", "solid"), "USDT-Dominanz (grün): steigt meist, wenn Geld aus Krypto in Stablecoins geht", "USDT dominance (green): usually rises when money leaves crypto for stablecoins"),
     ],
+    "usdtd_swing": [(("line", "#e6e9ef", "solid"), "USDT.D: Swing-Hoch (Pfeil ab) und Swing-Tief (Pfeil auf) mit Wert, wie im TradingView-Bild", "USDT.D: swing high (arrow down) and swing low (arrow up) with value, as on the TradingView picture")],
+    "usdtd_sr": [(("line", "#8a94a6", "dashed"), "USDT.D: letztes Swing-Hoch (Widerstand) und -Tief (Unterstützung), Marke, kein Signal", "USDT.D: latest swing high (resistance) and low (support), a mark, not a signal")],
+    "usdtd_ema": [(("line", "#f5c542", "solid"), "USDT.D: EMA 20 (gelb) und EMA 50 (türkis)", "USDT.D: EMA 20 (yellow) and EMA 50 (teal)")],
     "macro": [
         (("square", "#f0b429"), "US-CPI oder FOMC, bereits veröffentlicht (gelbes Quadrat über der Kerze)", "US CPI or FOMC, already released (yellow square above the candle)"),
         (("square", "#8491a3"), "kommender Termin (graues Quadrat rechts der letzten Kerze, bis 14 Tage voraus)", "Upcoming release (grey square right of the last candle, up to 14 days ahead)"),

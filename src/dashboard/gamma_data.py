@@ -165,7 +165,8 @@ def level_record(snapshot: Mapping[str, Any], symbol: str) -> dict[str, Any]:
     return {
         "symbol": symbol, "as_of": snapshot["as_of"], "spot": snapshot["spot"],
         "call_wall": overall["call_wall"], "put_wall": overall["put_wall"], "gamma_flip": overall["gamma_flip"],
-        "regime": overall["regime"], "net_gex_usd_per_1pct": overall["net_gex_usd_per_1pct"],
+        "regime": overall["regime"], "price_vs_flip": overall["price_vs_flip"],
+        "net_gex_usd_per_1pct": overall["net_gex_usd_per_1pct"],
         "main_expiry": main.get("expiry"), "main_call_wall": main["call_wall"], "main_put_wall": main["put_wall"],
         "max_pain": main["max_pain"], "oi_walls": overall["oi_walls"],
     }
@@ -224,6 +225,23 @@ def prep_block(snapshot: Mapping[str, Any] | None, now: datetime | None = None) 
     }
 
 
+STATE_TEXT = {
+    "BELOW_FLIP": "NEGATIV (Preis unter dem Flip: Händler verstärken Bewegungen eher)",
+    "ABOVE_FLIP": "POSITIV (Preis über dem Flip: Händler dämpfen Bewegungen eher)",
+    "AT_FLIP": "NEUTRAL (Preis am Flip)",
+}
+
+
+def state_note(snapshot: Mapping[str, Any]) -> str | None:
+    """One line for the chart: gamma state by price against the flip. An estimate, never a signal."""
+    overall = snapshot["all_expiries"]
+    text = STATE_TEXT.get(overall.get("price_vs_flip"))
+    if text is None:
+        return None
+    flip = overall.get("gamma_flip")
+    return f"Gamma-Zustand: {text}, Flip {flip:,.0f}. Schätzung aus Deribit-Open-Interest, nur Beobachtung."
+
+
 def chart_drawings(snapshot: Mapping[str, Any] | None, now: datetime | None = None) -> tuple[list[dict[str, Any]], list[str]]:
     """Chart drawings (group "gamma") and notes. Stale snapshots draw nothing."""
     current = with_age(snapshot, now)
@@ -233,9 +251,10 @@ def chart_drawings(snapshot: Mapping[str, Any] | None, now: datetime | None = No
         return [], [f"Gamma: Deribit-Stand ist {current['age_seconds'] // 60} min alt, Level ausgeblendet."]
     since = current.get("level_since") or {}
     drawings = []
+    notes = [note for note in (state_note(current),) if note]
     for item in current["levels"]:
         color, style = LEVEL_STYLE.get(item["key"], ("#ffb020", "dashed"))
         drawings.append({"group": "gamma", "tf": "Opt", "name": item["name"], "label": f"Opt {item['name']}",
                          "price": float(item["price"]), "start": (since.get(item["key"]) or {}).get("since", current["as_of"]), "note": item["note"],
                          "color": color, "style": style})
-    return drawings, []
+    return drawings, notes

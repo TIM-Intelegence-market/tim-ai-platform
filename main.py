@@ -993,6 +993,11 @@ class TIMApplication:
         self.dashboard.start()
         if self.public_dashboard is not None:
             self.public_dashboard.start()
+        # USDT.D recorder (daemon thread, one CoinGecko read every 5 minutes): from process start on, not only after the
+        # first call of the USDT.D chart (gap 22:06-22:35 on 18.11.2026 after the Mac restart).
+        from src.dashboard.usdt_dominance import RECORDER as usdt_dominance_recorder
+
+        usdt_dominance_recorder.start()
         worker_task = asyncio.create_task(self._worker_loop(), name="tim-durable-enrichment-worker")
         evidence_task = asyncio.create_task(self._live_evidence_loop(), name="tim-live-evidence")
         journal_task = asyncio.create_task(self._plan_journal_loop(), name="tim-plan-journal")
