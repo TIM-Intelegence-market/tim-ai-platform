@@ -303,3 +303,26 @@ def test_far_stop_on_a_cheap_coin_is_kept_when_a_price_is_known() -> None:
     assert call is not None and [(l.role, l.value, l.ambiguous) for l in call.guidance.levels] == [("STOP", Decimal("0.012"), False)]
     btc = extract_call(msg("Short btc\nSL 0.5"), reference_price=Decimal("60000"))
     assert btc is None or not btc.guidance.levels  # a size, not a BTC price
+
+
+# --- chart images: box labels without names, charts in every channel --------------------------------------------
+
+def test_three_unnamed_box_labels_get_roles_from_the_box_shape() -> None:
+    short = chart_reading(["Bild: TradingView BTC/Tether 15m, Short-Positionsbox; Preislabels 65,112.5 / 64,965.8 / 63,484.9 [unsicher: kleine Labels]"])
+    assert short[0] == "SHORT"
+    assert {(l.role, l.value) for l in short[1]} == {("STOP", Decimal("65112.5")), ("ENTRY", Decimal("64965.8")), ("TARGET", Decimal("63484.9"))}
+    long = chart_reading(["Long-Positionsbox; Preislabels 0.30 / 0.25 / 0.22"])
+    assert {(l.role, l.value) for l in long[1]} == {("TARGET", Decimal("0.30")), ("ENTRY", Decimal("0.25")), ("STOP", Decimal("0.22"))}
+    assert chart_reading(["Short-Positionsbox; Preislabels 65,112.5 / 63,484.9"])[1] == ()  # two labels name no role
+
+
+def test_chart_box_counts_in_the_gold_and_chat_channels_too() -> None:
+    from dataclasses import replace
+    from src.knowledge.goathub_feed import ROLE_KNOWLEDGE
+    gold = read_call(msg("(Bild)", channel="xau-xag", author="EyDu",
+                         attachments=("Gold-Chart, Long-Positionsbox; Kurs ca. 3.800,0, Ziel ca. 3.900,0, Stop ca. 3.760,0 [?]",)), PROFILES["gold_eydu"])
+    assert gold is not None and gold.symbol == "XAU" and gold.call.grade == "A"
+    chat_message = replace(msg("(Bild)", channel="crypto-chat", author="goatfather",
+                               attachments=("Bild: AKE/USDT-Chart, Short-Positionsbox; Stop ca. 0,0100, Ziel ca. 0,0050",)), channel_role=ROLE_KNOWLEDGE)
+    chat = read_call(chat_message, PROFILES["chat_altcoins"])
+    assert chat is not None and chat.symbol == "AKE" and chat.bias == "SHORT" and chat.call.grade == "A"

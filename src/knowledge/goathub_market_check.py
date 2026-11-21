@@ -38,6 +38,7 @@ from .goathub_channels import (
     TrackedCall,
     _author_key,
     check_outcome,
+    has_chart_image,
 )
 
 __all__ = [
@@ -63,6 +64,7 @@ MIN_QUOTE_VOLUME_24H = Decimal("5000000")  # USDT turnover in the 24 h before th
 MAX_COST_SHARE_OF_RISK = Decimal("0.10")  # round-trip cost at most 10 % of the stop distance
 MIN_NET_REWARD_TO_RISK = Decimal("1")  # with a target: net reward at least the net risk
 RUNAWAY_SHARE = Decimal("0.5")  # price already covered half the way to the target
+MAX_STOP_DISTANCE = Decimal("0.30")  # a stop further than 30 % from the entry is a typo or another scale, not a trade
 MIN_VOLUME_COVERAGE = Decimal("0.8")  # share of the 24 h window that must be covered by bars
 
 CODE_TRADABLE = "tradable"
@@ -73,6 +75,8 @@ CODE_NOT_OPEN = "not_open"
 CODE_NO_PRICES = "no_prices"
 CODE_THIN = "thin_volume"
 CODE_NO_STOP = "no_stop"
+CODE_STOP_IN_IMAGE = "stop_maybe_in_image"
+CODE_STOP_TOO_FAR = "stop_too_far"
 CODE_STOP_HIT = "stop_hit_before_entry"
 CODE_TARGET_REACHED = "target_reached_before_entry"
 CODE_RAN_AWAY = "ran_away"
@@ -88,6 +92,8 @@ _REASON_DE = {
     CODE_NO_PRICES: "keine Kursdaten",
     CODE_THIN: "zu wenig Handel",
     CODE_NO_STOP: "kein Stop genannt",
+    CODE_STOP_TOO_FAR: "Stop unrealistisch weit weg",
+    CODE_STOP_IN_IMAGE: "Stop evtl. nur im Chart-Bild, von Hand prüfen",
     CODE_STOP_HIT: "Stop schon vor unserem Einstieg erreicht",
     CODE_TARGET_REACHED: "Ziel schon vor unserem Einstieg erreicht",
     CODE_RAN_AWAY: "Preis seit dem Call weggelaufen",
@@ -215,7 +221,8 @@ def check_market(tracked: TrackedCall, snapshot: MarketSnapshot) -> MarketVerdic
     outcome = check_outcome(tracked, [bar.price_bar() for bar in bars], observed_at=snapshot.taken_at)
     stop, target = outcome.stop, outcome.target
     if stop is None:
-        return MarketVerdict(False, CODE_NO_STOP, entry_time=entry_bar.open_time, entry=entry_bar.open, target=target, quote_volume_24h=volume)
+        code = CODE_STOP_IN_IMAGE if has_chart_image(message) else CODE_NO_STOP
+        return MarketVerdict(False, code, entry_time=entry_bar.open_time, entry=entry_bar.open, target=target, quote_volume_24h=volume)
 
     long = tracked.bias == "LONG"
     entry = entry_bar.open
@@ -237,6 +244,9 @@ def check_market(tracked: TrackedCall, snapshot: MarketSnapshot) -> MarketVerdic
                              detail="schon mehr als die Stop-Distanz gelaufen")
 
     risk_pct = risk / entry
+    if risk_pct > MAX_STOP_DISTANCE:
+        return MarketVerdict(False, CODE_STOP_TOO_FAR, entry_bar.open_time, entry, stop, target, volume, risk_pct,
+                             detail=f"Stop {risk_pct * 100:.0f} % vom Einstieg entfernt")
     cost_pct = COST_PER_SIDE * 2
     if cost_pct > risk_pct * MAX_COST_SHARE_OF_RISK:
         return MarketVerdict(False, CODE_TOO_EXPENSIVE, entry_bar.open_time, entry, stop, target, volume, risk_pct,
