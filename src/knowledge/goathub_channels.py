@@ -41,6 +41,7 @@ __all__ = [
     "chart_reading",
     "check_outcome",
     "evaluate",
+    "has_chart_image",
     "load_bars_csv",
     "parse_transcript",
     "profile_for",
@@ -241,6 +242,28 @@ def _german_number(raw: str) -> Decimal:
     return Decimal(raw.replace(".", "").replace(",", "."))
 
 
+# "Short-Positionsbox; Preislabels 65,112.5 / 64,965.8 / 63,484.9": the three labels of a position box without names.
+_PRICE_LABELS = re.compile(r"Preislabels?\s+([^\[;]+)", re.IGNORECASE)
+_LABEL_NUMBER = re.compile(r"\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?")
+
+
+def _box_labels(attachment: str, bias: str) -> list[BroncxLevel]:
+    """Roles of three unnamed box labels from the box geometry (English number format, as the transcriber writes them).
+
+    Long box: target on top, entry in the middle, stop below. Short box: stop on top, entry in the middle, target below.
+    Fewer or more than three labels name no role and give no level.
+    """
+    match = _PRICE_LABELS.search(attachment)
+    if not match:
+        return []
+    values = sorted({Decimal(item.replace(",", "")) for item in _LABEL_NUMBER.findall(match.group(1))}, reverse=True)
+    if len(values) != 3:
+        return []
+    top, middle, bottom = values
+    roles = (("TARGET", top), ("ENTRY", middle), ("STOP", bottom)) if bias == "LONG" else (("STOP", top), ("ENTRY", middle), ("TARGET", bottom))
+    return [BroncxLevel(f"{role.lower()} {value}", value, role, source="chart") for role, value in roles]
+
+
 def chart_reading(attachments: Sequence[str]) -> tuple[str | None, tuple[BroncxLevel, ...]]:
     """Direction and levels of a position box described in a transcript attachment (estimated, source "chart")."""
     for attachment in attachments:
@@ -251,8 +274,23 @@ def chart_reading(attachments: Sequence[str]) -> tuple[str | None, tuple[BroncxL
         for role, pattern in _CHART_LEVELS.items():
             if match := pattern.search(attachment):
                 levels.append(BroncxLevel(match.group(0), _german_number(match.group(1)), role, source="chart"))
-        return box.group(1).upper(), tuple(levels)
+        bias = box.group(1).upper()
+        return bias, tuple(levels) or tuple(_box_labels(attachment, bias))
     return None, ()
+
+
+_ATTACHMENT_PAIR = re.compile(r"\b([A-Z][A-Z0-9]{1,9})\s*/?\s*(?:USDT|Tether)\b")
+
+
+def _attachment_symbol(attachments: Sequence[str]) -> str | None:
+    """Coin named in a chart description ("Bild: AKE/USDT-Chart"); only when exactly one coin appears."""
+    found = {match.group(1) for text in attachments for match in _ATTACHMENT_PAIR.finditer(text)}
+    return found.pop() if len(found) == 1 else None
+
+
+def has_chart_image(message: GoatHubMessage) -> bool:
+    """The post carries a chart picture, so a stop or target may sit in the image and not in the text."""
+    return any(re.search(r"\b(?:chart|tradingview|bild)\b", text, re.IGNORECASE) for text in message.attachments)
 
 
 def _with_chart(message: GoatHubMessage, call: CommunityCall | None, profile: ChannelProfile) -> CommunityCall | None:
@@ -301,15 +339,18 @@ def read_call(message: GoatHubMessage, profile: ChannelProfile, reference_price:
         tags = {tag.upper() for tag in _CASHTAG.findall(message.content)}
         if len(tags) == 1 and call.guidance.symbol not in tags:
             call = _regrade(replace(call, guidance=replace(call.guidance, symbol=tags.pop())))
-    if profile.key == "futures_broncx":
-        if call is not None and call.guidance.symbol not in _MAJORS:
-            call = _regrade(replace(call, guidance=replace(call.guidance, symbol=profile.default_symbol)))
-        call = _with_chart(message, call, profile)
-    elif profile.key == "gold_eydu" and call is not None:
+    if profile.key == "futures_broncx" and call is not None and call.guidance.symbol not in _MAJORS:
+        call = _regrade(replace(call, guidance=replace(call.guidance, symbol=profile.default_symbol)))
+    if profile.key == "gold_eydu" and call is not None:
         silver, gold = bool(_SILVER.search(message.content)), bool(_GOLD.search(message.content))
         symbol = "XAG" if silver and not gold else "XAU"
         if symbol != call.guidance.symbol:
             call = _regrade(replace(call, guidance=replace(call.guidance, symbol=symbol)))
+    call = _with_chart(message, call, profile)  # position boxes in chart images count for every channel
+    if call is not None and call.guidance.symbol is None and (pair := _attachment_symbol(message.attachments)):
+        call = _regrade(replace(call, guidance=replace(call.guidance, symbol=pair)))
+    if call is not None and profile.min_grade == "B" and call.grade not in ("A", "B"):
+        return None
     if call is None:
         return None
     extras = _spot_extras(message.content) if profile.key == "spot_goatfather" else {}

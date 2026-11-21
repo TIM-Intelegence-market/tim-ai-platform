@@ -144,3 +144,16 @@ def test_snapshot_loads_bitunix_rows() -> None:
                "bars": {"AKEUSDT": [{"time": "1795000000000", "open": "1", "high": "1.1", "low": "0.9", "close": "1.0", "quoteVol": "5"}]}}
     loaded = MarketSnapshot.from_dict(payload)
     assert loaded.instruments["AKEUSDT"].status == "OPEN" and loaded.bars["AKEUSDT"][0].quote_volume == Decimal("5")
+
+
+def test_call_with_a_chart_image_but_no_stop_is_marked_for_manual_check() -> None:
+    from src.knowledge.goathub_channels import has_chart_image
+    call = tracked("Short ake\nTarget 0.8")
+    image = replace(call, call=replace(call.call, message=replace(call.call.message, attachments=("Bild: AKE/USDT-Chart",))))
+    assert has_chart_image(image.call.message) and not has_chart_image(call.call.message)
+    assert check_market(image, snapshot(FLAT)).code == "stop_maybe_in_image"
+    assert check_market(call, snapshot(FLAT)).code == "no_stop"
+
+
+def test_stop_far_from_the_price_is_not_a_trade() -> None:
+    assert check_market(tracked("Long ake SL 0.55"), snapshot(FLAT)).code == "stop_too_far"
