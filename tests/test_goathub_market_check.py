@@ -157,3 +157,12 @@ def test_call_with_a_chart_image_but_no_stop_is_marked_for_manual_check() -> Non
 
 def test_stop_far_from_the_price_is_not_a_trade() -> None:
     assert check_market(tracked("Long ake SL 0.55"), snapshot(FLAT)).code == "stop_too_far"
+
+
+def test_better_calls_without_a_stop_are_listed_not_dropped() -> None:
+    message = GoatHubMessage(message_id="b1", channel_id="better-call-butter", posted_at=T0, content="Small gamble long", received_at=T0,
+                             author_name="Butter aus Sahne", channel_name="BETTER-CALL-BUTTER")
+    from src.knowledge.goathub_channels import read_calls
+    calls = read_calls([replace(message, message_id="b0", content="Fc ake", posted_at=T0 - STEP, received_at=T0 - STEP), message])
+    entries = build_diary(calls, snapshot(FLAT))
+    assert len(entries) == 1 and entries[0].verdict == "no_stop" and entries[0].symbol == "AKE"

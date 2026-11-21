@@ -342,11 +342,14 @@ def _settle(tracked: TrackedCall, verdict: MarketVerdict, snapshot: MarketSnapsh
 
 
 def build_diary(calls: Mapping[str, Iterable[TrackedCall]], snapshot: MarketSnapshot, *, min_grade: Sequence[str] = ("A", "B")) -> list[DiaryEntry]:
-    """One diary row per call of grade A/B (the others name no coin with a level or stop), oldest first."""
+    """One diary row per call of grade A/B (the others name no coin with a level or stop), oldest first.
+
+    Channels whose calls come without levels (Better Call Butter) list every directional call with a coin."""
     entries = []
     for tracked_calls in calls.values():
         for tracked in tracked_calls:
-            if tracked.call.grade not in min_grade or tracked.call.message.known_at > snapshot.taken_at:
+            listed = PROFILES[tracked.profile].coin_from_chart_command and tracked.symbol and tracked.bias in ("LONG", "SHORT")
+            if (tracked.call.grade not in min_grade and not listed) or tracked.call.message.known_at > snapshot.taken_at:
                 continue
             entries.append(_settle(tracked, check_market(tracked, snapshot), snapshot))
     return sorted(entries, key=lambda item: (item.posted_at, item.message_id))

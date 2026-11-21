@@ -75,6 +75,9 @@ class ChannelProfile:
     # these authors' posts are read as calls, and only when they name a coin and a level or stop (grade A/B).
     read_knowledge_channel: bool = False
     min_grade: str = "C"
+    # The coin comes from the author's last chart command ("Fc coti 15m") and calls rarely carry a level or stop:
+    # the paper diary lists them anyway, so they show up as "no stop named" instead of silently missing.
+    coin_from_chart_command: bool = False
 
 
 PROFILES: dict[str, ChannelProfile] = {
@@ -86,8 +89,11 @@ PROFILES: dict[str, ChannelProfile] = {
     "gold_eydu": ChannelProfile(
         "gold_eydu", "EyDu gold", ("xau-xag",), ("eydu",), timedelta(hours=72), default_symbol="XAU"),
     "chat_altcoins": ChannelProfile(
-        "chat_altcoins", "Crypto chat altcoins", ("crypto-chat",), ("goatfather", "broncx"), timedelta(days=7),
+        "chat_altcoins", "Crypto chat altcoins", ("crypto-chat",), ("goatfather", "broncx", "butter aus sahne"), timedelta(days=7),
         read_knowledge_channel=True, min_grade="B"),
+    "better_calls": ChannelProfile(
+        "better_calls", "Better Call Butter", ("better-call-butter", "better-calls"), ("butter aus sahne",), timedelta(hours=72),
+        coin_from_chart_command=True),
 }
 
 _SILVER = re.compile(r"\b(silver|xag)\b", re.IGNORECASE)
@@ -379,14 +385,26 @@ def _join_follow_ups(messages: Sequence[GoatHubMessage]) -> list[GoatHubMessage]
     return joined
 
 
+_CHART_COMMAND = re.compile(r"^\s*fc\s+\$?([a-z][a-z0-9]{1,9}?)(?:usdt?)?(?:\s+\d+\s?[mhdw])?\s*$", re.IGNORECASE)
+CHART_COMMAND_WINDOW = timedelta(hours=2)
+
+
 def read_calls(messages: Iterable[GoatHubMessage]) -> dict[str, list[TrackedCall]]:
     """Calls per profile, oldest first. Messages from other channels are ignored."""
     result: dict[str, list[TrackedCall]] = {key: [] for key in PROFILES}
+    last_command: dict[tuple[str, str], tuple[datetime, str]] = {}
     for message in _join_follow_ups(sorted(messages, key=lambda item: (item.posted_at, bool(_LEVEL_ONLY.match(item.content))))):
         profile = profile_for(message)
         if profile is None:
             continue
+        if profile.coin_from_chart_command and (command := _CHART_COMMAND.match(message.content)):
+            last_command[(profile.key, _author_key(message.author_name))] = (message.posted_at, command.group(1).upper())
         tracked = read_call(message, profile)
+        if tracked is not None and tracked.symbol is None and profile.coin_from_chart_command:
+            seen = last_command.get((profile.key, _author_key(message.author_name)))
+            if seen is not None and timedelta(0) <= message.posted_at - seen[0] <= CHART_COMMAND_WINDOW:
+                guidance = replace(tracked.call.guidance, symbol=seen[1])
+                tracked = replace(tracked, call=_regrade(replace(tracked.call, guidance=guidance)))
         if tracked is not None:
             result[profile.key].append(tracked)
     return result
