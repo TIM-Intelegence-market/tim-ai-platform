@@ -31,8 +31,8 @@ PATHS = {"15m": Path("data/journal/tim_plan_journal_perp_short.json"), "1h": Pat
 XMR = "XMRUSDT"
 XMR_SOURCE = "Monero auf Binance USD-M Perp (XMRUSDT), VP aus Perp-Trades, TIM-Regeln, nur Papier"
 XMR_PATHS = {"15m": Path("data/journal/tim_plan_journal_xmr_15m.json"), "1h": Path("data/journal/tim_plan_journal_xmr_1h.json")}
-# Per symbol: the view's source line and the market type of new plans (None keeps BTC exactly as before).
-SOURCES = {"BTCUSDT": (SOURCE, None), XMR: (XMR_SOURCE, "USDM")}
+# Per symbol: the view's source line and the market type of new plans. Since R1 (16.11.2026) BTC is USDM too, no longer SPOT.
+SOURCES = {"BTCUSDT": (SOURCE, "USDM"), XMR: (XMR_SOURCE, "USDM")}
 # What plan_journal.update reads: 1m for fills and stops, the plan timeframes, the rest for levels and vol_4h.
 SERIES = {"1m": 1000, "15m": 500, "30m": 500, "1h": 500, "4h": 500, "1d": 500}
 

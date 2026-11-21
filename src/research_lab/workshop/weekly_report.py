@@ -102,6 +102,19 @@ def proposal(events: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
     return {"filter": key, "text": si.FILTERS[key].text, "figures": figures, "waiting": sorted(set(open_) - {key})}
 
 
+def _gedaechtnis(trades: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """G4: Fehler im Gedächtnis. Nur lesen; ein Fehler hier darf den Wochenbericht nie stoppen."""
+    try:
+        from src.research_lab import gedaechtnis, gedaechtnis_fehler
+        aussagen = gedaechtnis.laden()
+        return {**gedaechtnis_fehler.finde(aussagen, trades),
+                "tabelle": gedaechtnis_fehler.ergebnistabelle(aussagen, trades),
+                "score": gedaechtnis_fehler.score_vergleich(trades),
+                "bausteine": gedaechtnis_fehler.bausteine(trades)}
+    except Exception as exc:  # sichtbar machen statt still verschwinden
+        return {"fehler": f"{type(exc).__name__}: {exc}"[:120]}
+
+
 def build(journals: Mapping[str, Mapping[str, Any]], learning: Mapping[str, Any], events: Sequence[Mapping[str, Any]],
           now: datetime, exit_shadow: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """The week in numbers. ``learning`` is the report of ``self_improve.step`` from the same round."""
@@ -134,7 +147,7 @@ def build(journals: Mapping[str, Mapping[str, Any]], learning: Mapping[str, Any]
             "trades": len(trades), "week_trades": sum(r["week_closed"] for r in rows),
             "week_net_r": round(sum(r["week_net_r"] for r in rows), 3), "filters": filters,
             "proposal": proposal(events), "changes_tim": False,
-            "exit_shadow": (exit_shadow or {}).get("summary")}
+            "exit_shadow": (exit_shadow or {}).get("summary"), "gedaechtnis": _gedaechtnis(trades)}
 
 
 def render(report: Mapping[str, Any]) -> str:
@@ -176,6 +189,20 @@ def render(report: Mapping[str, Any]) -> str:
         lines.append(f"Schatten-Journal Läufer (MID 1h): {shadow['trades']} von {shadow['target']} Trades mit TP2. "
                      f"Läufer gegen festen TP3 {_r(shadow['LAEUFER']['vs_fest'])}, mit Orderflow-Filter "
                      f"{_r(shadow['OF_LAEUFER']['vs_fest'])}, weiter Stop {_r(shadow['LAEUFER_WEIT']['vs_fest'])}.")
+    fehler = report.get("gedaechtnis")
+    if fehler and fehler.get("fehler"):
+        lines.append("")
+        lines.append(f"Fehler im Gedächtnis: Fehlerfinder nicht gelaufen ({fehler['fehler']}).")
+    elif fehler:
+        from src.research_lab import gedaechtnis_fehler
+        lines.append("")
+        lines.extend(gedaechtnis_fehler.render(fehler))
+        for block in (gedaechtnis_fehler.render_tabelle(fehler.get("tabelle") or []),
+                      gedaechtnis_fehler.render_score(fehler["score"]) if fehler.get("score") else [],
+                      gedaechtnis_fehler.render_bausteine(fehler.get("bausteine") or [])):
+            if block:
+                lines.append("")
+                lines.extend(block)
     lines.append("")
     lines.append("Nur Papier. TIM ändert nichts ohne dein Ja; Holdout 2025 bleibt gesperrt.")
     return "\n".join(lines) + "\n"

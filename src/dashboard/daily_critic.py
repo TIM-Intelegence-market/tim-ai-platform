@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from src.dashboard import critic_backlog
 from src.dashboard.daily_report import LOCAL
 from src.dashboard.orderflow_shadow import _iso, _save, _time, load
 
@@ -30,10 +31,11 @@ DEFAULT_PATH = Path("data/hermes/daily_critic.json")
 SLOT_HOUR = 7  # local
 WINDOW_HOURS = 3  # a slot missed by more than this is skipped, not written late
 KEEP = 14
-MAX_PROMPT = 5000
+MAX_PROMPT = 6000
 MAX_PREVIOUS = 900
 MAX_LINES = 45
 MERGE_DAYS = 7
+MIN_SAMPLE = 30  # closed plans below this are named a small sample
 
 Ask = Callable[[str], Mapping[str, Any]]
 Source = Callable[[], Sequence[str]]
@@ -65,7 +67,9 @@ def journal_facts(journals: Mapping[str, Path], now: datetime) -> list[str]:
         for days in (7, 30):
             mine = [e for e in closed if now - timedelta(days=days) <= _time(e["closed_at"]) <= now]
             wins = sum(float(e["net_r"]) > 0 for e in mine)
-            parts.append(f"{days} Tage: {len(mine)} geschlossen, {wins} im Plus, {sum(float(e['net_r']) for e in mine):+.2f} R netto")
+            parts.append(f"{days} Tage: {len(mine)} geschlossen, {wins} im Plus, {sum(float(e['net_r']) for e in mine):+.2f} R netto"
+                         + (f" (kleine Stichprobe, unter {MIN_SAMPLE})" if len(mine) < MIN_SAMPLE else "")
+                         if mine else f"{days} Tage: kein Plan geschlossen, keine Evidenz")
         lines.append(f"Papier-Journal {name}: " + "; ".join(parts) + ".")
     return lines
 
@@ -80,8 +84,10 @@ def shadow_facts(shadows: Mapping[str, Path]) -> list[str]:
             continue
         table = summary.get("by_gate") or summary.get("by_verdict") or {}
         rows = ", ".join(f"{key} {row.get('n')} Pläne {float(row.get('sum_net_r') or 0):+.2f} R" for key, row in table.items())
-        lines.append(f"{name}: {summary.get('closed', 0)} von {summary.get('target', '?')} geschlossenen Plänen"
-                     + (f" ({rows})" if rows else "") + ".")
+        covered = summary.get("with_lage", summary.get("with_opinion"))
+        coverage = f"Abdeckung {covered} von {summary.get('plans', 0)} Plänen mit Daten; " if covered is not None else ""
+        lines.append(f"{name}: {coverage}Urteil braucht {summary.get('target', '?')} geschlossene Pläne, bisher {summary.get('closed', 0)}, "
+                     "noch nicht belastbar" + (f" ({rows})" if rows else "") + ".")
     return lines
 
 
@@ -110,6 +116,8 @@ def cockpit_facts(lage: Mapping[str, Any]) -> list[str]:
     states = Counter(str(t.get("state")) for t in tiles)
     lines = [(f"Control Center: {lage.get('headline') or 'ohne Überschrift'}; {len(tiles)} Kacheln, {states.get('fail', 0)} rot, "
               f"{states.get('warn', 0)} gelb, {states.get('unknown', 0)} ohne Daten.")]
+    for tile in [t for t in tiles if t.get("state") == "unknown"][:6]:
+        lines.append(f"Kachel ohne Daten: {tile.get('label')}: {tile.get('reason') or 'kein Grund angegeben'}.")
     for tile in list(lage.get("attention") or [])[:6]:
         lines.append(f"Braucht einen Blick: {tile.get('label')}: {tile.get('value')}"
                      + (f" ({tile.get('reason')})" if tile.get("reason") else "") + ".")
@@ -137,16 +145,21 @@ def gather(sources: Mapping[str, Source]) -> list[str]:
     return lines[:MAX_LINES]
 
 
-def prompt(lines: Sequence[str], previous: str | None) -> str:
+def prompt(lines: Sequence[str], previous: str | None, backlog: Sequence[str] = ()) -> str:
     text = ("Du bist der tägliche Kritiker von TIM (Papier-Handel und Live-Chart für BTC). Nutze keine Werkzeuge und nur diese "
             "Fakten, erfinde nichts dazu, keine Handelsempfehlung. Schreibe auf Deutsch zwei Teile.\n"
             "PROJEKT: die drei größten Schwächen, je mit einem konkreten Verbesserungsvorschlag und kurzer Begründung; dazu ein "
             "Punkt, der gut läuft.\n"
             "CHART AUS NUTZERSICHT: du bist jemand, der den Chart täglich öffnet. Was fehlt, ist leer, veraltet, langsam oder "
             "unverständlich? Drei Punkte, je mit Vorschlag.\n"
-            "Wenn eine Kritik von gestern noch gilt, schreibe 'noch offen' davor statt sie neu zu erfinden.\nFakten:\n" + "\n".join(lines))
+            "Wenn eine Kritik von gestern noch gilt, schreibe 'noch offen' davor statt sie neu zu erfinden.\n" + critic_backlog.FORMAT
+            + "\nFakten:\n" + "\n".join(lines))
     if previous:
         text += "\nKritik von gestern:\n" + previous[:MAX_PREVIOUS]
+    else:
+        text += "\nEs gibt noch keine Kritik von gestern; erwähne das nicht."
+    if backlog:
+        text += critic_backlog.prompt_part(backlog)
     return text[:MAX_PROMPT]
 
 
@@ -161,7 +174,8 @@ def latest(path: Path | None, count: int = 1) -> list[dict[str, Any]]:
     return list(reversed(reports[-count:]))
 
 
-def update(path: Path, sources: Mapping[str, Source], now: datetime | None = None, ask: Ask | None = None) -> dict[str, Any] | None:
+def update(path: Path, sources: Mapping[str, Source], now: datetime | None = None, ask: Ask | None = None,
+           backlog: Path | None = None) -> dict[str, Any] | None:
     """Write today's critique, once. Returns it, or None when nothing is due."""
     now = now or datetime.now(timezone.utc)
     path = Path(path)
@@ -173,12 +187,14 @@ def update(path: Path, sources: Mapping[str, Source], now: datetime | None = Non
     lines = gather(sources)
     previous = next((r.get("text") for r in reversed(reports) if r.get("text")), None)
     try:
-        reply = (ask or _hermes)(prompt(lines, previous))
+        reply = (ask or _hermes)(prompt(lines, previous, critic_backlog.lines(backlog, now) if backlog else ()))
     except Exception as error:  # noqa: BLE001 - the facts stay as the record then
         reply = {"ok": False, "error": type(error).__name__}
     report = {"slot": key, "at": _iso(now), "facts": lines,
               "text": str(reply.get("answer") or "")[:4000] if reply.get("ok") else None,
               "error": None if reply.get("ok") else str(reply.get("error") or "keine Antwort")[:200]}
+    if backlog and report["text"]:
+        critic_backlog.apply(backlog, report["text"], now)
     reports.append(report)
     state["reports"] = reports[-KEEP:]
     _save(state, path)

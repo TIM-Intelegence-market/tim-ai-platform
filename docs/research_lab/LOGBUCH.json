@@ -1,8 +1,252 @@
 {
   "schema": "tim_research_logbook/1",
   "purpose": "Ein Eintrag je Studie: was geprüft wurde, was herauskam und warum sie beendet ist. Damit keine tote Idee unbemerkt zweimal getestet wird. Quelle der Wahrheit bleiben Präregistrierung und Bericht; dieses Logbuch fasst sie nur zusammen.",
-  "updated": "2026-11-11",
+  "updated": "2026-11-16",
   "entries": [
+    {
+      "id": "S39",
+      "title": "Preisbewegungen erklären: Ergebnis nach Marktereignis-Typ (Etikett am Papier-Trade, P5)",
+      "started": "2026-11-16",
+      "status": "running",
+      "result": "Läuft: Präregistrierung, Modul s39.py und Bericht liegen in PR #281, noch nicht in platform-main. Laut Gedächtnis am 16.11. auf der PS5 gerechnet, kein Typ belegt (Training 69 Bewegungen, n 14–22 je Typ, kein Holm-p < 0,05; 2024 nur 11). Endgültiges Ergebnis erst mit dem Bericht im Repo. Ablage: Präregistrierung und S39_BERICHT.md nur in PR #281.",
+      "lesson": "Eintrag nachziehen, sobald PR #281 gemergt ist und S39_BERICHT.md im Repo liegt. Laut Gedächtnis beide Phasen gelaufen und nicht wiederholbar. Holdout-Stand unbekannt.",
+      "doc": ""
+    },
+    {
+      "id": "S38",
+      "title": "Enger Vortag, danach Ausbruch am Folgetag (T-045/T-060/T-075), BTC/ETH/SOL 1m",
+      "started": "2026-11-15",
+      "status": "failed",
+      "result": "Training 2020–2022 nicht bestanden: T-045 191 Trades +0,09 R, T-060 584 +0,05 R, T-075 982 +0,02 R je Trade netto, alle Bootstrap-Untergrenzen unter 0 (−0,015/−0,007/−0,018), training_passed nein. T-alle 2.399 Trades +0,005 R (beschreibend).",
+      "lesson": "Knapp positiv, aber nicht von null unterscheidbar; keine Validierung geöffnet, keine Nachsuche an den Schwellen.",
+      "doc": "docs/research_lab/studien/S38_TIGHT_DAY_AUSBRUCH_PRAEREGISTRIERUNG.md",
+      "evidence": {
+        "path": "ps5:~/tim-research/results/s38/s38_train_2026-11-15.json",
+        "sha256": "3bba2474a45228ea115d267204812c412dea4dc8792bf9313f160ecac0408591"
+      }
+    },
+    {
+      "id": "S37",
+      "title": "Fade-Checkliste (Flowread) Teil a ohne Gamma: Fade zum Tages-VWAP mit Vortags-VA, ±2 Sigma und Absorption, BTC/ETH/SOL 5m/15m",
+      "started": "2026-11-15",
+      "status": "not_testable",
+      "result": "Training 2020–2022: nur 1–5 Trades je Variante (F-5m/15m, VA an/aus), keine Variante erfüllt die Mindestzahl; Training nicht bestanden.",
+      "lesson": "Die Fade-Checkliste ist so streng, dass sie fast nie feuert; mit dieser Häufigkeit nicht prüfbar.",
+      "doc": "docs/research_lab/studien/S37_FADE_CHECKLISTE_PRAEREGISTRIERUNG.md",
+      "evidence": {
+        "path": "ps5:~/tim-research/results/s37/s37_train_2026-11-15.json",
+        "sha256": "d2fbf05b79dda14ff869b5e7d7aa059a275cc600367356e1bbd7510117de7ba6"
+      }
+    },
+    {
+      "id": "S36",
+      "title": "SFP mit Orderflow-Konfluenz, HTF→Exec, Varianten M (Markt) und L (Limit), BTC/ETH/SOL",
+      "started": "2026-11-14",
+      "status": "failed",
+      "result": "Training 2020–2023 nicht bestanden: SFP-alle-M 425 Trades, brutto +0,10 R, Kosten 0,15 R, netto −0,05 R je Trade (Bootstrap-Untergrenze −0,22 R); SFP-alle-L 438 Trades, netto −0,09 R (−0,26 R).",
+      "lesson": "Zähllauf 0.1: alle 15 Konfigurationen (QM/OB/SFP × 5 Profile) unter n = 60, daher vor jedem R-Wert auf SFP gepoolt verengt; QM und OB nur im Vorwärts-Schatten (#265). Keine neue Variante auf denselben Daten. Holdout gesperrt.",
+      "doc": "docs/research_lab/studien/S36_SFP_PRAEREGISTRIERUNG.md",
+      "evidence": {
+        "path": "ps5:~/tim-research/results/s36/train.json",
+        "sha256": "b8d1686e525d2100bb1d612bfa8488426da222da1be80ece8ef0dedb7da046c6"
+      }
+    },
+    {
+      "id": "S35a",
+      "title": "Level plus Orderflow-Bestätigung, Rückprall und Ausbruch (Extrem, VWAP-Band, Vortagsprofil), BTC/ETH/SOL 5m/15m",
+      "started": "2026-11-13",
+      "status": "failed",
+      "result": "Training 2020–2022 nicht bestanden: alle 12 Varianten (E/V/P, Bounce/Break, 5m/15m) netto negativ, n 2.218–5.248, beste E-break-15m −0,25 R je Trade (brutto +0,06 R).",
+      "lesson": "Level plus Orderflow auf 5m/15m ist brutto fast null und nach Kosten klar negativ. Keine Validierung geöffnet.",
+      "doc": "docs/research_lab/studien/S35A_LEVEL_ORDERFLOW_PRAEREGISTRIERUNG.md",
+      "evidence": {
+        "path": "ps5:~/tim-research/results/s35a/s35a_train_2026-11-14.json",
+        "sha256": "0017ebdd39f9648eb402e3ff5d7db62babc790224585fd263a0b4617c5ec4a0f"
+      }
+    },
+    {
+      "id": "S34",
+      "title": "LVN am Wochen-VAH/VAL plus ≥ 2 Sigma vom Tages-VWAP, Rückkehr zum VWAP, BTC 5m",
+      "started": "2026-11-13",
+      "status": "failed",
+      "result": "Training 2020–2023 nicht bestanden: 53 Trades, brutto −0,02 R, netto −1,21 R je Trade (Stop im Mittel 0,20 %, Kosten fressen alles), Bootstrap-Untergrenze −1,57 R, Zufallskontrolle p 0,47, Leave-one-year-out nicht ok.",
+      "lesson": "Der enge Stop am LVN/VAH macht die Kosten größer als jede Kante. Keine Validierung geöffnet.",
+      "doc": "docs/research_lab/studien/S34_LVN_VWAP_FADE_PRAEREGISTRIERUNG.md",
+      "evidence": {
+        "path": "ps5:~/tim-research/results/s34/s34_train_2026-11-14.json",
+        "sha256": "828cd209f286c28bbb6d4ed9ccc0b4bb0b0cdab11afe884031ff7d93b01f13e6"
+      }
+    },
+    {
+      "id": "S33",
+      "title": "Optionsflow als Filter auf S27-Trades (R1–R6) und Spannenprognose (V1–V2), BTC, vorwärts",
+      "started": "2026-11-13",
+      "status": "waiting",
+      "result": "Noch nichts gerechnet: Entwurf 0.1, nicht eingefroren. Keine Historie 2020–2024, daher Vorwärts-Aufbau: 60 Tage Kalibrierung ab Dienststart (frühestens ~12.01.2027), danach ein Testfenster bis n ≥ 100 je Regel oder 12 Monate. Holm über 8.",
+      "lesson": "Einfrieren nur auf Uzis Wort nach der Kalibrierung. Bestandene Regeln nur in den Schatten-Score, nie direkt live. Achtung Nummer: S33 war am 12.11. zuerst für den Funding-Carry vergeben (Eintrag S33-Carry).",
+      "doc": "docs/research_lab/studien/S33_OPTIONSFLOW_FILTER_PRAEREGISTRIERUNG_ENTWURF.md"
+    },
+    {
+      "id": "S33-Carry",
+      "title": "Funding-Carry BTC (Perp gegen Spot), Training",
+      "started": "2026-11-12",
+      "status": "failed",
+      "result": "Nur Training gerechnet, ohne Präregistrierung im Repo: immer in Position +8,5 %/Jahr auf beide Beine, 2022 nur +2 %; Wechselregeln kosten mehr als sie sparen. BTC-Funding Training 85 % positiv, Mittel 0,0158 %/8h. 50 USDT/Tag bräuchten rund 215.000 USDT Kapital. Validierung und Holdout ungesehen. Ablage: Entwurf nur am Mac ~/Documents/TIM/evidence/S33-*.md.",
+      "lesson": "Kein Edge für das 50-USDT-Ziel, nur eine Kapitalrendite. S5 (Carry, 25.10.) war nicht testbar. Status failed ist eine Lesart des Entwurfs (keine eingefrorene Bestehensregel). Nummer kollidiert mit S33 Optionsflow; Zähllauf liegt unter results/s31/carry_count_train. Hinweis: Nummer S33 doppelt vergeben (Carry 12.11. auf der PS5, Optionsflow-Entwurf 13.11. im Repo); der Carry-Lauf heißt hier S33-Carry.",
+      "doc": "",
+      "evidence": {
+        "path": "ps5:~/tim-research/results/s33/carry_train_2026-11-12.json",
+        "sha256": "b4e9bf8c960344c22688b2ae7b118cdc0d9af61f1e337886861b2d27b258a185"
+      }
+    },
+    {
+      "id": "S32",
+      "title": "Korb-Trendfolge: S7b-D20-T3 unverändert auf Top-25-Perps ohne BTC/ETH/SOL, 4h",
+      "started": "2026-11-12",
+      "status": "failed",
+      "result": "Nicht bestanden: Validierung 2023–2024 (ein Lauf) n 3311, brutto +0,023, Kosten 0,048, netto −0,026 R, Bootstrap [−0,150, +0,101], Zufalls-p 0,55, nur 1 von 3 Symbolgruppen positiv. Training 2020-07–2022 n 4682, netto +0,066 R (Bootstrap [−0,040, +0,174], Top 3 = 42 %) hielt nicht.",
+      "lesson": "Regel stammt aus S7b, unabhängig war nur der Teil auf anderen Coins. Training im Altcoin-Aufwärtsmarkt, Survivorship möglich. Trendfolge auf Kerzen ist auf diesen Daten erledigt. Holdout nie geladen.",
+      "doc": "docs/research_lab/studien/S32_KORB_TRENDFOLGE_PRAEREGISTRIERUNG.md",
+      "evidence": {
+        "path": "ps5:~/tim-research/results/s32/validierung/s32_validierung_2026-11-14.json",
+        "sha256": "dc00bd4a3d686931e5f627b556ff254a519d57bbb0aa2f6b520bde76c49f028c"
+      }
+    },
+    {
+      "id": "S31b",
+      "title": "Orderflow-Regeln M1–M7 (OF2) und B6/B7 auf 1h- und 4h-Kerzen, BTC",
+      "started": "2026-11-12",
+      "status": "not_testable",
+      "result": "Nicht prüfbar: Keine Orderflow-Variante erreicht im Training 2020–2022 n ≥ 100. Höchster Wert B7 1h mit 39 Trades (Preis-Zwilling 117), M1 16 auf 1h und 1 auf 4h. Nur gezählt, keine R-Werte.",
+      "lesson": "Größere Kerzen senken die Kosten in R, aber die Signalzahl fällt stärker. Weitere Wege nur mit Uzis Wort als neue Studie (mehr Märkte wie ETH/SOL oder lockerere Auslöser). Kein Validierungslauf, Holdout gesperrt.",
+      "doc": "docs/research_lab/studien/S31B_ZAEHLLAUF_ERGEBNIS.md",
+      "evidence": {
+        "path": "ps5:~/tim-research/results/s31/countb_tf60.json",
+        "sha256": "dbe797812b695dcb074dd9d996259b0151eeb00ea791bfa5a5dc9d76d3bb4f5f"
+      }
+    },
+    {
+      "id": "S31",
+      "title": "Broncx-Bootcamp-Orderflow-Regeln B1–B8 als Strategie, BTCUSDT 15m/1h",
+      "started": "2026-11-12",
+      "status": "not_testable",
+      "result": "Nicht prüfbar: Keine Regel erreicht im Training 2020–2022 n ≥ 100. B1 34 Trades (+0,33 R), B2 13 (+0,44 R), B3/B4 2, B5 1/6, B6 0 (alle 1.958 Kandidaten am Kostengate), B7 18 OF / 80 Preis; B8 nicht gebaut. OF2 gesamt 56 Trades +0,27 R, Zufall −0,09 R, p 0,006.",
+      "lesson": "15-min-Auslöser haben Stops unter ~1 %, bei Bitunix-Kosten verwirft das Kostengate fast alles. B1–B5 sind OF2-Modelle, nicht doppelt zählen. Folge: S31b. Kein Validierungslauf, Holdout gesperrt.",
+      "doc": "docs/research_lab/studien/S31_ZAEHLLAUF_ERGEBNIS.md",
+      "evidence": {
+        "path": "ps5:~/tim-research/results/s31/count_training.json",
+        "sha256": "2d6c99521c4ff3b81cdec1dc124a2ce19ccb469d7bcc5136b02ce795b8a65bf7"
+      }
+    },
+    {
+      "id": "S30",
+      "title": "Level-Reaktion am Kerzen-Level, Fade-Raster (12 Regeln) und Ausbruch, BTC 4h",
+      "started": "2026-11-12",
+      "status": "failed",
+      "result": "Nicht bestanden im Training: Fade-Raster (12 Varianten) netto negativ, Fade brutto etwa −0,05 R; Ausbruch nur 1 Variante mit n ≥ 30, netto −0,25 R. Stop B (Liquiditätsloch) nicht besser als A. Kein Kandidat, Validierung nicht gerechnet. Genaue n unbekannt. Ablage: Entwurf nur als Artifact, Bericht am Mac ~/Documents/TIM/evidence/E0E1-2026-11-12.md.",
+      "lesson": "Vorstufe E0: brutto etwa 0, Kosten 0,14–0,42 R je Trade. Präregistrierung nur als Artifact-Entwurf 0.1/0.2, nicht im Repo. Level-Reaktion auf BTC-Kerzen ist nach Kosten nicht belegt. Validierung und Holdout ungesehen.",
+      "doc": "",
+      "evidence": {
+        "path": "ps5:~/tim-research/results/s30/s30_raster_train_2026-11-12.json",
+        "sha256": "81c6d0abf0dea37b55c01af3ccaac22da0a0218975980fd0c24120045f5f37cf"
+      }
+    },
+    {
+      "id": "S29",
+      "title": "Nachspielen der Journal-Regel (Setup-Pfad-Planer rückwirkend), BTC",
+      "started": "2026-11-12",
+      "status": "running",
+      "result": "unbekannt: Laut Gedächtnis (12.11.) läuft der Lauf auf der PS5; keine Ergebnisdatei und kein späterer Stand bekannt.",
+      "lesson": "Bauplan P1–P5 (Nachspiel-Motor, Zähllauf ergebnisblind, Reflexion je Trade, Studie). Abweichung von live: Volume-Profil nur geschätzt, Gamma fehlt. Kein 2025, kein Live-Eingriff. Stand prüfen.",
+      "doc": "/mnt/project-files/analysen/planer-nachspielen-2026-11-12/bauplan.md"
+    },
+    {
+      "id": "S28",
+      "title": "Positionierung aus dem Binance-Metrics-Archiv (Familie O: OI, Top-Trader, Taker-Verhältnis) auf S27-Trades, BTC 1h",
+      "started": "2026-11-12",
+      "status": "failed",
+      "result": "Nicht bestanden (NO ROBUST EDGE PROVEN): A:M2 (nur O) Abstand +0,135 R, p 0,076, Holm (m = 4) nicht bestanden, NEHMEN −0,04 R nach Kosten; B:M1 +0,118 R p 0,197, B:M2 −0,002 R. A:M1 feuert nie. Validierung 2023–2024 17.369 Momente je Richtung, Training 11.950.",
+      "lesson": "Familie O war neu und ungelesen; bookDepth bewusst draußen (Start 2023-01 = kein Training). Keine weiteren Varianten auf denselben Daten. Nächste Quellen: Liquidationen (S12), Bitunix-Recorder. Holdout nie geladen.",
+      "doc": "docs/research_lab/studien/S28_POSITIONIERUNG_METRICS_PRAEREGISTRIERUNG.md",
+      "evidence": {
+        "path": "ps5:~/tim-research/results/s28/s28_evaluate_2026-11-12T1535Z.json",
+        "sha256": "0ea2edc9993f800a3eb77fa9fe31eadda56c20d7ac6c4545e3f3c24d2d3f222e"
+      }
+    },
+    {
+      "id": "S27",
+      "title": "Alle Indikatoren (S24) auf größeren Trades: Stop 3 ATR, Ziel 6 ATR, 168 h, BTC 1h",
+      "started": "2026-11-11",
+      "status": "failed",
+      "result": "Nicht bestanden (NO ROBUST EDGE PROVEN): Validierung 2023–2024 alle Trades −0,10 R; M1 NEHMEN −0,05 R (n 4.340), Abstand 0,025 R, p 0,39; M2 NEHMEN −0,10 R (n 12.003), Abstand 0,050 R (Training 0,43), p 0,38. Folge M1 275 Trades +0,05 R, einzige erfüllte Bedingung.",
+      "lesson": "Weiter Stop wirkt: Verlust je Trade 0,10 statt 0,44 R, die Kosten waren der Hauptgrund für S24. Ohne Kosten bleibt kein Vorteil, M2 ist überangepasst. Stop-Weite nach S24-Ergebnis gewählt; keine weiteren Weiten auf denselben Daten. Holdout nie geladen.",
+      "doc": "docs/research_lab/studien/S27_GROESSERE_TRADES_PRAEREGISTRIERUNG.md",
+      "evidence": {
+        "path": "ps5:~/tim-research/results/s27/s27_evaluate_2026-11-12T0934Z.json",
+        "sha256": "c42d4c6a8af5d293636f2d1338499e55a2a9943d166509d895b890a114417790"
+      }
+    },
+    {
+      "id": "S26",
+      "title": "Aufwand gegen Ergebnis: Absorption, Initiative und Book Sweep je 1h-Kerze, BTC",
+      "started": "2026-11-11",
+      "status": "failed",
+      "result": "Nicht bestanden (NO ROBUST EDGE PROVEN): Validierung 2023–2024 Absorption n 307, −0,48 R, Abstand −0,05 R, p 0,69; Initiative n 666, −0,44 R, Abstand −0,00 R, p 0,56. Sweep 11/19 Treffer, unter dem Gate, nicht getestet.",
+      "lesson": "Schwellen aus einem Video, runde Werte ohne Suche. Delta aus Binance-Spot-Kerzen; der Weg des geringsten Widerstands braucht das Orderbuch. Keine Nachsuche mit anderen Schwellen. Holdout nie geladen.",
+      "doc": "docs/research_lab/studien/S26_AUFWAND_GEGEN_ERGEBNIS_PRAEREGISTRIERUNG.md",
+      "evidence": {
+        "path": "ps5:~/tim-research/results/s26/s26_evaluate_2026-11-12T0923Z.json",
+        "sha256": "dfcab67ae88e234b7588fa20113c0e062f0c234fbd7c4f623350b3ab84d63793"
+      }
+    },
+    {
+      "id": "S25",
+      "title": "Positionsgröße nach GARCH-4h-Prognose für S7b-D20-T3, BTC/ETH/SOL 4h",
+      "started": "2026-11-11",
+      "status": "failed",
+      "result": "Nicht bestanden: Drawdown Validierung 2023–2024 11,63 R mit GARCH gegen 10,95 R fest (n 207), Placebo p 0,67; Training (ab Q2 2021, n 139) ebenfalls höher (14,59 gegen 13,21 R). Nur E/Drawdown nicht schlechter erfüllt.",
+      "lesson": "Größenregel ohne Registerplatz, zählt für den Deflated Sharpe (N = 65). Der ATR-Stop von S7b passt die Größe schon an die Schwankung an; GARCH fügt nichts hinzu. Papier-Gewicht bleibt Beobachtung. Holdout nicht berührt.",
+      "doc": "docs/research_lab/reports/s25_run_2026-11-12T0926Z.md",
+      "evidence": {
+        "path": "docs/research_lab/reports/s25_run_2026-11-12T0926Z.json",
+        "sha256": "6934a9d8af09638d63fb96cbb9635cd2a145e6444de3e09e0eaa04c8ce60f444"
+      }
+    },
+    {
+      "id": "S24",
+      "title": "Alle Indikatoren mit Historie zusammen (C/K/F/G/T/V, M1 Stimmen, M2 Logit) auf Standard-Trades, BTC 1h",
+      "started": "2026-11-11",
+      "status": "failed",
+      "result": "Nicht bestanden (NO ROBUST EDGE PROVEN): M2 sortiert in der Validierung 2023–2024 echt (Abstand 0,135 R, p 0,004, Verschiebung p 0,005), aber NEHMEN verliert nach Bitunix-Kosten −0,378 R (n 11.181); alle Trades −0,435 R. M1 Abstand 0,010 R, p 0,41. 34.848 Trades, 106 Wochen.",
+      "lesson": "Stop 1 ATR auf 1h ist gegen Gebühren, Schlupf und Funding zu eng; mehr Indikatoren verschieben nur, welche Trades weniger verlieren. K, G und T drehen gegenüber dem Training das Vorzeichen. Als S23 begonnen und umbenannt. Folge: S27. Holdout nie geladen.",
+      "doc": "docs/research_lab/studien/S24_ALLE_INDIKATOREN_PRAEREGISTRIERUNG.md",
+      "evidence": {
+        "path": "ps5:~/tim-research/results/s24/s24_evaluate_2026-11-11T2200Z.json",
+        "sha256": "b504a26165b1beecb439b46377b20bdd000aaa534d81a42d7a1f6b83a76dbad4"
+      }
+    },
+    {
+      "id": "S23",
+      "title": "Open Interest am Flip: hält ein Bruch von Swing-Linien besser mit OI als mit dem Abstand allein, BTC 1h",
+      "started": "2026-11-11",
+      "status": "waiting",
+      "result": "Noch nichts gerechnet: Entwurf 0.1 mit Code und Tests, kein Zähllauf für diese Frage bekannt. Gate: ≥ 200 Ereignisse Training, ≥ 150 Validierung.",
+      "lesson": "Ereignisse und Label aus S20, Validierung 2023–2024 zum dritten Mal benutzt, ein Bestehen zählt nur als Kandidat für einen Vorwärtslauf. Einfrieren braucht Uzis Wort und Bartis Go. Die PS5-Datei s23_count_2026-11-11T1846Z.json gehört zur Alle-Indikatoren-Studie (heute S24), nicht hierher.",
+      "doc": "docs/research_lab/studien/S23_OPEN_INTEREST_AM_FLIP_PRAEREGISTRIERUNG_ENTWURF.md"
+    },
+    {
+      "id": "S22",
+      "title": "Chart-Urteil im Rückblick: sortieren die Kerzen-Regeln R1–R5 Standard-Trades, BTC 1h",
+      "started": "2026-11-11",
+      "status": "failed",
+      "result": "Nicht bestanden: Validierung 2023–2024 NEHMEN −0,173 R, AUSLASSEN −0,288 R, alle −0,213 R; H1 +0,115 R (Training +0,106), p 0,051, H2 +0,039 R, p 0,24, Glückstest p 0,08. NEHMEN nach Kosten negativ. 17.424 Momente (NEHMEN 4.228 / AUSLASSEN 13.295), Training 25.219.",
+      "lesson": "Beobachtungsstudie ohne Registerplatz. Nur R2 (Struktur) trennt, R5 (Trendlinie) in beiden Abschnitten verkehrt herum, Score +3/+4 schlechter als +1/+2. Regelwerk bleibt, Live-Schatten (R6–R8, echte Pläne) bis 09.12. Ergebnisbericht nicht im Repo. Holdout nie geladen.",
+      "doc": "docs/research_lab/studien/S22_CHART_URTEIL_RUECKBLICK_PRAEREGISTRIERUNG.md",
+      "evidence": {
+        "path": "ps5:~/tim-research/results/s22/s22_evaluate_2026-11-11T1841Z.json",
+        "sha256": "b6f076901027d965a68946a872e2fe917dda1ca517d11cdc73a6d1f221fd4597"
+      }
+    },
     {
       "id": "S21",
       "title": "Orderflow und Funding am Flip (CVD, Volumentrend, Footprint, Funding gegen den Abstand zur Linie), BTC 1h",

@@ -1,0 +1,203 @@
+{
+ "meta": {
+  "test": "T12",
+  "erzeugt_utc": "2026-11-16T13:34Z",
+  "konfiguration": {
+   "carry_anteil": 0.5,
+   "trend_risiko": "1 % des Gesamtkapitals je R",
+   "szenarien": [
+    "basis_marge100 (Protokoll)",
+    "monatlich_nachjustiert (Sensitivität)"
+   ]
+  },
+  "befehl": "python3 -m src.research_lab.konsolidierung.lauf /home/user/work/data docs/research_lab/konsolidierung/ergebnisse s7b_train_2026-10-26T1305Z_trades.json s7_train_2026-10-26T1049Z_trades.json /home/user/work/bitunix",
+  "zeitraum": "Signale 2020-01 bis 2024-12 (Training < 2023-01-01, Validierung 2023-01-01 bis 2024-12-31); Holdout nicht geladen",
+  "status": "abgeschlossen",
+  "grenzen": [
+   "Übriges Kapital = Bargeld ohne Zins (konservativ)",
+   "Tagesreihe des Trends: Mark-to-Market zum 4h-Schluss"
+  ],
+  "seed": 20261116,
+  "kandidat": "C2",
+  "code_commit": "f1c39402a7cf360816b08cf871e7b2559cd5f4a9",
+  "code_unsauber": false,
+  "daten_version_sha256_datenaudit": "56b44a7f89643eafb7de1b163157a5eaf906203bb3432f625e14dd344a5eb2d2",
+  "dauer_s": 1.4
+ },
+ "ergebnis": {
+  "basis_marge100": {
+   "hinweis": "Trend: 1 % des Gesamtkapitals je R, nicht aufgezinst; Carry: Anteil des Gesamtkapitals; übriges Kapital = Bargeld ohne Zins (konservativ)",
+   "korrelation_tagesrenditen": -0.054197,
+   "allokationen": {
+    "0": {
+     "train": {
+      "summe_prozent": 64.478909,
+      "monatssharpe_jahr": 1.203695,
+      "max_rueckgang_prozent": 20.870482,
+      "monate": 36
+     },
+     "validation": {
+      "summe_prozent": 54.644996,
+      "monatssharpe_jahr": 1.403157,
+      "max_rueckgang_prozent": 11.460218,
+      "monate": 24
+     },
+     "pooled": {
+      "summe_prozent": 119.123906,
+      "monatssharpe_jahr": 1.296592,
+      "max_rueckgang_prozent": 20.870482,
+      "monate": 60
+     }
+    },
+    "25": {
+     "train": {
+      "summe_prozent": 127.997183,
+      "monatssharpe_jahr": 2.412807,
+      "max_rueckgang_prozent": 10.394277,
+      "monate": 36
+     },
+     "validation": {
+      "summe_prozent": 91.548328,
+      "monatssharpe_jahr": 2.22994,
+      "max_rueckgang_prozent": 10.577433,
+      "monate": 24
+     },
+     "pooled": {
+      "summe_prozent": 219.545511,
+      "monatssharpe_jahr": 2.347209,
+      "max_rueckgang_prozent": 10.577433,
+      "monate": 60
+     }
+    },
+    "50": {
+     "train": {
+      "summe_prozent": 191.515456,
+      "monatssharpe_jahr": 2.949674,
+      "max_rueckgang_prozent": 9.512675,
+      "monate": 36
+     },
+     "validation": {
+      "summe_prozent": 128.45166,
+      "monatssharpe_jahr": 2.810567,
+      "max_rueckgang_prozent": 9.694648,
+      "monate": 24
+     },
+     "pooled": {
+      "summe_prozent": 319.967116,
+      "monatssharpe_jahr": 2.916532,
+      "max_rueckgang_prozent": 9.694648,
+      "monate": 60
+     }
+    },
+    "75": {
+     "train": {
+      "summe_prozent": 255.033729,
+      "monatssharpe_jahr": 3.032322,
+      "max_rueckgang_prozent": 10.437232,
+      "monate": 36
+     },
+     "validation": {
+      "summe_prozent": 165.354993,
+      "monatssharpe_jahr": 3.16667,
+      "max_rueckgang_prozent": 8.811863,
+      "monate": 24
+     },
+     "pooled": {
+      "summe_prozent": 420.388722,
+      "monatssharpe_jahr": 3.107406,
+      "max_rueckgang_prozent": 10.437232,
+      "monate": 60
+     }
+    }
+   },
+   "g10_bestanden": true
+  },
+  "monatlich_nachjustiert": {
+   "hinweis": "Trend: 1 % des Gesamtkapitals je R, nicht aufgezinst; Carry: Anteil des Gesamtkapitals; übriges Kapital = Bargeld ohne Zins (konservativ)",
+   "korrelation_tagesrenditen": -0.005693,
+   "allokationen": {
+    "0": {
+     "train": {
+      "summe_prozent": 64.478909,
+      "monatssharpe_jahr": 1.203695,
+      "max_rueckgang_prozent": 20.870482,
+      "monate": 36
+     },
+     "validation": {
+      "summe_prozent": 54.644996,
+      "monatssharpe_jahr": 1.403157,
+      "max_rueckgang_prozent": 11.460218,
+      "monate": 24
+     },
+     "pooled": {
+      "summe_prozent": 119.123906,
+      "monatssharpe_jahr": 1.296592,
+      "max_rueckgang_prozent": 20.870482,
+      "monate": 60
+     }
+    },
+    "25": {
+     "train": {
+      "summe_prozent": 72.964209,
+      "monatssharpe_jahr": 1.373434,
+      "max_rueckgang_prozent": 17.243371,
+      "monate": 36
+     },
+     "validation": {
+      "summe_prozent": 57.324265,
+      "monatssharpe_jahr": 1.46929,
+      "max_rueckgang_prozent": 11.404764,
+      "monate": 24
+     },
+     "pooled": {
+      "summe_prozent": 130.288473,
+      "monatssharpe_jahr": 1.424199,
+      "max_rueckgang_prozent": 17.243371,
+      "monate": 60
+     }
+    },
+    "50": {
+     "train": {
+      "summe_prozent": 81.449508,
+      "monatssharpe_jahr": 1.540105,
+      "max_rueckgang_prozent": 13.935795,
+      "monate": 36
+     },
+     "validation": {
+      "summe_prozent": 60.003533,
+      "monatssharpe_jahr": 1.534764,
+      "max_rueckgang_prozent": 11.349311,
+      "monate": 24
+     },
+     "pooled": {
+      "summe_prozent": 141.453041,
+      "monatssharpe_jahr": 1.549191,
+      "max_rueckgang_prozent": 13.935795,
+      "monate": 60
+     }
+    },
+    "75": {
+     "train": {
+      "summe_prozent": 89.934807,
+      "monatssharpe_jahr": 1.701663,
+      "max_rueckgang_prozent": 12.420857,
+      "monate": 36
+     },
+     "validation": {
+      "summe_prozent": 62.682801,
+      "monatssharpe_jahr": 1.599532,
+      "max_rueckgang_prozent": 11.293858,
+      "monate": 24
+     },
+     "pooled": {
+      "summe_prozent": 152.617609,
+      "monatssharpe_jahr": 1.67063,
+      "max_rueckgang_prozent": 12.420857,
+      "monate": 60
+     }
+    }
+   },
+   "g10_bestanden": true
+  }
+ }
+}

@@ -1,0 +1,273 @@
+"""S28 (draft): positioning from the Binance "metrics" archive (open interest, top-trader ratio, taker ratio) on the S27 trade.
+
+Rules: docs/research_lab/studien/S28_POSITIONIERUNG_METRICS_PRAEREGISTRIERUNG.md (version 1.0). Source: S24, S26 and S27 found no edge
+in the indicators TIM had on 1h BTC; the next try needs data TIM never used. Uzi said "S28" on 12.11.2026 after the
+data question. The holdout from 2025-01-01 is never loaded (the metrics refs are fetched only up to 2024-12-31).
+
+    python -m src.research_lab.studies.s28 count --root data/research_lab --out DIR [--fetch] [--workers N]
+
+``count`` is results-blind: moments, feature coverage and complete rows per section. ``evaluate`` (version 1.0) is the S27
+procedure with family O added: variant A = O alone, variant B = O with the six S24 families; Holm over both models in both
+variants (m = 4); the six S27 criteria per model. The trade is S27's (stop 3 ATR14, target 6 ATR14, 168 h), nothing is searched.
+
+Family O (one new family, three features, sign = +1 for LONG, -1 for SHORT, read at the close of the 1h candle):
+
+    oi_preis   sign * sign(price change over 24 h) * relative open interest change over 24 h
+    top_ls     sign * ln(sum_toptrader_long_short_ratio)
+    taker_ls   sign * ln(mean sum_taker_long_short_vol_ratio of the last 12 snapshots, one hour)
+
+No look-ahead: only snapshots stamped at least ``LAG_MS`` (5 min) before the close count, because the archive does not
+say whether a stamp marks the start or the end of its 5-minute period (the S12 lesson).
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import io
+import json
+import math
+import time
+from bisect import bisect_right
+from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
+from pathlib import Path
+
+from src.research_lab.data.metrics import FIRST_DAY, MetricsRef, days
+from src.research_lab.data.parse import Kline, read_single_csv
+from src.research_lab.protocol import HOLDOUT_START_MS
+from src.research_lab.studies import s22, s24, s27
+from src.research_lab.studies.s20 import HOUR, atr_series, week_of
+
+VERSION = "1.0"  # frozen 2026-11-12 on Uzi's word ("einfrieren"); a change needs a new version
+SEED = 28
+FAMILY = "O"
+FEATURES = ("oi_preis", "top_ls", "taker_ls")
+LAG_MS = 5 * 60_000
+STEP_MS = 5 * 60_000
+DAY_MS = 24 * HOUR
+TOLERANCE_MS = 15 * 60_000  # the snapshot 24 h back may be at most this far from its exact time
+TAKER_SNAPSHOTS = 12
+LAST_DAY = date(2024, 12, 31)  # never loads the holdout
+MIN_TRADES = s24.MIN_TRADES
+MIN_WEEKS = s24.MIN_WEEKS
+COLUMNS = ("create_time", "symbol", "sum_open_interest", "sum_open_interest_value", "count_toptrader_long_short_ratio",
+           "sum_toptrader_long_short_ratio", "count_long_short_ratio", "sum_taker_long_short_vol_ratio")
+
+
+@dataclass(frozen=True, slots=True)
+class Snapshots:
+    times: list[int]
+    oi: list[float]
+    top: list[float]
+    taker: list[float]
+
+
+def _to_ms(value: str) -> int:
+    return int(datetime.strptime(value.strip(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp() * 1000)
+
+
+def _num(text: str) -> float:
+    """An empty field is a missing value (NaN), never a guess."""
+    text = text.strip()
+    return float(text) if text else math.nan
+
+
+def _same(a: tuple[float, ...], b: tuple[float, ...]) -> bool:
+    return all(x == y or (math.isnan(x) and math.isnan(y)) for x, y in zip(a, b, strict=True))
+
+
+def parse_snapshots(text: str) -> dict[int, tuple[float, float, float]]:
+    """time -> (open interest in BTC, top-trader position ratio, taker volume ratio). Identical repeats collapse, two
+    different rows for one time are an error (nothing is guessed). Empty fields stay missing (NaN)."""
+    out: dict[int, tuple[float, float, float]] = {}
+    for row in csv.reader(io.StringIO(text)):
+        if not row or row[0].strip() == COLUMNS[0]:
+            continue
+        if len(row) < len(COLUMNS):
+            raise ValueError("metrics row has fewer columns than the header")
+        values = (_num(row[2]), _num(row[5]), _num(row[7]))
+        t = _to_ms(row[0])
+        if t in out and not _same(out[t], values):
+            raise ValueError(f"two different metrics rows for one snapshot ({row[0]})")
+        out[t] = values
+    return out
+
+
+def load_snapshots(root: Path, *, fetch: bool = False, workers: int = 1, last: date = LAST_DAY) -> Snapshots:
+    from src.research_lab.data.store import ArchiveStore
+
+    store = ArchiveStore(root)
+    refs = [MetricsRef(d) for d in days(FIRST_DAY, last)]
+    if fetch:
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+            list(pool.map(store.fetch, refs))
+    merged: dict[int, tuple[float, float, float]] = {}
+    for ref in refs:
+        try:
+            text = store._verified_csv(ref, None)  # noqa: SLF001 - the shared checksum + holdout guard
+        except FileNotFoundError:
+            continue  # a missing day leaves a gap; coverage in ``count`` shows it
+        merged.update(parse_snapshots(text))
+    times = sorted(merged)
+    return Snapshots(times, [merged[t][0] for t in times], [merged[t][1] for t in times], [merged[t][2] for t in times])
+
+
+def features(snap: Snapshots, bars: Sequence[Kline], i: int, sign: float) -> tuple[float, ...] | None:
+    """Family O at the close of ``bars[i]``; None when a needed snapshot is missing or not positive."""
+    close_time = bars[i].open_time + HOUR
+    k = bisect_right(snap.times, close_time - LAG_MS) - 1
+    if k < TAKER_SNAPSHOTS or close_time - LAG_MS - snap.times[k] > TOLERANCE_MS or i < 24:
+        return None
+    back = bisect_right(snap.times, snap.times[k] - DAY_MS) - 1
+    if back < 0 or abs(snap.times[k] - DAY_MS - snap.times[back]) > TOLERANCE_MS:
+        return None
+    window = snap.taker[k - TAKER_SNAPSHOTS + 1:k + 1]
+    if snap.times[k] - snap.times[k - TAKER_SNAPSHOTS + 1] > (TAKER_SNAPSHOTS + 2) * STEP_MS:
+        return None
+    needed = (snap.oi[k], snap.oi[back], snap.top[k], *window)
+    if not all(math.isfinite(x) for x in needed) or snap.oi[back] <= 0 or snap.top[k] <= 0 or min(window) <= 0:
+        return None
+    change = bars[i].close - bars[i - 24].close
+    direction = (change > 0) - (change < 0)
+    return (sign * direction * (snap.oi[k] / snap.oi[back] - 1.0),
+            sign * math.log(snap.top[k]),
+            sign * math.log(sum(window) / len(window)))
+
+
+def build_rows(snap: Snapshots, bars_1h: Sequence[Kline]) -> list[s24.Row]:
+    atrs = atr_series(bars_1h)
+    rows = []
+    for i in s22.moments(bars_1h, atrs):
+        close_time = bars_1h[i].open_time + HOUR
+        section = s22.section_of(close_time)
+        for direction in s22.DIRECTIONS:
+            sign = 1.0 if direction == "LONG" else -1.0
+            rows.append(s24.Row(close_time, section, direction, {FAMILY: features(snap, bars_1h, i, sign)}))
+    return rows
+
+
+def count(rows: Sequence[s24.Row]) -> dict:
+    """Results-blind: moments, coverage and complete rows per section, and the gate (as S24)."""
+    out: dict = {}
+    for name in s22.SECTIONS:
+        part = [r for r in rows if r.section == name]
+        full = [r for r in part if r.features.get(FAMILY) is not None]
+        per_dir = {d: sum(1 for r in full if r.direction == d) for d in s22.DIRECTIONS}
+        out[name] = {"momente": len({r.time for r in part}), "zeilen": len(part), "abdeckung": len(full),
+                     "vollstaendig_je_richtung": per_dir, "wochen": len({week_of(r.time) for r in full}),
+                     "gate": min(per_dir.values(), default=0) >= MIN_TRADES}
+    out["gate"] = all(out[n]["gate"] for n in s22.SECTIONS) and out["validierung"]["wochen"] >= MIN_WEEKS
+    return out
+
+
+FAMILY_NAME = "Positionierung (Metrics-Archiv)"
+VARIANTS = ("A", "B")
+
+
+@contextmanager
+def family_set(variant: str):
+    """Run S24/S27 code with family O: A = O alone, B = the six S24 families plus O. Restores the S24 globals."""
+    saved = (s24.FAMILIES, s24.FEATURES, s24.FAMILY_NAMES)
+    s24.FAMILIES = (FAMILY,) if variant == "A" else (*saved[0], FAMILY)
+    s24.FEATURES = {**saved[1], FAMILY: FEATURES}
+    s24.FAMILY_NAMES = {**saved[2], FAMILY: FAMILY_NAME}
+    try:
+        yield s24.FAMILIES
+    finally:
+        s24.FAMILIES, s24.FEATURES, s24.FAMILY_NAMES = saved
+
+
+def with_family_o(rows: Sequence[s24.Row], snap: Snapshots, bars_1h: Sequence[Kline]) -> list[s24.Row]:
+    from dataclasses import replace
+
+    index = {b.open_time: k for k, b in enumerate(bars_1h)}
+    out = []
+    for r in rows:
+        sign = 1.0 if r.direction == "LONG" else -1.0
+        out.append(replace(r, features={**r.features, FAMILY: features(snap, bars_1h, index[r.time - HOUR], sign)}))
+    return out
+
+
+def evaluate(rows: Sequence[s24.Row], loaded: Sequence[str], exits, *, boot_draws: int = s22.BOOT_DRAWS,
+             shift_draws: int = s22.SHIFT_DRAWS) -> dict:
+    """S27's evaluation in both variants, then Holm over all four (variant, model) tests."""
+    from src.research_lab.stats.inference import holm
+
+    if VERSION.startswith("0"):
+        raise SystemExit(f"S28 {VERSION} ist ein Entwurf: erst nach dem Einfrieren als 1.0 auswerten")
+    out: dict = {"varianten": {}}
+    pvalues: dict[str, float] = {}
+    for variant in VARIANTS:
+        with family_set(variant) as fams:
+            if not set(fams) <= {*loaded, FAMILY}:
+                raise SystemExit(f"S28 Variante {variant} braucht {fams}, geladen: {loaded}")
+            res = s27.evaluate(rows, list(fams), exits, boot_draws=boot_draws, shift_draws=shift_draws)
+        out["varianten"][variant] = res
+        for name, info in res.get("modelle", {}).items():
+            if info.get("p") is not None:
+                pvalues[f"{variant}:{name}"] = info["p"]
+    passed = holm(pvalues, 4, s22.ALPHA)
+    verdicts = {}
+    for variant, res in out["varianten"].items():
+        for name, info in res.get("modelle", {}).items():
+            info["kriterien"]["holm"] = f"{variant}:{name}" in passed
+            ok = all(info["kriterien"].values())
+            verdicts[f"{variant}:{name}"] = "BESTANDEN (Kandidat)" if ok else "NICHT BESTANDEN"
+        res["urteil_je_modell"] = {k.split(":")[1]: v for k, v in verdicts.items() if k.startswith(variant)}
+        res["urteil"] = ("BESTANDEN (Kandidat für den Live-Schatten)" if "BESTANDEN (Kandidat)" in res["urteil_je_modell"].values()
+                         else "NO ROBUST EDGE PROVEN")
+    out["holm"] = {"m": 4, "p": pvalues, "verworfen": sorted(passed)}
+    out["urteil_je_modell"] = verdicts
+    out["urteil"] = ("BESTANDEN (Kandidat für den Live-Schatten)" if "BESTANDEN (Kandidat)" in verdicts.values()
+                     else "NO ROBUST EDGE PROVEN")
+    return out
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="s28")
+    parser.add_argument("step", choices=("count", "evaluate"))
+    parser.add_argument("--root", type=Path, default=Path("data/research_lab"))
+    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--fetch", action="store_true", help="fehlende Tagesdateien laden (nur bis 2024-12-31)")
+    parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--footprint", type=Path, help="S8-Speicher; Variante B braucht Familie F")
+    parser.add_argument("--fp-cache", type=Path)
+    args = parser.parse_args(argv)
+    bars_1h, bars_30m, digest = s22.load(args.root, fetch=args.fetch)
+    snap = load_snapshots(args.root, fetch=args.fetch, workers=args.workers)
+    evaluating = args.step == "evaluate"
+    if evaluating:
+        if args.footprint is None:
+            raise SystemExit("S28 evaluate braucht --footprint (Variante B nutzt Familie F)")
+        events = s24.moment_events(bars_1h)
+        rates = s24.load_rates(args.root, fetch=args.fetch)
+        funding = s24.load_funding(rates, events)
+        footprint = s24.load_footprint(args.footprint, events, workers=args.workers, cache=args.fp_cache)
+        s27_rows, exits = s27.build_rows(bars_1h, bars_30m, footprint=footprint, funding=funding,
+                                         workers=args.workers, rates=rates)
+        eval_rows = with_family_o(s27_rows, snap, bars_1h)
+        rows = eval_rows
+    else:
+        rows = build_rows(snap, bars_1h)
+    result = {"studie": "S28", "version": VERSION, "seed": SEED, "datensatz_sha256": digest,
+              "merkmale": {FAMILY: list(FEATURES)}, "snapshots": len(snap.times),
+              "erster_stand": snap.times[0] if snap.times else None, "letzter_stand": snap.times[-1] if snap.times else None,
+              "zaehllauf": count(rows)}
+    if evaluating:
+        result["auswertung"] = evaluate(eval_rows, [f for f in s24.FAMILIES], exits)
+    assert max(snap.times, default=0) < HOLDOUT_START_MS, "holdout data loaded"
+    args.out.mkdir(parents=True, exist_ok=True)
+    path = args.out / f"s28_{args.step}_{time.strftime('%Y-%m-%dT%H%MZ', time.gmtime())}.json"
+    path.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
+    print(path)
+    print(json.dumps(result["zaehllauf"], ensure_ascii=False))
+    if evaluating:
+        print(result["auswertung"]["urteil"])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -42,6 +42,7 @@ def main(argv: list[str] | None = None) -> int:
         if name == "fetch":
             p.add_argument("--raw-dir")
             p.add_argument("--keep-raw", action="store_true")
+            p.add_argument("--symbol", default="BTCUSDT", help="Binance futures symbol (S35a: ETHUSDT, SOLUSDT)")
             p.add_argument("--release", help="OFX holdout release (Uzi 10.11.2026); only for the OFX final test root")
         else:
             p.add_argument("--out")
@@ -56,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "fetch":
         fetcher = DirectoryFetcher(Path(args.raw_dir)) if args.raw_dir else http_fetch
-        store = MinuteBarStore(args.root, fetcher, release=args.release)
+        store = MinuteBarStore(args.root, fetcher, symbol=args.symbol, release=args.release)
         for day in days_between(date.fromisoformat(args.first), date.fromisoformat(args.last)):
             entry = store.fetch(day, keep_raw=args.keep_raw)
             print(day.isoformat(), entry["quality"], flush=True)

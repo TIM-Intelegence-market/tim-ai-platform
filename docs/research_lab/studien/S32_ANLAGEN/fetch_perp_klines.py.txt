@@ -1,0 +1,65 @@
+"""Fetch public Binance USD-M monthly kline zips (data.binance.vision) up to 2024-12 only. Low parallelism, idempotent.
+Usage: fetch_perp_klines.py OUTROOT   (4h for all USDT symbols; BTCUSDT also 1h). Holdout months (2025+) are never requested."""
+import concurrent.futures as cf, hashlib, json, re, sys, time, urllib.request, urllib.parse
+from pathlib import Path
+
+S3 = "https://s3-ap-northeast-1.amazonaws.com/data.binance.vision"
+CDN = "https://data.binance.vision"
+BASE = "data/futures/um/monthly/klines/"
+LAST = "2024-12"
+
+
+def listing(prefix, delim="/"):
+    keys, pref, marker = [], [], ""
+    while True:
+        u = f"{S3}?delimiter={urllib.parse.quote(delim)}&prefix={urllib.parse.quote(prefix)}" + (f"&marker={urllib.parse.quote(marker)}" if marker else "")
+        d = urllib.request.urlopen(u, timeout=60).read().decode()
+        pref += re.findall(r"<Prefix>([^<]+)</Prefix>", d)[1:] if prefix else re.findall(r"<Prefix>([^<]+)</Prefix>", d)
+        ks = re.findall(r"<Key>([^<]+)</Key>", d); keys += ks
+        if "<IsTruncated>true" not in d: break
+        m = re.findall(r"<NextMarker>([^<]+)</NextMarker>", d)
+        marker = m[0] if m else (ks[-1] if ks else pref[-1])
+    return keys, pref
+
+
+def get(job):
+    key, dest = job
+    if dest.exists() and dest.stat().st_size > 0: return key, "have", None
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    for attempt in range(3):
+        try:
+            b = urllib.request.urlopen(f"{CDN}/{key}", timeout=60).read()
+            dest.write_bytes(b); return key, "ok", hashlib.sha256(b).hexdigest()
+        except Exception as e:
+            if getattr(e, "code", None) == 404: return key, "404", None
+            time.sleep(2 * (attempt + 1))
+    return key, "fail", None
+
+
+def main():
+    root = Path(sys.argv[1]); root.mkdir(parents=True, exist_ok=True)
+    _, syms = listing(BASE)
+    syms = sorted(p[len(BASE):-1] for p in syms if p.endswith("/"))
+    syms = [s for s in syms if s.endswith("USDT") and s not in ("ETHUSDT", "SOLUSDT") and not s.endswith("_PERP")]
+    jobs, meta = [], {}
+    for s in syms + (["BTCUSDT"] if "BTCUSDT" not in syms else []):
+        for itv in (["4h", "1h"] if s == "BTCUSDT" else ["4h"]):
+            if s != "BTCUSDT" and itv != "4h": continue
+            ks, _ = listing(f"{BASE}{s}/{itv}/")
+            for k in ks:
+                m = re.search(r"-(\d{4}-\d{2})\.zip$", k)
+                if m and m.group(1) <= LAST: jobs.append((k, root / itv / s / Path(k).name))
+    # ETH/SOL excluded for S32 by decision; BTC is kept (S33 basis, S32 excludes it in analysis)
+    meta["symbols"] = len(syms); meta["files"] = len(jobs)
+    print(meta, flush=True)
+    res = {"ok": 0, "have": 0, "404": 0, "fail": 0}; sha = {}
+    with cf.ThreadPoolExecutor(4) as ex:
+        for i, (k, st, h) in enumerate(ex.map(get, jobs)):
+            res[st] += 1
+            if h: sha[k] = h
+            if i % 500 == 0: print(i, res, flush=True)
+    (root / "fetch_manifest.json").write_text(json.dumps({"meta": meta, "result": res, "sha256": sha}, indent=0))
+    print("DONE", res, flush=True)
+
+
+main()

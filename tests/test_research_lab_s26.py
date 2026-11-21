@@ -94,6 +94,8 @@ def test_planted_absorption_passes_noise_fails(monkeypatch):
     assert noise["urteil"] == "NO ROBUST EDGE PROVEN"
 
 
-def test_draft_refuses_to_evaluate():
+def test_frozen_and_a_draft_refuses_to_evaluate(monkeypatch):
+    assert s26.VERSION == "1.0"
+    monkeypatch.setattr(s26, "VERSION", "0.1")
     with pytest.raises(SystemExit):
         s26.evaluate([])

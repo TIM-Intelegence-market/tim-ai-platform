@@ -119,8 +119,8 @@ def chart_layer(heatmap: Mapping[str, Any] | None, first_time: int, now: datetim
     drawings = []
     as_of = datetime.fromisoformat(str(current["as_of"]))
     start = (as_of - timedelta(days=1)).isoformat()
-    for where, name, note in (("above", "Liq-Cluster oben", "stärkste geschätzte Short-Liquidationen über dem Preis"),
-                              ("below", "Liq-Cluster unten", "stärkste geschätzte Long-Liquidationen unter dem Preis")):
+    for where, name, note in (("above", "Liq-Cluster oben (Modell)", "stärkste geschätzte Short-Liquidationen über dem Preis"),
+                              ("below", "Liq-Cluster unten (Modell)", "stärkste geschätzte Long-Liquidationen unter dem Preis")):
         cluster = current["analysis"].get(f"cluster_{where}")
         if not cluster:
             continue

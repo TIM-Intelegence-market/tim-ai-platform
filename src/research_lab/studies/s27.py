@@ -1,6 +1,6 @@
-"""S27 (draft): the S24 indicators on larger trades. Does a wider stop leave room for an edge after Bitunix costs?
+"""S27: the S24 indicators on larger trades. Does a wider stop leave room for an edge after Bitunix costs?
 
-Rules: docs/research_lab/studien/S27_GROESSERE_TRADES_PRAEREGISTRIERUNG_ENTWURF.md (version 0.1). Source: S24 1.0
+Rules: docs/research_lab/studien/S27_GROESSERE_TRADES_PRAEREGISTRIERUNG.md (version 1.0, frozen 2026-11-12). Source: S24 1.0
 failed on 11.11.2026 because every standard trade (stop 1 ATR14 on 1h) lost after costs, even the ones M2 picked;
 Uzi said "go" to a new study with fewer, larger trades the same evening. The holdout from 2025-01-01 is never
 loaded.
@@ -37,7 +37,7 @@ from src.research_lab.data.parse import Kline
 from src.research_lab.studies import s22, s24
 from src.research_lab.studies.s20 import HOUR, atr_series, week_of
 
-VERSION = "0.1"
+VERSION = "1.0"  # frozen 2026-11-12 on Uzi's word ("Starte die Auswertung"); a change needs a new version
 SEED = 27
 STOP_ATR = 3.0
 TARGET_ATR = 6.0

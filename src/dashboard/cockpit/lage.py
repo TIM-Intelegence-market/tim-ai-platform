@@ -56,6 +56,20 @@ def _r(value: Any) -> str:
     return f"{number:+.2f} R".replace(".", ",")
 
 
+MIN_SAMPLE = 30  # closed plans below this are a small sample (Hermes-Kritik 11.11.2026, Uzi "go" 12.11.)
+
+
+def net_evidence(closed: Any, value: Any) -> str:
+    """Net R of closed paper plans in words: an empty journal is "no evidence", never "+0,00 R"."""
+    try:
+        count = int(closed or 0)
+    except (TypeError, ValueError):
+        count = 0
+    if count <= 0:
+        return "noch keine Evidenz (kein Plan geschlossen)"
+    return f"netto {_r(value)}" + (f" (kleine Stichprobe, unter {MIN_SAMPLE})" if count < MIN_SAMPLE else "")
+
+
 def _duration(seconds: int | None) -> str:
     if seconds is None or seconds < 0:
         return "—"
@@ -386,7 +400,7 @@ def _journal_tiles(plan: SourceResult, trader: SourceResult, now: datetime) -> l
                 "plan_journal", "Plan-Journal", f"{stats['open']} warten · {stats['filled']} im Trade", "PASS",
                 source="data/journal/tim_plan_journal.json", as_of=journal.get("last_plan_candle"),
                 max_age_seconds=PLAN_JOURNAL_MAX_AGE, href="/journal", now=now,
-                detail=f"{stats['closed']} geschlossen · netto {_r(stats['sum_net_r'])}"
+                detail=f"{stats['closed']} geschlossen · {net_evidence(stats['closed'], stats['sum_net_r'])}"
                        + (f" · {excluded['plans']} ausgeschlossen (geprüfte Korrektur, {_r(excluded['sum_net_r'])})" if excluded.get("plans") else "")
                        + " · nur Papier, Binance Spot",
             ))

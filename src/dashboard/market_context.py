@@ -337,8 +337,14 @@ def chart_context(symbol: Any) -> dict[str, Any] | None:
 
     Tests (TIM_RUNTIME_ENV=test) get None, so no request leaves the test run.
     """
-    from src.dashboard.chart_live import DEFAULT_SYMBOL, SYMBOLS
+    from src.dashboard.chart_live import DEFAULT_SYMBOL, INDEX_SYMBOLS, SYMBOLS
 
     if os.environ.get("TIM_RUNTIME_ENV") == "test":
         return None
+    if symbol == "USDTD":
+        from src.dashboard import usdt_dominance
+
+        return {"usdtd": usdt_dominance.chart_context()}
+    if symbol in INDEX_SYMBOLS:  # no funding or Coinbase premium for an index
+        return {"dominance": DOMINANCE.snapshot()}
     return {**CACHE.snapshot(symbol if symbol in SYMBOLS else DEFAULT_SYMBOL), "dominance": DOMINANCE.snapshot()}

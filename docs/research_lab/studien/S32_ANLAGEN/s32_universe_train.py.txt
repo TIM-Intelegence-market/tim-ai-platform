@@ -1,0 +1,39 @@
+"""S32 training universe (point-in-time): top 25 USDT symbols by 30-day quote volume before each month, BTC/ETH/SOL excluded.
+TRAINING ONLY: zip files of months >= 2023-01 are never opened. Writes {month: [symbols]} for 2020-07..2022-12."""
+import csv, io, json, sys, zipfile
+from pathlib import Path
+from datetime import datetime, timezone
+
+H4, DAY = 14_400_000, 86_400_000
+EXCL = {"BTCUSDT", "ETHUSDT", "SOLUSDT"}
+
+
+def ms(y, m): return int(datetime(y, m, 1, tzinfo=timezone.utc).timestamp() * 1000)
+
+
+def main():
+    root, out = Path(sys.argv[1]), Path(sys.argv[2])
+    qv = {}
+    for d in sorted((root / "4h").iterdir()):
+        if d.name in EXCL: continue
+        q = {}
+        for z in sorted(d.glob("*.zip")):
+            ym = z.stem.split("-4h-")[1]
+            if ym >= "2023-01": continue
+            with zipfile.ZipFile(z) as f:
+                for n in f.namelist():
+                    for row in csv.reader(io.TextIOWrapper(f.open(n))):
+                        if row and row[0].isdigit(): q[int(row[0])] = float(row[7])
+        if q: qv[d.name] = q
+    res = {}
+    for y in range(2020, 2023):
+        for m in range(1, 13):
+            s = ms(y, m)
+            vol = {sym: sum(q.get(t, 0.0) for t in range(s - 30 * DAY, s, H4)) for sym, q in qv.items()}
+            top = [s_ for s_, v in sorted(vol.items(), key=lambda kv: -kv[1])[:25] if v > 0]
+            res[f"{y}-{m:02d}"] = top
+    out.parent.mkdir(parents=True, exist_ok=True); out.write_text(json.dumps(res, indent=0))
+    syms = sorted({s for v in res.values() for s in v}); print(len(syms), "symbols in training universe;", sum(1 for v in res.values() if v), "months with universe")
+
+
+main()

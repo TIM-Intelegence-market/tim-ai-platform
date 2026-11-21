@@ -97,7 +97,9 @@ def test_planted_effect_passes_and_noise_fails(monkeypatch):
     assert noise["urteil"] == "NO ROBUST EDGE PROVEN"
 
 
-def test_draft_refuses_to_evaluate():
+def test_frozen_and_a_draft_refuses_to_evaluate(monkeypatch):
+    assert s27.VERSION == "1.0"
+    monkeypatch.setattr(s27, "VERSION", "0.1")
     with pytest.raises(SystemExit):
         s27.evaluate([], list(s24.FAMILIES), {})
 

@@ -1,0 +1,372 @@
+{
+ "meta": {
+  "test": "T5",
+  "erzeugt_utc": "2026-11-16T13:34Z",
+  "konfiguration": {
+   "kosten": "K1"
+  },
+  "befehl": "python3 -m src.research_lab.konsolidierung.lauf /home/user/work/data docs/research_lab/konsolidierung/ergebnisse s7b_train_2026-10-26T1305Z_trades.json s7_train_2026-10-26T1049Z_trades.json /home/user/work/bitunix",
+  "zeitraum": "Signale 2020-01 bis 2024-12 (Training < 2023-01-01, Validierung 2023-01-01 bis 2024-12-31); Holdout nicht geladen",
+  "status": "abgeschlossen",
+  "grenzen": [
+   "nur Bericht (Evidenzmatrix)",
+   "Einzelinstrument-Läufe ohne Positionsgrenze über Instrumente"
+  ],
+  "seed": 20261116,
+  "kandidat": "C1",
+  "code_commit": "f1c39402a7cf360816b08cf871e7b2559cd5f4a9",
+  "code_unsauber": false,
+  "daten_version_sha256_datenaudit": "56b44a7f89643eafb7de1b163157a5eaf906203bb3432f625e14dd344a5eb2d2",
+  "dauer_s": 0.4
+ },
+ "ergebnis": {
+  "C1 (Referenz)": {
+   "train": {
+    "n": 292,
+    "e_r": 0.220818,
+    "summe_r": 64.478909,
+    "sd_r": 1.727779,
+    "profit_faktor": 1.340641,
+    "trefferquote": 0.373288,
+    "max_drawdown_r": 20.964105
+   },
+   "validation": {
+    "n": 207,
+    "e_r": 0.263985,
+    "summe_r": 54.644996,
+    "sd_r": 1.718487,
+    "profit_faktor": 1.430369,
+    "trefferquote": 0.396135,
+    "max_drawdown_r": 11.050208
+   },
+   "pooled": {
+    "n": 499,
+    "e_r": 0.238725,
+    "summe_r": 119.123906,
+    "sd_r": 1.722333,
+    "profit_faktor": 1.376665,
+    "trefferquote": 0.382766,
+    "max_drawdown_r": 20.964105
+   }
+  },
+  "ohne SMA200-Filter": {
+   "train": {
+    "n": 346,
+    "e_r": 0.157706,
+    "summe_r": 54.566404,
+    "sd_r": 1.694387,
+    "profit_faktor": 1.23967,
+    "trefferquote": 0.358382,
+    "max_drawdown_r": 23.991359
+   },
+   "validation": {
+    "n": 248,
+    "e_r": 0.205035,
+    "summe_r": 50.848675,
+    "sd_r": 1.696854,
+    "profit_faktor": 1.327048,
+    "trefferquote": 0.375,
+    "max_drawdown_r": 10.500512
+   },
+   "pooled": {
+    "n": 594,
+    "e_r": 0.177466,
+    "summe_r": 105.415079,
+    "sd_r": 1.694148,
+    "profit_faktor": 1.275127,
+    "trefferquote": 0.36532,
+    "max_drawdown_r": 23.991359
+   }
+  },
+  "ohne Mindestrisiko 1 %": {
+   "train": {
+    "n": 292,
+    "e_r": 0.220769,
+    "summe_r": 64.464552,
+    "sd_r": 1.72771,
+    "profit_faktor": 1.340564,
+    "trefferquote": 0.373288,
+    "max_drawdown_r": 20.964105
+   },
+   "validation": {
+    "n": 208,
+    "e_r": 0.25672,
+    "summe_r": 53.397728,
+    "sd_r": 1.716091,
+    "profit_faktor": 1.416871,
+    "trefferquote": 0.394231,
+    "max_drawdown_r": 11.050208
+   },
+   "pooled": {
+    "n": 500,
+    "e_r": 0.235725,
+    "summe_r": 117.86228,
+    "sd_r": 1.721254,
+    "profit_faktor": 1.371361,
+    "trefferquote": 0.382,
+    "max_drawdown_r": 20.964105
+   }
+  },
+  "ohne Zeitstopp (nur Stop/Ziel)": {
+   "train": {
+    "n": 245,
+    "e_r": 0.241681,
+    "summe_r": 59.21195,
+    "sd_r": 1.884523,
+    "profit_faktor": 1.334843,
+    "trefferquote": 0.330612,
+    "max_drawdown_r": 22.416314
+   },
+   "validation": {
+    "n": 154,
+    "e_r": 0.240587,
+    "summe_r": 37.050469,
+    "sd_r": 1.886396,
+    "profit_faktor": 1.332541,
+    "trefferquote": 0.331169,
+    "max_drawdown_r": 10.041216
+   },
+   "pooled": {
+    "n": 399,
+    "e_r": 0.241259,
+    "summe_r": 96.262419,
+    "sd_r": 1.882875,
+    "profit_faktor": 1.333953,
+    "trefferquote": 0.330827,
+    "max_drawdown_r": 22.416314
+   }
+  },
+  "ohne Positionsgrenze (eine Position je Instrument, S7)": {
+   "train": {
+    "n": 557,
+    "e_r": 0.226263,
+    "summe_r": 126.028436,
+    "sd_r": 1.732937,
+    "profit_faktor": 1.349297,
+    "trefferquote": 0.371634,
+    "max_drawdown_r": 22.098124
+   },
+   "validation": {
+    "n": 420,
+    "e_r": 0.182323,
+    "summe_r": 76.575637,
+    "sd_r": 1.718536,
+    "profit_faktor": 1.278326,
+    "trefferquote": 0.364286,
+    "max_drawdown_r": 30.812804
+   },
+   "pooled": {
+    "n": 977,
+    "e_r": 0.207374,
+    "summe_r": 202.604073,
+    "sd_r": 1.726015,
+    "profit_faktor": 1.318592,
+    "trefferquote": 0.368475,
+    "max_drawdown_r": 30.812804
+   }
+  },
+  "nur long": {
+   "train": {
+    "n": 178,
+    "e_r": 0.168909,
+    "summe_r": 30.065847,
+    "sd_r": 1.740214,
+    "profit_faktor": 1.248468,
+    "trefferquote": 0.353933,
+    "max_drawdown_r": 21.531762
+   },
+   "validation": {
+    "n": 135,
+    "e_r": 0.233459,
+    "summe_r": 31.516984,
+    "sd_r": 1.741694,
+    "profit_faktor": 1.36103,
+    "trefferquote": 0.377778,
+    "max_drawdown_r": 16.112524
+   },
+   "pooled": {
+    "n": 313,
+    "e_r": 0.19675,
+    "summe_r": 61.58283,
+    "sd_r": 1.738354,
+    "profit_faktor": 1.295642,
+    "trefferquote": 0.364217,
+    "max_drawdown_r": 21.531762
+   }
+  },
+  "nur short": {
+   "train": {
+    "n": 132,
+    "e_r": 0.245398,
+    "summe_r": 32.392556,
+    "sd_r": 1.70945,
+    "profit_faktor": 1.39857,
+    "trefferquote": 0.378788,
+    "max_drawdown_r": 9.713017
+   },
+   "validation": {
+    "n": 78,
+    "e_r": 0.223079,
+    "summe_r": 17.400167,
+    "sd_r": 1.655654,
+    "profit_faktor": 1.383232,
+    "trefferquote": 0.397436,
+    "max_drawdown_r": 8.647181
+   },
+   "pooled": {
+    "n": 210,
+    "e_r": 0.237108,
+    "summe_r": 49.792722,
+    "sd_r": 1.685722,
+    "profit_faktor": 1.393072,
+    "trefferquote": 0.385714,
+    "max_drawdown_r": 9.713017
+   }
+  },
+  "nur BTC (allein gerechnet)": {
+   "train": {
+    "n": 201,
+    "e_r": 0.144701,
+    "summe_r": 29.084825,
+    "sd_r": 1.718178,
+    "profit_faktor": 1.211098,
+    "trefferquote": 0.358209,
+    "max_drawdown_r": 10.946321
+   },
+   "validation": {
+    "n": 131,
+    "e_r": 0.318682,
+    "summe_r": 41.747326,
+    "sd_r": 1.766092,
+    "profit_faktor": 1.51808,
+    "trefferquote": 0.412214,
+    "max_drawdown_r": 11.062356
+   },
+   "pooled": {
+    "n": 332,
+    "e_r": 0.21335,
+    "summe_r": 70.832151,
+    "sd_r": 1.736674,
+    "profit_faktor": 1.324383,
+    "trefferquote": 0.379518,
+    "max_drawdown_r": 11.062356
+   }
+  },
+  "nur ETH (allein gerechnet)": {
+   "train": {
+    "n": 200,
+    "e_r": 0.344964,
+    "summe_r": 68.99273,
+    "sd_r": 1.769549,
+    "profit_faktor": 1.559891,
+    "trefferquote": 0.4,
+    "max_drawdown_r": 14.427131
+   },
+   "validation": {
+    "n": 142,
+    "e_r": 0.113743,
+    "summe_r": 16.151477,
+    "sd_r": 1.701746,
+    "profit_faktor": 1.167684,
+    "trefferquote": 0.338028,
+    "max_drawdown_r": 10.30831
+   },
+   "pooled": {
+    "n": 342,
+    "e_r": 0.24896,
+    "summe_r": 85.144206,
+    "sd_r": 1.742934,
+    "profit_faktor": 1.387819,
+    "trefferquote": 0.374269,
+    "max_drawdown_r": 14.427131
+   }
+  },
+  "nur SOL (allein gerechnet)": {
+   "train": {
+    "n": 156,
+    "e_r": 0.179172,
+    "summe_r": 27.950882,
+    "sd_r": 1.707006,
+    "profit_faktor": 1.280063,
+    "trefferquote": 0.352564,
+    "max_drawdown_r": 9.906015
+   },
+   "validation": {
+    "n": 147,
+    "e_r": 0.127053,
+    "summe_r": 18.676834,
+    "sd_r": 1.696289,
+    "profit_faktor": 1.190139,
+    "trefferquote": 0.346939,
+    "max_drawdown_r": 17.498304
+   },
+   "pooled": {
+    "n": 303,
+    "e_r": 0.153887,
+    "summe_r": 46.627715,
+    "sd_r": 1.699197,
+    "profit_faktor": 1.235458,
+    "trefferquote": 0.349835,
+    "max_drawdown_r": 17.498304
+   }
+  },
+  "ohne Funding": {
+   "train": {
+    "n": 292,
+    "e_r": 0.248374,
+    "summe_r": 72.525181,
+    "sd_r": 1.731258,
+    "profit_faktor": 1.391569,
+    "trefferquote": 0.376712,
+    "max_drawdown_r": 18.226418
+   },
+   "validation": {
+    "n": 207,
+    "e_r": 0.27268,
+    "summe_r": 56.444746,
+    "sd_r": 1.717757,
+    "profit_faktor": 1.449108,
+    "trefferquote": 0.400966,
+    "max_drawdown_r": 10.992902
+   },
+   "pooled": {
+    "n": 499,
+    "e_r": 0.258457,
+    "summe_r": 128.969927,
+    "sd_r": 1.723983,
+    "profit_faktor": 1.414829,
+    "trefferquote": 0.386774,
+    "max_drawdown_r": 18.226418
+   }
+  },
+  "gespiegelte Reihenfolge (SOL > ETH > BTC)": {
+   "train": {
+    "n": 297,
+    "e_r": 0.20702,
+    "summe_r": 61.484915,
+    "sd_r": 1.739576,
+    "profit_faktor": 1.315336,
+    "trefferquote": 0.360269,
+    "max_drawdown_r": 14.721835
+   },
+   "validation": {
+    "n": 206,
+    "e_r": 0.140965,
+    "summe_r": 29.038688,
+    "sd_r": 1.681979,
+    "profit_faktor": 1.214619,
+    "trefferquote": 0.354369,
+    "max_drawdown_r": 16.125252
+   },
+   "pooled": {
+    "n": 503,
+    "e_r": 0.179967,
+    "summe_r": 90.523603,
+    "sd_r": 1.71484,
+    "profit_faktor": 1.274077,
+    "trefferquote": 0.357853,
+    "max_drawdown_r": 16.125252
+   }
+  }
+ }
+}

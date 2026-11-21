@@ -167,7 +167,7 @@ async def test_replay_levels_reconcile(dbs) -> None:
     hour_minutes = [c for c in minutes if hour.open_time <= c.open_time < hour.close_time]
     # Hierarchical float summation order differs between levels (inherent IEEE754
     # effect, ~4e-13 relative here). Use the engine's own reconciliation tolerance
-    # (expansion.volume_profile): max(1e-9, volume*1e-9). Counts are exact integers.
+    # (former src/research_intelligence expansion.volume_profile, archived 15.11.2026): max(1e-9, volume*1e-9). Counts are exact integers.
     tolerance = max(1e-9, hour.volume * 1e-9)
     assert abs(sum(c.volume for c in hour_minutes) - hour.volume) <= tolerance
     assert sum(c.trade_count for c in hour_minutes) == hour.trade_count
@@ -272,35 +272,6 @@ async def test_lookahead_safety(dbs) -> None:
             "SELECT open_time,close_time FROM candles WHERE symbol=$1 AND timeframe='1h'", SYMBOL,
         )
     assert (h["close_time"] - h["open_time"]).total_seconds() == 3600
-
-
-@pytest.mark.asyncio
-async def test_volume_profile_runs_on_reconstructed_minutes(dbs) -> None:
-    from src.research_intelligence.expansion import volume_profile
-
-    test = dbs
-    trades = await load_trades(test)
-    await run_replay(test, trades)
-    async with test.acquire() as conn:
-        minute_rows = await conn.fetch(
-            "SELECT open_time AS start, close_time AS end, open, high, low, close, volume "
-            "FROM candles WHERE symbol=$1 AND timeframe='1m' ORDER BY open_time", SYMBOL,
-        )
-    minutes = [
-        {"seconds": 60, "complete": True, "start": r["start"].isoformat(), "end": r["end"].isoformat(),
-         "available_at": r["end"].isoformat(), "provenance": "VERIFIED",
-         "open": r["open"], "high": r["high"], "low": r["low"], "close": r["close"], "volume": r["volume"]}
-        for r in minute_rows
-    ]
-    at = datetime(2026, 9, 10, 13, 9, tzinfo=timezone.utc).isoformat()
-    trade_dicts = [
-        {"symbol": t.symbol, "price": t.price, "quantity": t.quantity,
-         "event_time": t.event_time.isoformat(), "available_at": t.event_time.isoformat(),
-         "trade_id": t.trade_id, "source": "test-replay", "provenance": "VERIFIED"}
-        for t in trades
-    ]
-    result = volume_profile(trade_dicts, minutes, at, 3600)
-    assert result["coverage_complete"] is True
 
 
 @pytest.mark.asyncio

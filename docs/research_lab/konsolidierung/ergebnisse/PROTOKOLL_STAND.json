@@ -1,0 +1,16 @@
+{
+ "protokoll": "docs/research_lab/konsolidierung/PROTOKOLL_KONSOLIDIERUNG.md",
+ "version": "1.0",
+ "git_commit": "1e9270a40b0232c4c78ba4a508c1c9dd6d4e97f9",
+ "sha256": "e82a31f060c20651d9502f390b8fa317c03e0687b9baf234ee912262f6d759a2",
+ "eingefroren_utc": "2026-11-16T13:16Z",
+ "vor_dem_einfrieren_gerechnet": [
+  "T1 Reproduktion S7/S7b",
+  "Datenaudit",
+  "Bitunix-Kerzenvergleich inkl. S7b auf Bitunix-Kerzen",
+  "Bitunix-Orderbuch-Momentaufnahme"
+ ],
+ "nach_dem_einfrieren_gerechnet": [
+  "T2 bis T12 (siehe TESTLOG.md)"
+ ]
+}

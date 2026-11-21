@@ -110,6 +110,48 @@ def regime(ib_range: float | None, past_ranges: Sequence[float], cfg: Config) ->
     return "NEUTRAL"
 
 
+def _overlap(a: DaySummary, b: DaySummary) -> float:
+    """Overlap of two value areas as a share of the narrower one (0 = apart, 1 = one inside the other)."""
+    width = min(a.va_width, b.va_width)
+    if width <= 0:
+        return 0.0
+    return max(0.0, min(a.vah, b.vah) - max(a.val, b.val)) / width
+
+
+def balance_state(days: Sequence[DaySummary], k: int, overlap_min: float) -> str:
+    """Multi-day auction regime from the last ``k`` completed days (Fabervaale video W1/W6, plan package P4).
+
+    IMBALANCE_HOCH / IMBALANCE_TIEF: yesterday's whole value area lies above (below) the day before's;
+    BALANCE: every consecutive pair of the last ``k`` value areas overlaps by at least ``overlap_min``;
+    TRANSITION: anything else; UNBEKANNT with fewer than ``k`` days (k >= 2)."""
+    if k < 2 or len(days) < k:
+        return "UNBEKANNT"
+    last, before = days[-1], days[-2]
+    if last.val > before.vah:
+        return "IMBALANCE_HOCH"
+    if last.vah < before.val:
+        return "IMBALANCE_TIEF"
+    window = list(days[-k:])
+    if all(_overlap(a, b) >= overlap_min for a, b in zip(window, window[1:])):
+        return "BALANCE"
+    return "TRANSITION"
+
+
+def acceptance_bias(days: Sequence[DaySummary], n: int) -> str:
+    """Where yesterday closed against the joint value of the last ``n`` days (video W12/W13): HOEHER above every
+    VAH, TIEFER below every VAL, INNEN otherwise, UNBEKANNT with fewer than ``n`` days. Approximation of the merged
+    profile: the outermost VA edges stand in for the composite value area."""
+    if n < 1 or len(days) < n:
+        return "UNBEKANNT"
+    window = list(days[-n:])
+    close = window[-1].close
+    if close > max(d.vah for d in window):
+        return "HOEHER"
+    if close < min(d.val for d in window):
+        return "TIEFER"
+    return "INNEN"
+
+
 @dataclass(frozen=True, slots=True)
 class Levels:
     """Everything a detector may look at: yesterday, naked POCs, the previous session's extremes."""

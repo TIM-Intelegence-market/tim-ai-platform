@@ -64,7 +64,8 @@ def facts(journals: Mapping[str, Path], lage: Mapping[str, Any] | None, attentio
                   and since <= _time(e["closed_at"]) <= now]
         total = round(sum(float(e["net_r"]) for e in closed), 2)
         wins = sum(float(e["net_r"]) > 0 for e in closed)
-        lines.append(f"Papier-Journal {name}: {len(new)} neue Pläne, {len(closed)} geschlossen ({wins} im Plus), Summe {total:+.2f} R netto.")
+        result = f"{len(closed)} geschlossen ({wins} im Plus), Summe {total:+.2f} R netto" if closed else "keiner geschlossen, also kein Ergebnis"
+        lines.append(f"Papier-Journal {name}: {len(new)} neue Pläne, {result}.")
         for entry in entries:
             if entry.get("status") in LIVE:
                 lines.append(f"Offen {name}: {entry.get('direction')} {LIVE[entry['status']]}, Einstieg {_money(entry.get('entry'))}, "

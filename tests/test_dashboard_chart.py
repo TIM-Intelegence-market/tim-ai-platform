@@ -304,3 +304,29 @@ def test_candles_use_the_width_without_plans() -> None:
     model["level_plans"] = {"plans": []}
     bodies = [float(x) for x in re.findall(r"<rect x='([\d.]+)'[^>]*class='tc-body", _chart_svg(model))]
     assert max(bodies) > 700
+
+
+def test_a_plan_zone_covering_the_whole_window_stays_drawn() -> None:
+    from src.dashboard.pages.chart import _chart_svg
+
+    model = build_chart_model(_state().chart_series(), "15m", now=END)
+    low, high = min(c["low"] for c in model["candles"]), max(c["high"] for c in model["candles"])
+    wide = {"id": "W1", "direction": "LONG", "entry_low": low - (high - low) * 5, "entry_high": high + (high - low) * 5, "plan_text": "breite Zone"}
+    model["analysis"] = {**(model.get("analysis") or {}), "scenarios": [wide]}
+    model["level_plans"] = {"plans": []}
+    svg = _chart_svg(model)
+    assert "class='tc-zone tc-zone--long'" in svg and "unter dem Bild: breite Zone" not in svg
+
+
+def test_a_prior_day_level_just_outside_the_candles_widens_the_axis() -> None:
+    from src.dashboard.pages.chart import _chart_svg
+
+    model = build_chart_model(_state().chart_series(), "15m", now=END)
+    model["analysis"] = {**(model.get("analysis") or {}), "scenarios": []}
+    model["level_plans"] = {"plans": []}
+    model["bos"] = []
+    high = max(c["high"] for c in model["candles"])
+    low = min(c["low"] for c in model["candles"])
+    model["reference_levels"] = [{"label": "PDH · Vortag Hoch", "price": high + (high - low) * 0.2, "source": "Vortag"}]
+    svg = _chart_svg(model)
+    assert "PDH" in svg and "über dem Bild" not in svg

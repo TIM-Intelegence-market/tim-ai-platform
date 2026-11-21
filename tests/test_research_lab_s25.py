@@ -94,8 +94,8 @@ def test_verdict_branches():
     assert s25.verdict(train, lucky, 100)["verdict"] == "NICHT BESTANDEN"
 
 
-def test_run_is_locked_before_freeze(tmp_path):
-    assert s25.FROZEN is False
+def test_run_refuses_a_trades_file_without_the_frozen_hash(tmp_path):
+    assert s25.FROZEN is True
     trades = tmp_path / "t.json"
     trades.write_text(json.dumps([]))
     assert s25.main(["run", "--trades", str(trades), "--out", str(tmp_path / "out")]) == 2

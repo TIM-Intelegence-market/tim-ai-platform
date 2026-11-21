@@ -288,6 +288,15 @@ LOGBOOK_STATUS = {
 }
 
 
+def _logbook_data(path: Path) -> list[dict[str, Any]]:
+    """Entries of the research logbook; an unreadable file counts as empty here (the logbook page names the error)."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return [e for e in data.get("entries") or [] if isinstance(e, dict)]
+    except (OSError, ValueError, AttributeError):
+        return []
+
+
 def _logbook_section(path: Path, now: datetime) -> dict[str, Any]:
     """One row per study: what was tested, what came out, why it ended."""
     try:

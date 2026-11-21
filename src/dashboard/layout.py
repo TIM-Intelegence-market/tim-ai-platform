@@ -27,6 +27,9 @@ EXTRA_CSS = EXTRA_CSS + SHELL_CSS + ".ncc .shell{padding-top:22px}.ncc .footer{d
 AUTO_REFRESH_SCRIPT = (_ASSETS / "auto_refresh.html").read_text(encoding="utf-8")
 
 
+from src.dashboard.pwa import HEAD_TAGS as PWA_HEAD_TAGS  # noqa: E402
+
+
 def _content_security_policy() -> str:
     style = CSS + EXTRA_CSS
     script = AUTO_REFRESH_SCRIPT.split("<script>", 1)[1].rsplit("</script>", 1)[0]
@@ -37,7 +40,7 @@ def _content_security_policy() -> str:
         f"style-src 'sha256-{style_hash}'; "
         f"script-src 'sha256-{script_hash}'; "
         "connect-src 'self'; img-src 'self' data:; font-src 'none'; "
-        "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        "manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     )
 
 
@@ -191,7 +194,7 @@ def _layout(title: str, page: str, body: str, strip: list[tuple[str, str, str, s
     matrix = f"<dl class='status-matrix' aria-label='Globaler Systemstatus'>{strip_rows}{trading_row}</dl>" if strip else ""
     live = "<button type='button' id='tim-status' class='live badge--yellow' aria-live='polite' aria-label='Status jetzt aktualisieren'>● Startet…</button>"
     inner = frame(PAGE_PATHS.get(page, ""), matrix + body, live=live, main_class="shell")
-    return translate_html(f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='dark'><link rel='icon' href='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><rect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%23070a0f%22/><rect x=%224%22 y=%224%22 width=%228%22 height=%228%22 rx=%221.5%22 fill=%22%2335d39a%22/></svg>'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body class='cc ncc'>{inner}{AUTO_REFRESH_SCRIPT if refresh else ''}</body></html>""")
+    return translate_html(f"""<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='dark'>{PWA_HEAD_TAGS}<link rel='icon' href='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><rect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%23070a0f%22/><rect x=%224%22 y=%224%22 width=%228%22 height=%228%22 rx=%221.5%22 fill=%22%2335d39a%22/></svg>'><title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}</style></head><body class='cc ncc'>{inner}{AUTO_REFRESH_SCRIPT if refresh else ''}</body></html>""")
 
 
 def _hero(title: str, text: str) -> str:

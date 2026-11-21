@@ -1,6 +1,6 @@
 # Liquidations-Heatmap (Schätzung)
 
-Seit 27.10.2026 im Control Center und im öffentlichen Chart (Ebene „Liquidations-Heatmap (Schätzung)“,
+Seit 27.10.2026 im Control Center und im öffentlichen Chart (Ebene „Liquidations-Heatmap (Modell, keine echten Liquidationen)“,
 englisch „Liquidation heatmap (estimate)“). Vorbild: die Heatmap von Trading Different, die Uzi am
 27.10. als Screenshot schickte. Deren Daten sind nicht frei, TIM rechnet deshalb selbst.
 

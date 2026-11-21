@@ -24,6 +24,8 @@ REFRESH_SECONDS = 30
 # The areas of the new dashboard. Areas not built yet list the old pages
 # that hold their content, so no area is an empty page.
 AREAS: list[dict[str, Any]] = [
+    {"key": "ueberblick", "label": "Überblick", "href": "/", "built": True,
+     "text": "Was wartet auf dich, was ist neu gebaut, wie stehen die Studien, was machen Mac und Worker."},
     {"key": "lage", "label": "Lage", "href": "/neu", "built": True,
      "text": "Läuft TIM, sind die Daten frisch, was sagt TIM zum Markt, was braucht dich."},
     {"key": "markt", "label": "Markt & Pläne", "href": "/neu/markt", "built": True,
@@ -35,8 +37,7 @@ AREAS: list[dict[str, Any]] = [
                ("Trader-Journal", "/trader-journal", "Eigene Papier-Trades eintragen und reviewen")]},
     {"key": "mac", "label": "Mac jetzt", "href": "/neu/mac", "built": True,
      "text": "Woran der Mac gerade arbeitet: CI-Lauf, Issue-Worker und die TIM-Dienste im Hintergrund.",
-     "pages": [("Worker-Dashboard", "http://127.0.0.1:8767/", "Volles Dashboard des Issue-Workers"),
-               ("Health Center", "/health", "Watchdog und Gesundheitsprüfungen"),
+     "pages": [("Health Center", "/health", "Watchdog und Gesundheitsprüfungen"),
                ("Zeitleiste", "/timeline", "Ereignisse von Watchdog, Backup und Kampagne")]},
     {"key": "hermes", "label": "TIM-KI (Hermes)", "href": "/neu/hermes", "built": True,
      "text": "Hermes-Agent mit DeepSeek: Status, Fragefeld und die letzten Antworten. Liest TIM nur über tim-ops und tim-graph."},
@@ -504,7 +505,7 @@ def markt_body(model: dict[str, Any]) -> str:
         rate = stats.get("win_rate")
         pj_html = (
             f"<p class='note'>{_e(stats.get('plans', 0))} Pläne · {_e(stats.get('closed', 0))} geschlossen · Trefferquote "
-            f"{_e(f'{rate * 100:.0f} %' if isinstance(rate, (int, float)) else '—')} · netto {_e(_rtext(stats.get('sum_net_r')))} · nur Papier</p>"
+            f"{_e(f'{rate * 100:.0f} %' if isinstance(rate, (int, float)) else '—')} · {_e('netto ' + _rtext(stats.get('sum_net_r')) if stats.get('closed') else 'noch keine Evidenz (kein Plan geschlossen)')} · nur Papier</p>"
             f"<h3 class='sub'>Offen</h3><div class='scroll'><table class='tbl'>{head}<tbody>{active}</tbody></table></div>"
             f"<h3 class='sub'>Zuletzt geschlossen</h3><div class='scroll'><table class='tbl'>{head}<tbody>{closed}</tbody></table></div>"
             "<p class='note'><a href='/journal'>Ganzes Plan-Journal</a> · <a href='/journal/struct'>Struktur-Regel</a></p>"
@@ -607,7 +608,7 @@ def mac_body(model: dict[str, Any]) -> str:
         + f"<section aria-labelledby='h-now'><h2 id='h-now'>Gerade jetzt</h2><div class='need now'><ul>{now_rows}</ul></div></section>"
         + f"<section id='worker' aria-labelledby='h-worker'><h2 id='h-worker'>Issue-Worker</h2>{_grid(model.get('worker') or [])}"
         + "".join(worker_extra) + lists
-        + "<p class='note'><a href='http://127.0.0.1:8767/'>Volles Worker-Dashboard</a> (Link funktioniert nur direkt am Mac)</p></section>"
+        + "<p class='note'>Das frühere eigene Worker-Dashboard (Port 8767) ist hier vollständig enthalten und muss nicht mehr einzeln geöffnet werden.</p></section>"
         + f"<section id='dienste' aria-labelledby='h-svc'><h2 id='h-svc'>Dienste im Hintergrund</h2>{_grid(model.get('services') or [])}"
         + "<p class='note'>Jede Kachel zeigt das letzte Lebenszeichen des Dienstes aus seiner Statusdatei. Ist es älter als sein Takt erlaubt, wird die Kachel gelb.</p></section>"
         + _more_pages("mac")

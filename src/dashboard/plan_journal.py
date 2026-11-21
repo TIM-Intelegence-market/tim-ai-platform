@@ -67,6 +67,7 @@ fee 0.05 % and slippage 0.03 % per side, 0.05 % on stop executions, costs in R
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import json
 import math
@@ -77,7 +78,8 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from src.dashboard import journal_log
-from src.dashboard.chart_model import _time, build_chart_model, clean_candles, ny_open_windows
+from src.dashboard.chart_model import TIMEFRAME_SECONDS, _time, build_chart_model, clean_candles, ny_open_windows
+from src.research_lab import begruendung
 from src.research_lab.setup_evidence import DEFAULT_REGISTER_PATH, INSUFFICIENT_EVIDENCE, PASSED_HOLDOUT, RESEARCH_ONLY, evidence_fields
 
 SCHEMA = "tim_plan_journal/2"
@@ -103,6 +105,7 @@ SLIPPAGE_PER_SIDE = 0.0003
 STOP_SLIPPAGE = 0.0005
 # Stop rule of an entry, fixed when it is recorded. Entries without one keep the old rule.
 STOP_RULE_COST = "be_cost/1"
+SHADOW_MAX_TRADES = 150_000  # Schatten-Score: measured 2 s of pipeline time at this size
 COST_STOP_MIN_GAP_R = 0.1  # the 30m close must be at least this far beyond the new stop
 VERDICT_RULESET = "verdict/1"
 FALLBACK_HOURS = 4.0  # safety net: in the trade this long, the stop may move without a structure reason
@@ -121,6 +124,9 @@ INSTRUMENT_SPECS = {
     # Monero on the Binance USD-M perpetual (Barti 11.11.2026, XMR journals in perp_journal.py): a perp can be
     # shorted without borrowing. Tick 0.01 USDT and lot 0.001 XMR as Binance lists XMRUSDT; check exchangeInfo before trusting it live.
     ("BINANCE", "USDM", "XMRUSDT"): {"tick_size": 0.01, "lot_step": 0.001, "short_executable": True},
+    # BTC perp shadow journals (perp_journal.py) are now labelled USDM instead of SPOT (R1, 16.11.2026). short_executable
+    # stays False on purpose: the label changes, the behaviour of these journals does not. Uzi decides about shorts later.
+    ("BINANCE", "USDM", "BTCUSDT"): {"tick_size": 0.01, "lot_step": 0.00001, "short_executable": False},
 }
 # The hypothesis register holds BTC research only. A plan on another symbol never borrows a BTC verdict.
 EVIDENCE_SYMBOLS = frozenset({"BTCUSDT"})
@@ -157,6 +163,9 @@ ENTRY_EXCLUDED = "ENTRY_EXCLUDED"
 # Horizon journals (SHORT / MID / LONG, Uzi 27.10.2026): after a stop, a stop that was only a wick
 # is marked once the next closes are known; the event may follow the terminal state like a correction.
 STOP_REVIEWED = "STOP_REVIEWED"
+# Preisbewegungen erklären (P4, Uzi 16.11.2026): after the close, the market event while the trade was open
+# (src.dashboard.move_label), once per trade; like a stop review it follows the terminal state and is never an input.
+MARKET_EVENT_LABELED = "MARKET_EVENT_LABELED"
 WICK_CLOSES = 2  # closes of the plan timeframe after the stop that are checked
 LOCK_TOLERANCE = 0.001  # horizon journals: a new entry within 0,1 % of a lost one counts as the same level
 LOCK_MIN_CLOSES = 4  # ... and stays locked for at least this many closes of the plan timeframe
@@ -250,6 +259,8 @@ def plans_from_model(model: Mapping[str, Any]) -> list[dict[str, Any]]:
             "invalidation_side": invalid.get("side"),
             "scenario_state": scenario.get("state"),
             "score": scenario.get("score"),
+            "score_parts": scenario.get("score_parts"),
+            "score_schatten": scenario.get("score_schatten"),
             "missing_confirmations": list(scenario.get("missing_confirmations") or []),
             "pipeline_decision": (analysis.get("decision") or {}).get("status"),
             "pipeline_decision_reasons": list((analysis.get("decision") or {}).get("reasons") or []),
@@ -365,6 +376,7 @@ def record_plans(journal: dict[str, Any], plans: Sequence[Mapping[str, Any]], at
             "last_seen_at": _iso(at),
             **payload,
             **decision_fields(plan),
+            "begruendung": begruendung.fuer_plan(plan),
             "status": OPEN,
             **_arming(plan),
             "stop_rule": STOP_RULE_COST,
@@ -895,6 +907,12 @@ def score_reliability(closed: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             "score_type": "UNCALIBRATED_CONFIDENCE", "verdict": None if monotone is None else ("steigend" if monotone else "nicht steigend")}
 
 
+def _market_event(closed: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    from src.dashboard.move_label import by_label
+
+    return by_label(closed)
+
+
 def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
     """Counts and sums. Entries excluded by a reviewed correction are left out and counted separately."""
     every = list(journal.get("entries") or [])
@@ -933,6 +951,8 @@ def summary(journal: Mapping[str, Any]) -> dict[str, Any]:
                      "sum_net_r": round(sum(e.get("net_r") or 0.0 for e in excluded), 3)},
         # Master-Analyse 09.11.2026 (P2b): the engine score is a heuristic; this table shows what it was worth.
         "score_reliability": score_reliability(closed),
+        # P4 (16.11.2026): results per market-event label, counted only; under 30 trades no statement.
+        "market_event": _market_event(closed),
         "counter_trend": {
             "plans": sum(counter_trend(e.get("direction"), e.get("market_state")) for e in entries),
             "closed": len(against),
@@ -1121,6 +1141,13 @@ def fold(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             if entry.get("exit_reason") != "STOP" or entry.get("stop_review"):
                 raise journal_log.LogError(f"plan {entry['id']}: stop review only once and only after a stop")
             entry["stop_review"] = {k: v for k, v in payload.items() if k != "id"}
+        elif kind == MARKET_EVENT_LABELED:
+            entry = by_id.get(payload.get("id"))
+            if entry is None:
+                raise journal_log.LogError(f"market event for unknown plan {payload.get('id')}")
+            if entry.get("status") != "CLOSED" or entry.get("market_event"):
+                raise journal_log.LogError(f"plan {entry['id']}: market event only once and only after the close")
+            entry["market_event"] = {**{k: v for k, v in payload.items() if k != "id"}, "at": event.get("recorded_at")}
         elif kind == STRUCTURE_PLANS_DROPPED:
             counts = journal.setdefault("structure_skips", {})
             for reason in payload.get("reasons") or []:
@@ -1184,7 +1211,9 @@ def _source(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime,
 def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None, register_path: Path | str = DEFAULT_REGISTER_PATH,
            rule: str = RULE_TIM, timeframe: str = PLAN_TIMEFRAME, footprint: Mapping[str, Any] | None = None,
            gamma: Mapping[str, Any] | None = None, profile_fn: Callable[[Sequence[Mapping[str, Any]], datetime], Mapping[str, Any] | None] | None = None,
-           source: str | None = None, market_type: str | None = None) -> dict[str, Any]:
+           source: str | None = None, market_type: str | None = None,
+           trades_fn: Callable[[datetime, datetime], Sequence[Any]] | None = None,
+           positioning_fn: Callable[[datetime], Any] | None = None, moves_path: Path | None = None) -> dict[str, Any]:
     """One journal step: fold the log, follow outcomes, record plans at a new
     close of ``timeframe`` (30m by default; 15m / 1h / 1d for the horizon journals,
     see HORIZONS), append the resulting events, then write the view.
@@ -1199,6 +1228,9 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
     from candles. ``source`` names the journal's market in the view (default: Setup-Pfad on spot).
     ``market_type`` (XMR journals, 11.11.2026) sets the market type of new plans, e.g. "USDM" for a perp; the
     chart model always says SPOT. Without it nothing changes (BTC journals).
+
+    ``moves_path`` (P4, 16.11.2026) is the BTC move record of ``move_context``; with it, closed trades get their
+    market-event label (``move_label``) once the moves around them are recorded. Without it no label is written.
 
     A broken event log raises journal_log.LogError and nothing is written."""
     now = now or datetime.now(timezone.utc)
@@ -1227,7 +1259,24 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
                                "payload": {"close_time": _iso(latest), "reason": "stale_data", "age_seconds": int(age.total_seconds())}})
         elif journal.get("last_plan_candle") != _iso(latest):
             profile = profile_fn(plan_candles[-PLAN_VISIBLE:], latest) if profile_fn else None
-            model = build_chart_model(series, timeframe, now=latest, visible=PLAN_VISIBLE, profile=profile)
+            trades = None
+            if trades_fn is not None:
+                try:  # Schatten-Score: trades up to the moment of the plan only, the window is bounded
+                    window = min(timedelta(hours=2), 4 * timedelta(seconds=TIMEFRAME_SECONDS.get(timeframe, 1800)))
+                    trades = list(trades_fn(latest - window, latest)) or None
+                    if trades and len(trades) > SHADOW_MAX_TRADES:
+                        trades = trades[-SHADOW_MAX_TRADES:]  # the newest ones; keeps the pipeline's run time bounded
+                except Exception as error:  # noqa: BLE001 - the shadow must never stop a journal step
+                    trades = None
+                    logging.getLogger(__name__).warning("score shadow: no trades (%s)", type(error).__name__)
+            positioning = None
+            if trades and positioning_fn is not None:
+                try:  # funding and open interest as of the plan moment (Schatten-Score only)
+                    positioning = positioning_fn(latest)
+                except Exception as error:  # noqa: BLE001
+                    logging.getLogger(__name__).warning("score shadow: no positioning (%s)", type(error).__name__)
+            model = build_chart_model(series, timeframe, now=latest, visible=PLAN_VISIBLE, profile=profile, trades=trades,
+                                      positioning=positioning, market_type=market_type or "SPOT")
             plans = plans_from_model(model)
             dropped: list[str] = []
             if rule == RULE_STRUCT:
@@ -1268,6 +1317,18 @@ def update(path: Path, series: Mapping[str, Sequence[Mapping[str, Any]]], now: d
     for review in stop_reviews(journal, clean_candles(plan_candles, timeframe), now):
         new_events.append({"event_id": journal_log.event_id(STOP_REVIEWED, review["id"]), "kind": STOP_REVIEWED, "aggregate_id": review["id"],
                            "recorded_at": _iso(now), "source_hash": source_hash, "source_range": source_range, "payload": review})
+    if moves_path is not None:
+        from src.dashboard.move_label import labels as market_event_labels
+
+        try:  # a look back after the close: it must never stop a journal step
+            due = market_event_labels(journal, moves_path, now)
+        except Exception as error:  # noqa: BLE001
+            due = []
+            logging.getLogger(__name__).warning("market event label skipped (%s)", type(error).__name__)
+        for label in due:
+            new_events.append({"event_id": journal_log.event_id(MARKET_EVENT_LABELED, label["id"]), "kind": MARKET_EVENT_LABELED,
+                               "aggregate_id": label["id"], "recorded_at": _iso(now), "source_hash": source_hash,
+                               "source_range": source_range, "payload": label})
     written = journal_log.append(events_path, new_events, state)
     events = state.events + written
     # The view is always the fold: cursor-only progress that was not written is re-derived next time.

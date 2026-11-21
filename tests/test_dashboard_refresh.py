@@ -733,12 +733,12 @@ def test_public_view_checks_follow_the_flag_file(live):
     _, _, _, agent = live
     agent.policy = {**agent.policy, "health_checks": LIVE_POLICY["health_checks"]}
     names = lambda **kw: [c["name"] for c in agent.enabled_checks(**kw)]  # noqa: E731
-    assert "public_journal" not in names() and names(after_restart=True) == []
+    assert "public_robots" not in names() and names(after_restart=True) == []
     flag = agent.home / PUBLIC_FLAG
     flag.parent.mkdir(parents=True, exist_ok=True)
     flag.write_text("")
-    assert {"public_chart", "public_journal"} <= set(names())
-    assert names(after_restart=True) == ["public_chart", "public_journal"]
+    assert {"public_chart", "public_robots"} <= set(names())
+    assert names(after_restart=True) == ["public_chart", "public_robots"]
 
 
 def test_public_view_down_after_restart_rolls_back(live):
@@ -754,7 +754,7 @@ def test_public_view_down_after_restart_rolls_back(live):
     new_commit(origin, "src/dashboard/public_en.py", "x\n")
     status = agent.run_once()
     restart = status["deploy"]["restart"]
-    assert [p["name"] for p in restart["pages"]] == ["public_chart", "public_journal"] and not restart["ok"]
+    assert [p["name"] for p in restart["pages"]] == ["public_chart", "public_robots"] and not restart["ok"]
     assert status["deploy"]["result"] != "DEPLOYED" and git(root, "rev-parse", "HEAD") == previous
     assert status["health_ok"] is False
 

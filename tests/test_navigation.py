@@ -73,14 +73,15 @@ def test_every_navigation_target_is_served(server: int) -> None:
         assert status in allowed, f"{href} -> {status}"
 
 
-def test_start_page_is_the_cockpit_without_sub_menu(server: int) -> None:
+def test_start_page_is_the_ueberblick(server: int) -> None:
     status, page = _get(server, "/")
     assert status == 200
-    assert "<title>Cockpit · TIM</title>" in page
+    assert "<title>Überblick · TIM</title>" in page
     assert "Bisheriges Dashboard" not in page and "Needs attention" not in page
     nav = page.split("aria-label='Hauptnavigation'>", 1)[1].split("</nav>", 1)[0]
     assert nav.count("<a ") == 4 and "href='/' aria-current='page'" in nav
-    assert "aria-label='Seiten in diesem Bereich'" not in page  # a screen has no sub-menu
+    status, cockpit = _get(server, "/cockpit")  # the former start page: chart, plans, result
+    assert status == 200 and "<title>Cockpit · TIM</title>" in cockpit
 
 
 def test_detail_page_shows_way_back_to_its_screen(server: int) -> None:
@@ -90,10 +91,10 @@ def test_detail_page_shows_way_back_to_its_screen(server: int) -> None:
     assert "href='/system' class='ncc-back'>← Ampel</a>" in sub and "aria-current='page'>Laufzeit</a>" in sub
 
 
-def test_old_start_paths_lead_to_the_cockpit(server: int) -> None:
+def test_old_start_paths_lead_to_the_start_page(server: int) -> None:
     for path in ("/neu", "/neu/"):
         with urlopen(f"http://127.0.0.1:{server}{path}", timeout=10) as response:  # follows the 303
-            assert response.status == 200 and "<title>Cockpit · TIM</title>" in response.read().decode()
+            assert response.status == 200 and "<title>Überblick · TIM</title>" in response.read().decode()
 
 
 def test_archive_page_lists_the_campaign_pages(server: int) -> None:

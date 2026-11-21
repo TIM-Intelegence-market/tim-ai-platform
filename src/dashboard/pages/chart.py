@@ -166,6 +166,11 @@ def _chart_svg(model: dict[str, Any], show_all: bool = False) -> str:
 
     # Levels widen the price axis when they are close; far ones are named at the edge instead.
     candidates = [profile.get("vah"), profile.get("val"), profile.get("poc")] + [b["level"] for b in model.get("bos", [])]
+    # Main reference levels (prior day, prior week, naked POC) close to the window widen it too, so one just
+    # outside the candles is drawn instead of named at the edge.
+    # Only those within a quarter of the candle range, so the candles do not flatten for a level further out.
+    candidates += [r["price"] for r in model.get("reference_levels", []) if r.get("price") is not None
+                   and level_kind(r.get("source")) != "minor" and low - span * 0.25 <= r["price"] <= high + span * 0.25]
     level_plans = (model.get("level_plans") or {}).get("plans") or []
     for scenario in [*(analysis.get("scenarios") or []), *level_plans]:
         candidates += [scenario.get("entry_low"), scenario.get("entry_high"), scenario.get("trigger")]
@@ -272,7 +277,7 @@ def _chart_svg(model: dict[str, Any], show_all: bool = False) -> str:
         plan_text = scenario.get("plan_text") or f"Plan {sid} {direction}"
         if lo is not None and hi is not None:
             lo, hi = min(lo, hi), max(lo, hi)
-            if visible(lo) or visible(hi):
+            if hi >= y_low and lo <= y_high:  # overlaps the window, also when it covers all of it
                 top_price, bottom_price = min(hi, y_high), max(lo, y_low)
                 parts.append(f"<rect x='{zone_x:.1f}' y='{y(top_price):.1f}' width='{zone_w:.1f}' height='{max(2.0, y(bottom_price) - y(top_price)):.1f}' class='tc-zone tc-zone--{kind}'/>")
                 plan_texts.append(f"<text x='{zone_x + 4:.1f}' y='{y(top_price) + 12:.1f}' class='tc-zone-text tc-zone-text--{kind}'><title>{_safe(plan_text)}</title>{_safe(cut(plan_text))}</text>")
@@ -550,9 +555,21 @@ def _summary_section(state: Any) -> str:
     from src.dashboard.state import plan_journal_paths
 
     try:
-        return render_de(build_summary(state.chart_series(), load_plan_journals(plan_journal_paths(state))))
+        with state.lock:
+            trades = getattr(state, "footprint", None)
+        return render_de(build_summary(state.chart_series(), load_plan_journals(plan_journal_paths(state)), trades=trades or None))
     except Exception as exc:  # noqa: BLE001 - the chart must still render
         return f"<section class='cc-section tc-summary'><p class='cc-note'>Zusammenfassung nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
+
+
+def _moves_section(state: Any) -> str:
+    """Large BTC moves of the last 7 days with context and explanation (src/dashboard/move_context.py)."""
+    from src.dashboard import move_context
+
+    try:
+        return move_context.render_de(move_context.shown(state.chart_series(), move_context.sources_from_state(state)))
+    except Exception as exc:  # noqa: BLE001 - the chart must still render
+        return f"<section class='cc-section tc-moves'><p class='cc-note'>Bewegungs-Erklärung nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
 
 
 def _verdict_section(state: Any) -> str:
@@ -567,6 +584,30 @@ def _verdict_section(state: Any) -> str:
         return chart_verdict.render_de(view, chart_verdict.load(chart_verdict.DEFAULT_PATH))
     except Exception as exc:  # noqa: BLE001 - the chart must still render
         return f"<section class='cc-section tc-verdict'><p class='cc-note'>Chart-Urteil nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
+
+
+def _levels_section(state: Any) -> str:
+    """Level-Übersicht: all chart levels as a few zones, the range and the watched zones (src/dashboard/level_overview.py)."""
+    from src.dashboard import level_overview
+
+    try:
+        with state.lock:
+            lage = dict(getattr(state, "orderflow_live", None) or {})
+            trades = getattr(state, "footprint", None)
+        view = level_overview.build(state.chart_series(), trades=trades or None, lage=lage or None)
+        return level_overview.render_de(view, level_overview.load())
+    except Exception as exc:  # noqa: BLE001 - the chart must still render
+        return f"<section class='cc-section tc-levels'><p class='cc-note'>Level-Übersicht nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
+
+
+def _patterns_section(state: Any) -> str:
+    """QM/OB/SFP found now plus the paper shadow's progress (src/dashboard/pattern_shadow.py)."""
+    from src.dashboard import pattern_shadow
+
+    try:
+        return pattern_shadow.render_de(pattern_shadow.current(state.chart_series()), pattern_shadow.load(pattern_shadow.DEFAULT_PATH))
+    except Exception as exc:  # noqa: BLE001 - the chart must still render
+        return f"<section class='cc-section tc-patterns'><p class='cc-note'>Muster nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
 
 
 def _orderflow_section(state: Any) -> str:
@@ -592,7 +633,10 @@ def render_chart_page(state: Any, timeframe: str | None = None, levels_mode: str
     body = _hero("TIM-Chart", "BTC, ETH, SOL, XMR und Gold in jedem Zeitrahmen: zoomen, verschieben, Fadenkreuz. Level als beschriftete Strecken ab ihrer Entstehung.")
     body += _summary_section(state)
     if symbol == "BTCUSDT":
+        body += _moves_section(state)
+        body += _levels_section(state)
         body += _verdict_section(state)
+        body += _patterns_section(state)
         body += _orderflow_section(state)
     body += _live_section(symbol, view)
     if symbol != "BTCUSDT":
