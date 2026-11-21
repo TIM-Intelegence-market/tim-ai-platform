@@ -1484,13 +1484,13 @@
         fpDelta: 'Footprint: delta bars', fpCells: 'Footprint: bid × ask', fpProfile: 'Footprint: profile', other: 'Other', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume profile',
         standard: 'TIM standard (all default layers)', read: 'Read (few layers, start)', pro: 'Orderflow Pro (BTC 15m perp)', orderflow: 'Orderflow', profile: 'Profiles (VP, TPO)', levels: 'Levels',
         vwap: 'VWAP', structure: 'Structure', positioning: 'Positioning', macro: 'Macro', trades: "TIM's trades",
-        exo: 'Exo workspace: VWAP, bubbles, OI, CVD', exoVp: 'Exo profile: VP range, VPOC', exoTpo: 'Exo TPO: sessions and profiles', usdtd: 'USDT.D (dominance)' }
+        exo: 'Exo workspace: VWAP, bubbles, OI, CVD', exoVp: 'Exo profile: VP range, VPOC', exoTpo: 'Exo TPO: sessions and profiles', usdtd: 'USDT.D (dominance)', gammaZones: 'Gamma zones (BTC 30m): zones, reaction, no signal' }
     : { label: 'Layout', tim: 'TIM-Layouts (immer mit Level und Struktur)', own: 'Eigene Layouts', changed: 'geändert, nicht gespeichert', save: 'Speichern unter…', rename: 'Umbenennen', remove: 'Löschen',
         ask: 'Name des Layouts:', taken: 'Dieser Name gehört zu einem TIM-Layout.', confirm: name => `Layout "${name}" löschen?`,
         fpDelta: 'Footprint: Delta-Balken', fpCells: 'Footprint: Bid × Ask', fpProfile: 'Footprint: Profil', other: 'Sonstiges', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume Profile',
         standard: 'TIM Standard (alle Standard-Ebenen)', read: 'Lesen (wenige Ebenen, Start)', pro: 'Orderflow Pro (BTC 15m Perp)', orderflow: 'Orderflow', profile: 'Profile (VP, TPO)', levels: 'Level',
         vwap: 'VWAP', structure: 'Struktur', positioning: 'Positionierung', macro: 'Makro', trades: 'TIMs Trades',
-        exo: 'Exo-Workspace: VWAP, Bubbles, OI, CVD', exoVp: 'Exo-Profil: VP-Range, VPOC', exoTpo: 'Exo-TPO: Sessions und Profile', usdtd: 'USDT.D (Dominanz)' };
+        exo: 'Exo-Workspace: VWAP, Bubbles, OI, CVD', exoVp: 'Exo-Profil: VP-Range, VPOC', exoTpo: 'Exo-TPO: Sessions und Profile', usdtd: 'USDT.D (Dominanz)', gammaZones: 'Gamma-Zonen (BTC 30m): Zonen, Reaktion, kein Signal' };
   // Every layer belongs to exactly one category (Uzi 09.11.2026: each layout a category); a category is a
   // layout of its own, and the ticks under "edit layout" are sorted the same way.
   const CATEGORIES = [
@@ -1528,6 +1528,10 @@
     { id: 'tim:exotpo', name: L.exoTpo, symbol: 'BTCUSDT', tf: '30m', market: 'perp', clean: true, groups: ['tpo', 'session', 'running', 'naked', 'vp'] },
     // USDT.D (Uzi 18.11.2026): own tab, 1h candles, swing marks with values, EMA 20/50, last support/resistance; structure and trend lines from BASE.
     { id: 'tim:usdtd', name: L.usdtd, symbol: 'USDTD', tf: '1h', clean: true, groups: ['structure', 'trend', 'usdtd_swing', 'usdtd_sr', 'usdtd_ema'] },
+    // Gamma zones (Uzi 21.11.2026): only what the trade at a gamma zone needs. The yellow bands (confirmed by a standing
+    // order book wall) and the thin gamma lines, the day levels as the next targets and delta per candle for the reaction.
+    // No bubbles, footprint, structure, week levels or plans: a phone screen stays readable. Display, no signal.
+    { id: 'tim:gammazones', name: L.gammaZones, symbol: 'BTCUSDT', tf: '30m', market: 'perp', clean: true, groups: ['gamma_ob', 'gamma', 'day', 'delta'] },
     { id: 'tim:standard', name: L.standard, groups: null },
   ];
   function ownLayouts() {
