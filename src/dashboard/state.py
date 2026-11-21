@@ -28,6 +28,9 @@ class DashboardState:
     gamma: dict[str, Any] = field(default_factory=dict)
     # One line per gamma snapshot (walls, flip, regime) for later studies; Deribit keeps no history.
     gamma_log_path: Path | None = field(default_factory=lambda: Path("data/options/gamma_levels.jsonl"))
+    # Gamma levels with a standing order book wall per symbol (src/dashboard/gamma_zones.py); display and shadow log.
+    gamma_zones: dict[str, Any] = field(default_factory=dict)
+    gamma_zone_watch_path: Path = field(default_factory=lambda: Path("data/journal/tim_gamma_zone_watch.json"))
     # Estimated liquidation heatmap per symbol from Binance's public futures data (src/dashboard/liquidation_data.py).
     liquidation: dict[str, Any] = field(default_factory=dict)
     # Live-Orderflow-Lage: wave, levels, perp delta from the newest spot trades (src/orderflow/live_state.py).

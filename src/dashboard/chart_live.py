@@ -103,6 +103,7 @@ GROUP_STYLE = {
     "vwap_bands": ("#3fd0c9", "dotted"),
     "fib": ("#c9a227", "dotted"),
     "gamma": ("#ffb020", "solid"),  # each gamma level brings its own colour (gamma_data.LEVEL_STYLE)
+    "gamma_ob": ("#ffd24a", "solid"),  # gamma level with a standing order book wall (gamma_zones.py), drawn as a band
     "liq": ("#ff6b3d", "dashed"),  # cluster levels bring their own colour (liquidation_data.LEVEL_COLOR)
     "liqev": ("#ff3d7f", "solid"),  # real liquidations are markers (liquidation_events.py), no lines
 }
@@ -120,6 +121,7 @@ GROUP_NAMES = {
     "plans_short": "TIM-Pläne SHORT 15m", "plans_mid": "TIM-Pläne MID 1h", "plans_long": "TIM-Pläne LONG 1D",
     "plans_old": "TIM-Pläne Testversionen 30m",
     "gamma": "Options-Gamma (Deribit)",
+    "gamma_ob": "Gamma-Zonen mit Orderbuch-Mauer (bestätigt)",
     "liq": "Liquidations-Heatmap (Modell, keine echten Liquidationen)",
     "liqev": "Liquidationen (echt, Binance + Bybit)",
     "cvd": "CVD Spot vs. Perp", "delta": "Delta Volume je Kerze (gewählter Markt)", "oi": "Open Interest je Börse (Binance, Bybit) + Z-Score (7,5 T, nur Binance)",
@@ -140,7 +142,7 @@ TPO_BINS = 40  # price rows per day profile
 TPO_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"  # 48 half-hour periods from 00:00 UTC
 # The earlier 30m test versions start hidden: their many closed trades crowd the candles (Uzi 27.10.2026).
 DEFAULT_GROUPS = ("day", "week", "month", "naked", "vwap", "vwap_bands", "structure", "trend", "tpo", "vp", "fp", "bubbles",
-                  "plans_short", "plans_mid", "plans_long", "gamma", "liq", "liqev", "cvd", "oi", "macro", "usdtd_swing", "usdtd_sr", "usdtd_ema")
+                  "plans_short", "plans_mid", "plans_long", "gamma", "gamma_ob", "liq", "liqev", "cvd", "oi", "macro", "usdtd_swing", "usdtd_sr", "usdtd_ema")
 # TIM's paper plans on the chart (Uzi 27.10.2026: "man kann nicht richtig sehen wo die Entrys von TIM waren").
 # Journal key -> (layer, short label); the earlier 30m test versions share one layer.
 PLAN_JOURNALS = {"short": ("plans_short", "SHORT"), "mid": ("plans_mid", "MID"), "long": ("plans_long", "LONG"),
@@ -1131,8 +1133,13 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
                      perp: Mapping[str, Any] | None = None, open_interest: Mapping[str, Any] | None = None,
                      market: str | None = None, context: Mapping[str, Any] | None = None,
                      macro: Sequence[Mapping[str, Any]] | None = None, perp_cache: KlineCache | None = None,
-                     liquidation_root: Any = None, bybit: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                     liquidation_root: Any = None, bybit: Mapping[str, Any] | None = None,
+                     gamma_zones: Mapping[str, Any] | None = None,
+                     gamma_zone_watch: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Everything the interactive chart draws, as JSON-ready data.
+
+    ``gamma_zones`` is ``DashboardState.gamma_zones`` (gamma_zones.py): gamma levels with a standing order book
+    wall as bands (group "gamma_ob"); ``gamma_zone_watch`` is its shadow log, for the count in the notes.
 
     ``footprint`` is the runtime's aggregated aggTrades store (``DashboardState.footprint``);
     it feeds the volume profiles, footprint bars and volume bubbles (large market orders) for the symbol TIM collects.
@@ -1275,6 +1282,12 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
         gamma_items, gamma_notes = gamma_drawings(gamma[symbol], now)
         drawings += gamma_items
         model["notes"].extend(gamma_notes)
+    if gamma_zones and gamma_zones.get(symbol):
+        from src.dashboard.gamma_zones import chart_drawings as zone_drawings
+
+        zone_items, zone_notes = zone_drawings(gamma_zones[symbol], gamma_zone_watch, now)
+        drawings += zone_items
+        model["notes"].extend(zone_notes)
     if liquidation and liquidation.get(symbol):
         from src.dashboard.liquidation_data import chart_layer as liquidation_layer
 

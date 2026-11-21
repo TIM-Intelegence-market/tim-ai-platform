@@ -1008,6 +1008,47 @@
   };
   candles.attachPrimitive(vwapFill);
 
+  // Gamma level with a standing order book wall (layer "gamma_ob", gamma_zones.py): a band from the moment the
+  // wall appeared to the right edge. The line and its name come from the normal level drawing.
+  const zoneFill = {
+    chart: null, series: null, requestUpdate: null, visible: false,
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.view]; },
+    view: {
+      zOrder() { return 'bottom'; },
+      renderer() {
+        return {
+          draw(target) {
+            if (!zoneFill.visible || !zoneFill.chart || !model || !model.drawings || !model.candles.length) return;
+            const zones = model.drawings.filter(d => d.group === 'gamma_ob' && Array.isArray(d.band));
+            if (!zones.length) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const scale = zoneFill.chart.timeScale();
+              const first = model.candles[0].time;
+              for (const zone of zones) {
+                const from = Math.max(first, zone.t1 || Math.floor(Date.parse(zone.start) / 1000));  // t1: start snapped to a candle
+                let x0 = scale.timeToCoordinate(local(from));
+                if (x0 === null) x0 = scale.timeToCoordinate(local(first));
+                const y0 = zoneFill.series.priceToCoordinate(zone.band[1]), y1 = zoneFill.series.priceToCoordinate(zone.band[0]);
+                if (x0 === null || y0 === null || y1 === null) continue;
+                const left = Math.max(0, x0), height = Math.max(4, y1 - y0);
+                ctx.fillStyle = 'rgba(255,210,74,0.26)';
+                ctx.fillRect(left, y0, mediaSize.width - left, height);
+                ctx.strokeStyle = 'rgba(255,210,74,0.55)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(left + 0.5, y0 + 0.5, mediaSize.width - left - 1, height - 1);
+              }
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(zoneFill);
+
   // Volume profile of the last N candles (EXO.vp: lookback 240, rows 130, value area 70 %, width 40, offset 13, right)
   // with node detection: high-volume nodes (local peaks) brighter, low-volume nodes (troughs) as dotted lines.
   // Built from the footprint rows of the shown candles, so it needs TIM's trades (5m and above) like the footprint.
@@ -1458,7 +1499,7 @@
     { name: L.levels, groups: ['day', 'week', 'month', 'quarter', 'year', 'session', 'ib'] },
     { name: L.vwap, groups: ['vwap', 'vwap_bands'] },
     { name: L.structure, groups: ['structure', 'trend', 'fib'] },
-    { name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma'] },
+    { name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma', 'gamma_ob'] },
     { name: L.macro, groups: ['dominance', 'macro'] },
     { name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long', 'plans_old'] },
     { name: L.usdtd, groups: ['usdtd_swing', 'usdtd_sr', 'usdtd_ema'] },
@@ -1477,7 +1518,7 @@
     { id: 'tim:footprint', name: L.footprint, market: 'perp', fp: 'delta', groups: ['fp', 'bubbles', 'delta', 'oi'] },
     { id: 'tim:tpo', name: L.tpo, groups: ['tpo', 'running', 'session', 'ib'] },
     { id: 'tim:vp', name: L.vp, groups: ['vp', 'running', 'vwap', 'vwap_bands'] },
-    { id: 'tim:positioning', name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma'] },
+    { id: 'tim:positioning', name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma', 'gamma_ob'] },
     { id: 'tim:macro', name: L.macro, groups: ['dominance', 'macro', 'quarter', 'year'] },
     { id: 'tim:trades', name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long'] },
     { id: 'tim:pro', name: L.pro, symbol: 'BTCUSDT', tf: '15m', market: 'perp', fp: 'profile', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi'] },
@@ -1755,12 +1796,13 @@
     bubbles.visible = groups.has('bubbles') || groups.has('bubbles_exo');
     bubbles.exo = groups.has('bubbles_exo') && !groups.has('bubbles');
     vwapFill.visible = groups.has('vwap_bands');
+    zoneFill.visible = groups.has('gamma_ob');
     const rangeOn = groups.has('vp_range');
     const openRange = rangeOn && !vpr.visible && model && model.candles.length;  // newly switched on: make room right of the candles
     vpr.visible = rangeOn;
     if (openRange) chart.timeScale().setVisibleLogicalRange(viewRange(168));
     vpoc.visible = groups.has('vpoc');
-    for (const layer of [bubbles, vwapFill, vpr, vpoc]) if (layer.requestUpdate) layer.requestUpdate();
+    for (const layer of [bubbles, vwapFill, zoneFill, vpr, vpoc]) if (layer.requestUpdate) layer.requestUpdate();
   }
   function applyVisibility(groups) {
     planMarkers(groups);
