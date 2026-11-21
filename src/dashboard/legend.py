@@ -123,6 +123,10 @@ LAYERS: dict[str, list[Mark]] = {
         (("line", *GAMMA["em_high"]), "erwartete Spanne oben/unten aus den Optionspreisen (gepunktet)", "Expected move up/down from option prices (dotted)"),
         (("line", *GAMMA["flip"]), "Alles Schätzung aus Deribit (Annahme: Händler long Calls, short Puts); Wirkung auf den BTC-Preis ungetestet. Jede Linie beginnt dort, wo das Level seinen jetzigen Wert bekam", "All estimates from Deribit (assumption: dealers long calls, short puts); effect on the BTC price untested. Each line starts where the level reached its current value"),
     ],
+    "gamma_ob": [
+        (("line", "#ffd24a", "solid"), "Gelbes Band: Gamma-Level, an dem im Orderbuch (Binance Perp, eigene Aufzeichnung) seit mindestens 30 Minuten eine große Auftragsmauer steht", "Yellow band: gamma level with a large order book wall (Binance perp, own recording) standing for at least 30 minutes"),
+        (("line", "#ffd24a", "solid"), "Mauer = Preisstufe mit mindestens 5-fach so viel wartenden Aufträgen wie üblich; Aufträge können jederzeit zurückgezogen werden. Nur BTC, nur Anzeige; ob die Zonen halten, wird mitgezählt (Urteil ab 30 Berührungen)", "Wall = price step with at least 5 times the usual resting orders; orders can be pulled at any time. BTC only, display only; whether the zones hold is being counted (verdict from 30 visits)"),
+    ],
     "liq": [
         (("line", LIQ["above"], "dashed"), "Schätzung: Liquidations-Cluster über dem Kurs (Shorts), orange", "Estimate: liquidation cluster above price (shorts), orange"),
         (("line", LIQ["below"], "dashed"), "Schätzung: Cluster unter dem Kurs (Longs), blau; Modell, keine echten Ereignisse", "Estimate: cluster below price (longs), blue; a model, not real events"),

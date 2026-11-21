@@ -49,6 +49,8 @@ FOOTPRINT_INTERVAL_SECONDS = 120  # chart footprint / volume profile from aggreg
 ORDERFLOW_LIVE_INTERVAL_SECONDS = 10  # live orderflow state (src/orderflow/live_state.py) from new spot aggTrades
 VALIDATION_PROOF_MARGIN = timedelta(minutes=2)  # trades loaded past the 30-min validation target to prove the sequence reached it
 HERMES_NOTES_INTERVAL_SECONDS = 60  # plan second opinion and daily report (comment only)
+GAMMA_ZONES_CATCHUP_SECONDS = 5  # pause between small reading steps while the archive of the day is read in
+GAMMA_ZONES_INTERVAL_SECONDS = 60  # order book walls at gamma levels from our own recording (display and shadow log only)
 GAMMA_INTERVAL_SECONDS = 300  # options gamma from Deribit's public book (display and analysis context only)
 LIQUIDATION_INTERVAL_SECONDS = 300  # estimated liquidation heatmap from Binance futures open interest (display only)
 HEALTH_SNAPSHOT_FRESH_SECONDS = 1.0
@@ -663,6 +665,28 @@ class TIMApplication:
             except TimeoutError:
                 pass
 
+    async def _gamma_zones_loop(self) -> None:
+        # Gamma levels with a standing order book wall (Uzi 21.11.2026). Reads the recorder's archive and the gamma
+        # snapshot, writes only its own shadow log; never on the ingestion path, no order.
+        from src.dashboard.gamma_zones import refresh as refresh_zones, update as update_zone_watch
+
+        while not self.worker_stop.is_set():
+            pause = GAMMA_ZONES_INTERVAL_SECONDS
+            try:
+                view = await asyncio.to_thread(refresh_zones, self.dashboard_state, settings.symbol)
+                if view and view.get("status") == "CATCHING_UP":
+                    pause = GAMMA_ZONES_CATCHUP_SECONDS
+                if view and view.get("status") in ("OK", "NO_GAMMA"):
+                    await asyncio.to_thread(update_zone_watch, self.dashboard_state.gamma_zone_watch_path, view, view.get("mid"))
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - a display layer must not stop the runtime
+                log.warning("gamma zones refresh failed: %s: %s", type(error).__name__, error)
+            try:
+                await asyncio.wait_for(self.worker_stop.wait(), timeout=pause)
+            except TimeoutError:
+                pass
+
     async def _gamma_loop(self) -> None:
         # Options gamma from Deribit's public options book (no key); display and analysis context, never on the ingestion path.
         from src.dashboard.gamma_data import refresh as refresh_gamma
@@ -975,6 +999,7 @@ class TIMApplication:
         derived_task = asyncio.create_task(self._derived_candles_loop(), name="tim-derived-candles")
         footprint_task = asyncio.create_task(self._footprint_loop(), name="tim-chart-footprint")
         gamma_task = asyncio.create_task(self._gamma_loop(), name="tim-options-gamma")
+        gamma_zones_task = asyncio.create_task(self._gamma_zones_loop(), name="tim-gamma-zones")
         hermes_notes_task = asyncio.create_task(self._hermes_notes_loop(), name="tim-hermes-notes")
         liquidation_task = asyncio.create_task(self._liquidation_loop(), name="tim-liquidation-heatmap")
         perp_task = asyncio.create_task(self._perp_flow_loop(), name="tim-perp-flow")
@@ -993,6 +1018,7 @@ class TIMApplication:
             derived_task.cancel()
             footprint_task.cancel()
             gamma_task.cancel()
+            gamma_zones_task.cancel()
             hermes_notes_task.cancel()
             liquidation_task.cancel()
             perp_task.cancel()
