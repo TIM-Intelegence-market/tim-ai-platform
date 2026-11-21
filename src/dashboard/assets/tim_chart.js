@@ -49,7 +49,7 @@
   const status = document.getElementById('tc-live-status' + PANE);
   const layers = document.getElementById('tc-live-layers' + PANE);
   const STORE = 'tim-chart-layers-v1' + PANE;
-  const SHORT_BARS = 12;
+  const NAME_SHIFT = 20;  // candles a level's name sits inside its line (not centred on the line start)
   const STYLE = { solid: LWC.LineStyle.Solid, dotted: LWC.LineStyle.Dotted, dashed: LWC.LineStyle.Dashed };
   let symbol = (PANE ? root : host).dataset.symbol, timeframe = (PANE ? root : host).dataset.tf;
   let timer = null, model = null, first = true, request = 0, running = true;
@@ -1833,8 +1833,8 @@
       const series = chart.addLineSeries({
         color: d.color, lineWidth: ['trend', 'week', 'month', 'quarter', 'year', 'vwap'].includes(d.group) ? 2 : 1,
         // Finished segments (BOS/MSS, broken trend lines) get no label on the price axis: they are history, not a live level.
-        lineStyle: STYLE[d.style] ?? LWC.LineStyle.Solid, lastValueVisible: !d.finished, priceLineVisible: false,
-        crosshairMarkerVisible: false, title: d.finished ? '' : d.label, visible: groups.has(d.group),
+        lineStyle: STYLE[d.style] ?? LWC.LineStyle.Solid, lastValueVisible: false, priceLineVisible: false,
+        crosshairMarkerVisible: false, title: '', visible: groups.has(d.group),
         autoscaleInfoProvider: () => null,  // levels never squeeze the candles
       });
       // A running line (VWAP) brings its own points; levels and segments have two.
@@ -1842,6 +1842,14 @@
         : [{ time: local(d.t1), value: d.p1 }, { time: local(d.t2), value: d.p2 }];
       const mid = d.tm != null && d.tm > d.t1 && d.tm < d.t2;
       if (mid) points.splice(1, 0, { time: local(d.tm), value: d.p1 });  // BOS/MSS: horizontal, label in the middle
+      // Uzi 21.11.2026 "schreib die einfach auf den Chart": a name centred on the line start stood half outside the
+      // chart when the line began at the left edge. Flat levels carry their name a few candles into the line instead.
+      d.tl = null;
+      const step = model.interval_seconds || 0;
+      if (!mid && !d.curve && step && d.p1 === d.p2 && d.t2 - d.t1 >= 2 * NAME_SHIFT * step) {
+        d.tl = d.t1 + NAME_SHIFT * step;
+        points.splice(1, 0, { time: local(d.tl), value: d.p1 });
+      }
       series.setData(points);
       lines.push({ series, group: d.group, drawing: d });
     }
@@ -1855,9 +1863,7 @@
   // (Uzi 11.11.2026: "1h Trend lows" and "1h BOS target" started at the same swing low and their
   // names lay on top of each other; "1D Low" and "1h BOS target" had two boxes with the same price).
   // Names at the line start: closer than 0.05 % counts as the same spot (the texts would cover each other).
-  // Price-axis boxes: only the same price (a merged box shows one number, it must be right for every name).
   const near = (a, b) => Math.abs(a - b) <= Math.abs(b) * 0.0005;
-  const samePrice = (a, b) => Math.abs(a - b) <= Math.max(1e-9, Math.abs(b) * 1e-6);
   function labelLines(groups) {
     const shown = lines.filter(item => item.drawing && groups.has(item.group));
     for (const item of lines) {
@@ -1872,40 +1878,29 @@
       const mid = d.tm != null && d.tm > d.t1 && d.tm < d.t2;
       const structure = d.group === 'structure';
       const position = structure ? (d.direction === 'UP' ? 'aboveBar' : 'belowBar') : (d.p2 >= model.last ? 'aboveBar' : 'belowBar');
-      const text = d.bars >= SHORT_BARS || d.finished ? d.label + (d.clipped ? ' ←' : '') : '';
+      // Uzi 21.11.2026: the names stand on the chart only; the price axis keeps the number without a name.
+      const text = d.label + (d.clipped ? ' ←' : '');
       const marker = {
-        time: local(mid ? d.tm : d.t1), position,
+        time: local(mid ? d.tm : d.tl || d.t1), position,
         color: d.color, shape: structure ? (d.direction === 'UP' ? 'arrowUp' : 'arrowDown') : 'circle', size: structure ? 0.6 : 0.4,
         text,
       };
       // Uzi 21.11.2026 "Namen": on a phone "1D VAH" and "1D High" (0,02 % apart, one candle apart) lay on top of each other.
-      // Names whose marker sits within 4 candles and 0,3 % of an earlier one share its text.
-      const gap = 4 * (model.interval_seconds || 1800);
-      const twin = text && markers.find(m => m.text && Math.abs(m.marker.time - marker.time) <= gap && m.marker.position === position && Math.abs(d.p1 - m.price) <= Math.abs(m.price) * 0.003);
+      // Names within 0,3 % of an earlier one (same side) share its text, wherever on the time axis they start:
+      // their texts sit at about the same height and cover each other once the names move into the lines.
+      const twin = text && markers.find(m => m.text && m.marker.position === position && Math.abs(d.p1 - m.price) <= Math.abs(m.price) * 0.003);
       if (twin) {
-        twin.marker.text += ' · ' + text;
+        // At most two names in one text (a phone has no room for more): the rest as "+N".
+        twin.names.push(text);
+        twin.marker.text = twin.names.slice(0, 2).join(' · ') + (twin.names.length > 2 ? ` +${twin.names.length - 2}` : '');
         twin.series.setMarkers([twin.marker]);
         marker.text = '';
       }
       item.series.setMarkers([marker]);
-      markers.push({ marker, series: item.series, price: d.p1, text: marker.text });
+      markers.push({ marker, series: item.series, price: d.p1, text: marker.text, names: marker.text ? [marker.text] : [] });
     }
-    // One box on the price axis per spot: the first line takes all names, the others hide theirs.
-    const boxes = [];
-    for (const item of shown) {
-      const d = item.drawing;
-      if (d.finished) continue;
-      const value = d.curve && d.curve.length ? d.curve[d.curve.length - 1][1] : d.p2;
-      const twin = boxes.find(b => samePrice(value, b.value));
-      if (twin) {
-        twin.names.push(d.label);
-        twin.series.applyOptions({ title: twin.names.join(' · ') });
-        item.series.applyOptions({ lastValueVisible: false, title: '' });
-      } else {
-        item.series.applyOptions({ lastValueVisible: true, title: d.label });
-        boxes.push({ value, series: item.series, names: [d.label] });
-      }
-    }
+    // Uzi 21.11.2026: no level boxes on the price axis at all (no name, no number); the names stand on the chart.
+    for (const item of shown) item.series.applyOptions({ lastValueVisible: false, title: '' });
   }
 
 
