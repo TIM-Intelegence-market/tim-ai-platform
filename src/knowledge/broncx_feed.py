@@ -73,6 +73,7 @@ _REFERENCES = {
 }
 # A shorthand like "82.6" is read as 82,600 only when that lies within +-30 % of the current price.
 _PLAUSIBLE_LOW, _PLAUSIBLE_HIGH = Decimal("0.7"), Decimal("1.3")
+_WIDE_LOW, _WIDE_HIGH = Decimal("0.2"), Decimal("5")  # only for prices written as sub-dollar decimals
 _REAFFIRM = re.compile(r"\b(play(?:s|ing)? out again|still valid|same (?:idea|plan)|as planned|still in)\b", re.IGNORECASE)
 
 
@@ -300,6 +301,11 @@ def parse_guidance(text: str, reference_price: Decimal | None = None) -> BroncxG
                           direction_withdrawn=withdrawn)
 
 
+def _is_small_decimal_price(number: re.Match[str], value: Decimal) -> bool:
+    """A price written with a decimal point below 1 ("0.012"): cannot be shorthand for thousands."""
+    return value < 1 and "." in number.group(1)
+
+
 def _level(number: re.Match[str], text: str, reference_price: Decimal | None, *, stop: bool = False) -> BroncxLevel | None:
     raw = number.group(0).strip()
     try:
@@ -319,6 +325,8 @@ def _level(number: re.Match[str], text: str, reference_price: Decimal | None, *,
             candidate = value * 1000
             if _PLAUSIBLE_LOW <= candidate / reference_price <= _PLAUSIBLE_HIGH:
                 value, scaled = candidate, True
+            elif _is_small_decimal_price(number, value) and _WIDE_LOW <= value / reference_price <= _WIDE_HIGH:
+                pass  # "SL 0.012" on a 0.0082 coin: a written-out price of a cheap coin, stops there can sit far from the price
             elif not _PLAUSIBLE_LOW <= value / reference_price <= _PLAUSIBLE_HIGH:
                 return None  # neither a price nor a shorthand price: a count, a percent, a size
         else:
