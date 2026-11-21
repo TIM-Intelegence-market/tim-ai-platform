@@ -30,6 +30,7 @@ from src.dashboard.layout import _content_security_policy
 from src.dashboard.security import _require_loopback_host
 
 DEFAULT_PORT = 8780
+PLAN_PATHS = frozenset({"/chart", "/api/chart/live"})  # open, but TIM's plans on them need the login
 PAGES = ("/chart", "/journal", "/journal/trade", "/live")
 # Query keys a public page or API may pass on; everything else is dropped before rendering.
 QUERY_KEYS = {"/chart": ("symbol", "tf"), "/journal": ("rule",), "/journal/trade": ("rule", "id"), "/live": (), "/api/chart/live": ("symbol", "tf", "market"), "/api/plan-journal": ("rule",)}
@@ -104,6 +105,7 @@ class PublicDashboardServer:
         self.live_status_file = LIVE_STATUS_FILE
         self.limiter, self.cache = limiter or RateLimiter(), cache or TTLCache()
         self.login_failures = public_auth.FailureLimiter()
+        self.known_logins = public_auth.KnownLogins()
         self.busy = threading.BoundedSemaphore(MAX_BUSY)
         outer = self
 
@@ -112,13 +114,14 @@ class PublicDashboardServer:
             sys_version = ""
 
             def respond(self, status: int, payload: bytes, content_type: str, csp: str | None = None,
-                        location: str | None = None, head: bool = False, challenge: bool = False) -> None:
+                        location: str | None = None, head: bool = False, challenge: bool = False,
+                        private: bool = False) -> None:
                 if len(payload) > MAX_RESPONSE_BYTES:
                     status, payload, content_type = 413, b'{"error":"too large"}', "application/json"
                 self.send_response(status)
                 self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(payload)))
-                self.send_header("Cache-Control", "no-store" if path_is_private(self.path) else "public, max-age=5" if status == 200 else "no-store")
+                self.send_header("Cache-Control", "no-store" if private or path_is_private(self.path) else "public, max-age=5" if status == 200 else "no-store")
                 if challenge:
                     self.send_header("WWW-Authenticate", f'Basic realm="{public_auth.REALM}", charset="UTF-8"')
                 self.send_header("Content-Security-Policy", csp or _content_security_policy())
@@ -171,21 +174,25 @@ class PublicDashboardServer:
                     if denied:
                         return self.respond(denied, b'{"error":"login required"}', "application/json", head=head,
                                             challenge=denied == 401)
+                # The open chart shows TIM's plans only to a logged-in visitor (Uzi 21.11.2026); a wrong or missing
+                # login simply gets the chart without them, and still counts as a failed attempt.
+                member = path in PLAN_PATHS and bool(self.headers.get("Authorization")) and \
+                    outer.login_gate(self.client(), self.headers.get("Authorization")) is None
                 query = clean_query(path, parse_qs(parsed.query))
                 if not outer.busy.acquire(blocking=False):
                     return self.respond(503, b'{"error":"busy"}', "application/json", head=head)
                 try:
-                    key = path + "?" + urlencode(sorted(query.items()))
+                    key = path + ("!member" if member else "") + "?" + urlencode(sorted(query.items()))
                     if path in PAGES:
-                        page = outer.cache.get(key, PAGE_TTL, lambda: outer.render_page(path, query))
+                        page = outer.cache.get(key, PAGE_TTL, lambda: outer.render_page(path, query, member))
                         if page is None:
                             return self.respond(404, b'{"error":"not found"}', "application/json", head=head)
                         from src.dashboard.public_en import journal_csp
 
                         return self.respond(200, page.encode(), "text/html; charset=utf-8",
-                                            csp=CHART_CSP if path == "/chart" else journal_csp(), head=head)
-                    payload = outer.cache.get(key, API_TTL, lambda: outer.render_api(path, query))
-                    return self.respond(200, payload, "application/json", head=head)
+                                            csp=CHART_CSP if path == "/chart" else journal_csp(), head=head, private=member)
+                    payload = outer.cache.get(key, API_TTL, lambda: outer.render_api(path, query, member))
+                    return self.respond(200, payload, "application/json", head=head, private=member)
                 except Exception as exc:  # noqa: BLE001 - a visitor gets a short error, never a trace
                     return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json", head=head)
                 finally:
@@ -210,10 +217,13 @@ class PublicDashboardServer:
             return 503  # fail closed: without a login file the private pages stay shut
         if not authorization:
             return 401  # no password sent: nothing to check, nothing to count
+        if self.known_logins.has(authorization, credentials):
+            return None  # checked a moment ago: an open chart asks every few seconds, the slow check runs once
         if not self.login_failures.reserve(client):
             return 429
         if public_auth.check_login(authorization, credentials):
             self.login_failures.release(client)
+            self.known_logins.add(authorization, credentials)
             return None
         return 401
 
@@ -229,7 +239,7 @@ class PublicDashboardServer:
         # A horizon journal that has not started yet (no file) still gets its tab.
         return {key: load_view(path) for key, path in self.journal_paths().items()}
 
-    def summary_html(self) -> str:
+    def summary_html(self, member: bool = False) -> str:
         """English text of what TIM's analysis says now (BTC); a failure only hides it."""
         from src.dashboard.analysis_summary import build_summary, render_en
         from src.dashboard.chart_live import load_plan_journals
@@ -237,7 +247,9 @@ class PublicDashboardServer:
         try:
             with self.state.lock:
                 trades = dict(getattr(self.state, "footprint", None) or {})
-            text = render_en(build_summary(self.state.chart_series(), load_plan_journals(self.journal_paths()), trades=trades or None))
+            text = render_en(build_summary(self.state.chart_series(), load_plan_journals(self.journal_paths()) if member else {}, trades=trades or None))
+            if not member:  # nothing about plans for a visitor without login, not even "none open"
+                text = text.replace("<p>No open paper plans: TIM is waiting.</p>", "")
         except Exception:  # noqa: BLE001 - the public chart must still render
             return ""
         try:
@@ -259,18 +271,18 @@ class PublicDashboardServer:
             return None
         return data if isinstance(data, dict) else None
 
-    def render_page(self, path: str, query: dict[str, str]) -> str | None:
+    def render_page(self, path: str, query: dict[str, str], member: bool = False) -> str | None:
         from src.dashboard import public_en
 
         if path == "/chart":
-            return public_en.chart_page(query.get("symbol"), query.get("tf"), self.summary_html())
+            return public_en.chart_page(query.get("symbol"), query.get("tf"), self.summary_html(member))
         if path == "/live":
             return public_en.live_page(self.live_status())
         if path == "/journal/trade":
             return public_en.trade_page(self.journals(), query.get("rule", ""), query.get("id", ""))
         return public_en.journal_page(self.journals(), query.get("rule", public_en.DEFAULT_JOURNAL))
 
-    def render_api(self, path: str, query: dict[str, str]) -> bytes:
+    def render_api(self, path: str, query: dict[str, str], member: bool = False) -> bytes:
         if path == "/api/chart/live":
             from src.dashboard.chart_live import build_live_chart
             from src.dashboard.market_context import chart_context
@@ -285,7 +297,7 @@ class PublicDashboardServer:
             from src.dashboard.chart_live import load_plan_journals
 
             model = build_live_chart(query.get("symbol"), query.get("tf"), self.state.chart_series(), footprint=footprint,
-                                     plan_journals=load_plan_journals(self.journal_paths()), gamma=gamma,
+                                     plan_journals=load_plan_journals(self.journal_paths()) if member else None, gamma=gamma,
                                      liquidation=liquidation, perp=perp, open_interest=open_interest, bybit=bybit,
                                      market=query.get("market"),
                                      context=chart_context(query.get("symbol")))

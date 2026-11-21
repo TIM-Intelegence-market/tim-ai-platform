@@ -264,7 +264,14 @@ def test_public_chart_carries_tims_plans(server, tmp_path):
              "closed_at": (opened + timedelta(hours=2)).isoformat(), "entry": 113000.0, "stop": 112500.0}
     public.state.plan_journal_struct_path = tmp_path / "struct.json"
     public.state.plan_journal_struct_path.write_text(json.dumps({"schema": "tim_plan_journal/2", "entries": [entry, {**entry, "id": "x", "excluded": {"r": 1}}]}))
-    model = json.loads(_get(base + "/api/chart/live?symbol=BTCUSDT&tf=30m")[2])
+    status, headers, body = _get(base + "/api/chart/live?symbol=BTCUSDT&tf=30m")
+    assert status == 200 and json.loads(body)["plans"] == [] and "abc123def456" not in body  # no login: chart without plans
+    assert "no-store" not in headers["Cache-Control"]
+    assert json.loads(_get(base + "/api/chart/live?symbol=BTCUSDT&tf=30m", headers=_login("wrong"))[2])["plans"] == []
+    status, headers, body = _get(base + "/api/chart/live?symbol=BTCUSDT&tf=30m", headers=_login())
+    model = json.loads(body)
+    assert headers["Cache-Control"] == "no-store"
+    assert json.loads(_get(base + "/api/chart/live?symbol=BTCUSDT&tf=30m")[2])["plans"] == []  # the member's answer is not reused
     assert [(p["id"], p["group"], p["label"]) for p in model["plans"]] == [("abc123def456", "plans_old", "Structure 30m")]
     plan = model["plans"][0]
     assert plan["fill_t"] <= plan["close_t"] and plan["net_r"] == -1.18 and plan["entry"] == 113000.0
@@ -445,3 +452,26 @@ def test_variants_of_the_private_paths_are_shut(server):
     for path in ("/live/", "/live//", "/journal/", "/api/plan-journal/"):
         assert _get(base + path, headers={"Authorization": ""})[0] == 401, path
     assert _get(base + "/live", method="HEAD", headers={"Authorization": ""})[0] == 401
+
+
+def test_chart_page_text_names_plans_only_after_login(server, tmp_path):
+    public, base = server
+    assert "paper plans" not in _get(base + "/chart")[2].split("<main")[1].split("tc-tab")[0].lower()
+    assert _get(base + "/chart", headers=_login())[0] == 200
+
+
+def test_plan_guessing_through_the_chart_is_paused_too(server):
+    public, base = server
+    for _ in range(5):
+        assert _get(base + "/api/chart/live?symbol=BTCUSDT&tf=1h", headers=_login("wrong"))[0] == 200
+    assert _get(base + "/live", headers=_login())[0] == 429
+
+
+def test_known_login_is_bound_to_the_login_file(tmp_path):
+    known = public_auth.KnownLogins()
+    public_auth.init_login(tmp_path / "a.json")
+    first = public_auth.load_credentials(tmp_path / "a.json")
+    known.add("Basic abc", first)
+    assert known.has("Basic abc", first) and not known.has("Basic abd", first)
+    public_auth.init_login(tmp_path / "a.json")
+    assert not known.has("Basic abc", public_auth.load_credentials(tmp_path / "a.json"))

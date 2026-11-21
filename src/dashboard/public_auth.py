@@ -109,6 +109,35 @@ class FailureLimiter:
                 self.all_fails.pop()
 
 
+class KnownLogins:
+    """Remembers a login that passed the slow check for a few minutes (as a keyed digest, never the password).
+
+    Bound to the login file's hash, so a new password forgets the old one at once."""
+
+    TTL, MAX = 600.0, 64
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        self.clock, self.lock, self.secret = clock, threading.Lock(), secrets.token_bytes(32)
+        self.seen: dict[bytes, float] = {}
+
+    def _key(self, authorization: str, credentials: dict) -> bytes:
+        return hmac.new(self.secret, credentials["hash"] + credentials["user"].encode() + b"\0" + authorization.encode(), "sha256").digest()
+
+    def has(self, authorization: str, credentials: dict) -> bool:
+        if len(authorization) > MAX_HEADER:
+            return False
+        key = self._key(authorization, credentials)
+        with self.lock:
+            stamp = self.seen.get(key)
+            return stamp is not None and self.clock() - stamp < self.TTL
+
+    def add(self, authorization: str, credentials: dict) -> None:
+        with self.lock:
+            if len(self.seen) >= self.MAX:
+                self.seen.clear()
+            self.seen[self._key(authorization, credentials)] = self.clock()
+
+
 def init_login(path: Path | None = None, user: str = "uzi") -> str:
     """Write a new login file (0600) and return the generated password."""
     path = path or auth_file()

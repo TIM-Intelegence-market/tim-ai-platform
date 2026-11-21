@@ -10,6 +10,8 @@ Control Center. Die Ansicht ist englisch und trägt auf jeder Seite den Hinweis
 HTTPS-Tunnel). Chart, Chart-Daten und `/robots.txt` bleiben offen. Das Passwort steht nur als gesalzener
 Hash in `~/Library/Application Support/TIM/public-auth.json` (Modus 0600, nicht im Repo). Fehlt die Datei oder
 ist sie kaputt, bleiben die drei Seiten zu (503). Nach 5 falschen Versuchen je Besucher 5 Minuten Pause (429).
+TIMs Pläne im offenen Chart (Boxen, Ergebnis, Satz in der Zusammenfassung) erscheinen nur mit derselben Anmeldung;
+ohne Anmeldung liefert `/api/chart/live` eine leere Planliste (Uzi 21.11.: „Pläne verstecken“).
 Neues Passwort erzeugen (zeigt es einmal an): `python -m src.dashboard.public_auth init`.
 Der Dashboard-Agent prüft nach einem Neustart `/chart` und `/robots.txt` (nicht mehr `/journal`).
 
