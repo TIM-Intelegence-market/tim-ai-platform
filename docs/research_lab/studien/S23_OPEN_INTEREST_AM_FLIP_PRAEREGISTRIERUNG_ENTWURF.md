@@ -87,6 +87,9 @@ ereignisse ab 2021-12, ohne Label. Aus dem S21-Zähllauf bekannt: 318/216 Ereign
 sind im Training grob 240 zu erwarten. Deshalb liegt das Gate bei 200 statt 250. Es wird nach dem Zähllauf
 nicht gelockert.
 
+**Ergebnis 22.11.2026:** Training 241, Validierung 211 mit vollständigen Merkmalen, Training ab 2021-12: 116.
+Gate und Naht-Prüfung bestanden (Änderungsprotokoll).
+
 ## 6. Was nicht geändert wird
 
 S20-Ereignisregeln, die drei Merkmale, 10 Stunden, 14 Tage, 10 Minuten Höchstalter, Kriterien. Kein zweites
@@ -113,3 +116,4 @@ die Binance-API) oder der Holdout nach Freigabe von Uzi und Barti.
 | Datum | Version | Änderung |
 |---|---|---|
 | 2026-11-11 | 0.1 | Entwurf mit Code und Tests. Keine OI-Werte an Ereignissen angesehen, kein Zähllauf. |
+| 2026-11-22 | 0.1 | Zähllauf (ergebnisblind, ohne Label) auf dem Mac, Code 3916854: Spot 1h 64 525 Kerzen, Datensatz-Hash a9f525df…4826fa9 (wie S20/S21); 1 583 Metrics-Tagesdateien, 455 273 OI-Schnappschüsse, OI-Hash ed361a67…a5d43292. Ab 2020-09-15: Training 242 Ereignisse, davon 241 mit Merkmalen; Validierung 216, davon 211. Training ab 2021-12: 116. Gate (200/150) und Naht-Prüfung (≥ 80) bestanden. Zwei Downloads brachen per Zeitüberschreitung ab, der dritte Anlauf lief durch (bereits geprüfte Dateien wiederverwendet). Rohdatei `../reports/s23_count_2026-11-22T1547Z.json`. Regeln unverändert. |
