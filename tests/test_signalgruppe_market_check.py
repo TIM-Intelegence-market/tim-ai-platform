@@ -216,7 +216,7 @@ def test_direction_check_counts_every_call_with_prices_per_author() -> None:
 
 
 def test_small_coins_get_their_own_book_with_higher_cost() -> None:
-    from src.knowledge.goathub_market_check import BOOK_SMALL, FEE_TAKER, SMALL_SLIPPAGE_PER_SIDE
+    from src.knowledge.signalgruppe_market_check import BOOK_SMALL, FEE_TAKER, SMALL_SLIPPAGE_PER_SIDE
     small = check_market(tracked(), snapshot(FLAT, volume=10_000.0))  # about 1 Mio. USDT in 24 h
     assert small.tradable and small.book == BOOK_SMALL and small.cost_pct == (FEE_TAKER + SMALL_SLIPPAGE_PER_SIDE) * 2
     big = check_market(tracked(), snapshot(FLAT))
