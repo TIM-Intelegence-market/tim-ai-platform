@@ -231,7 +231,7 @@ def grade_scenario(scenario: Scenario, expected_rr: Decimal) -> tuple[Grade, tup
         score += 1
         reasons.append(f"score_{scenario.score:.2f}")
         if "external_weight" in scenario.trade_template:
-            reasons.append(f"score_includes_broncx_weight_{scenario.trade_template['external_weight']}")
+            reasons.append(f"score_includes_mentor_weight_{scenario.trade_template['external_weight']}")
     if expected_rr >= GRADE_RR_THRESHOLD:
         score += 1
         reasons.append(f"rr_{expected_rr:.2f}")

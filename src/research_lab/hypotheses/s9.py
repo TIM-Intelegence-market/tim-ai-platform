@@ -1,7 +1,7 @@
 """Signal rules of study S9 (docs/research_lab/studien/S9_CHOCH_RETEST_PRAEREGISTRIERUNG.md).
 
 CHoCH by close, retest band around the broken level, reaction close beyond the band,
-stop at the origin extreme, entry only with R:R >= 2 (GoatHub lesson "How to identify
+stop at the origin extreme, entry only with R:R >= 2 (Signalgruppe lesson "How to identify
 direction", model A on 15m). Rebuilt here on its own, independent of the chart's
 ``market_structure``; every rule only reads closed bars up to the current one.
 

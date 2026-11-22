@@ -2,14 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.tim.goathub-sync</string>
+  <key>Label</key><string>com.tim.signalgruppe-sync</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/tim/Documents/TIM/tim-broncx-feed/.venv/bin/python</string>
-    <string>/Users/tim/Documents/TIM/tim-broncx-feed/scripts/goathub_discord_bot.py</string>
+    <string>/Users/tim/Documents/TIM/tim-mentor-feed/.venv/bin/python</string>
+    <string>/Users/tim/Documents/TIM/tim-mentor-feed/scripts/signalgruppe_discord_bot.py</string>
     <string>sync</string>
   </array>
-  <key>WorkingDirectory</key><string>/Users/tim/Documents/TIM/tim-broncx-feed</string>
+  <key>WorkingDirectory</key><string>/Users/tim/Documents/TIM/tim-mentor-feed</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>HOME</key><string>/Users/tim</string>
@@ -23,7 +23,7 @@
   </array>
   <key>RunAtLoad</key><true/>
   <key>ProcessType</key><string>Background</string>
-  <key>StandardOutPath</key><string>/Users/tim/Documents/TIM/tim-broncx-feed/data/operational/goathub_sync.log</string>
-  <key>StandardErrorPath</key><string>/Users/tim/Documents/TIM/tim-broncx-feed/data/operational/goathub_sync.err.log</string>
+  <key>StandardOutPath</key><string>/Users/tim/Documents/TIM/tim-mentor-feed/data/operational/signalgruppe_sync.log</string>
+  <key>StandardErrorPath</key><string>/Users/tim/Documents/TIM/tim-mentor-feed/data/operational/signalgruppe_sync.err.log</string>
 </dict>
 </plist>

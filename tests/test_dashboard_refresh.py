@@ -118,7 +118,7 @@ def test_sk_study_lets_only_display_changes_through():
     assert dr.study_blockers(studies, safe) == {}
     unsafe = ["src/orderflow/observations.py", "main.py", "config/settings.py", "scripts/tim_history_recovery.py",
               "requirements.txt", "ops/launchd/com.tim.runtime.plist", "src/v2_completion/mac_live.py",
-              "src/sources/goathub_discord.py", "LICENSE.py", "docs_LICENSE"]
+              "src/sources/signalgruppe_discord.py", "LICENSE.py", "docs_LICENSE"]
     assert dr.study_blockers(studies, safe + unsafe) == {"V2_SK_CONTROL_REGIME_V1": sorted(unsafe)}
 
 

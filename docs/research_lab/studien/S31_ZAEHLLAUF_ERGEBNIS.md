@@ -1,7 +1,7 @@
 # S31 Zähllauf Training 2020–22: Ergebnis (12.11.2026)
 
 STATUS: PARTIAL (Zähllauf fertig, Auswertung entfällt nach Vorab-Regel „n < 100 = nicht prüfbar“)
-SCOPE: Broncx-Bootcamp-Orderflow-Regeln B1–B8 (Präregistrierung 1.0), BTCUSDT Spot-Bars S8 1.2.0, Metrics (Perp-OI, Taker-Ratio) ab 2020-09, Bitunix-Kosten, Kostengate 0,15 R wie OF2. PS5, Code = Branch dieses PRs auf OFX-Stand, Datei results/s31/count_training.json.
+SCOPE: Mentor-Bootcamp-Orderflow-Regeln B1–B8 (Präregistrierung 1.0), BTCUSDT Spot-Bars S8 1.2.0, Metrics (Perp-OI, Taker-Ratio) ab 2020-09, Bitunix-Kosten, Kostengate 0,15 R wie OF2. PS5, Code = Branch dieses PRs auf OFX-Stand, Datei results/s31/count_training.json.
 
 EVIDENCE
 | Regel | Quelle der Zahl | Trades Training | Netto R/Trade | Urteil |

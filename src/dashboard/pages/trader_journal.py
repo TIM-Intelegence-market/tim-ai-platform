@@ -1,4 +1,4 @@
-"""Trader journal page (/trader-journal): own paper trades behind Broncx' flowchart."""
+"""Trader journal page (/trader-journal): own paper trades behind Mentor' flowchart."""
 
 from __future__ import annotations
 
@@ -111,7 +111,7 @@ def _result(entry: Mapping[str, Any]) -> str:
 
 def render_trader_journal(data: dict[str, Any], journal: Mapping[str, Any], token: str, context_line: str,
                           form: Mapping[str, str] | None = None, error: str | None = None, saved: str | None = None) -> str:
-    body = _hero("Trader-Journal", "Deine eigenen Papier-Trades hinter Broncx' Flussdiagramm, mit TIMs Kontext und Rückblick. Keine Order, kein Echtgeld.")
+    body = _hero("Trader-Journal", "Deine eigenen Papier-Trades hinter Mentor' Flussdiagramm, mit TIMs Kontext und Rückblick. Keine Order, kein Echtgeld.")
     if error:
         body += f"<section class='state-banner state-banner--fail'><div class='state-banner__primary'><h2 class='state-banner__state'>Nicht gespeichert</h2><p class='state-banner__sub'>{_safe(error)}</p></div></section>"
     elif saved:

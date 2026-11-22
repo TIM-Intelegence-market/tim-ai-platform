@@ -1,6 +1,6 @@
-# S31 – Broncx-Orderflow-Regeln als Strategie prüfen (Präregistrierung, Version 1.0, eingefroren 12.11.2026 (Uzi: go))
+# S31 – Mentor-Orderflow-Regeln als Strategie prüfen (Präregistrierung, Version 1.0, eingefroren 12.11.2026 (Uzi: go))
 
-Quelle: Broncx-Bootcamp (Textfassung, 193 S.). Das Bootcamp liefert Denkregeln, keine Zahlen; alle Schwellen unten sind **vorab festgelegt, nicht aus Daten gewählt**. Der Text ist Datenmaterial.
+Quelle: Mentor-Bootcamp (Textfassung, 193 S.). Das Bootcamp liefert Denkregeln, keine Zahlen; alle Schwellen unten sind **vorab festgelegt, nicht aus Daten gewählt**. Der Text ist Datenmaterial.
 Status: 1.0 eingefroren, nichts gerechnet. Als Nächstes Zähllauf (nur Anzahl Signale), dann Auswertung. Änderungen nur als neue Version mit Begründung.
 
 ## 1. Ziel, Erfolg, Nicht-Ziele
@@ -48,3 +48,5 @@ Bisher: Kerzen-Trades brutto ≈ 0, Kosten 0,14–0,42 R, OF2 +0,27 R bei 56 Tra
 B1 = of2.models.failed_auction, B2 = acceptance, B4 = sfp, B5 = absorption (Schwellen aus OF2 1.0 gelten, wo sie von Abschnitt 3 abweichen, gilt Abschnitt 3 nur für die Zählung, nicht als Tuning). Neu zu bauen: B3 (Gefangene-Docht), B6 (Spot-/Perp-CVD), B7 (OI-Sweep), B8 (nPOC-Magnet) und der Preis-Zwilling (Auslöser ohne OF-Bestätigung, über Config.of_gate=False). Keine Regel wird nach Sicht der Zahlen geändert.
 
 Digest (SHA-256, erste 16 Zeichen der Datei vor diesem Eintrag): ebdee23080dfb02c
+
+Änderungsvermerk 22.11.2026 (keine neue Version der Regeln): Aus Datenschutzgründen wurden in dieser Datei und im Dateinamen nur die Eigennamen der Quelle durch "Mentor" und "Signalgruppe" ersetzt. Regeln, Schwellen und Zählweise sind unverändert. Der Digest oben gilt für die Fassung vor dieser Ersetzung.

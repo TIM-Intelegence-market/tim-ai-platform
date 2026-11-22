@@ -1,6 +1,6 @@
-"""Broncx chart images: download, local vision reading, and the stricter chart rules.
+"""Mentor chart images: download, local vision reading, and the stricter chart rules.
 
-The geometry fixture is Broncx's chart of 2026-09-28 18:07 UTC (BTC 1h, MEXC):
+The geometry fixture is Mentor's chart of 2026-09-28 18:07 UTC (BTC 1h, MEXC):
 a short position tool with entry 83,866.0, stop 84,358.7 and target 82,641.4.
 """
 
@@ -14,17 +14,17 @@ from pathlib import Path
 import pytest
 
 from config.secrets import SecretValue
-from src.knowledge.broncx_chart_vision import (
+from src.knowledge.mentor_chart_vision import (
     ChartImageStore,
     OllamaVision,
     VisionError,
     guidance_for_post,
     parse_reading,
 )
-from src.knowledge.broncx_feed import BroncxFeedStore, BroncxPost
+from src.knowledge.mentor_feed import MentorFeedStore, MentorPost
 from src.models.market_data import Candle
 from src.orderflow_scenario.external_context import active_view, build_external_context
-from src.sources.broncx_discord import DiscordFeedConfig, DiscordFeedPoller, image_attachments
+from src.sources.mentor_discord import DiscordFeedConfig, DiscordFeedPoller, image_attachments
 
 NOW = datetime(2026, 9, 28, 20, 0, tzinfo=timezone.utc)
 POSTED = datetime(2026, 9, 28, 18, 8, tzinfo=timezone.utc)
@@ -47,9 +47,9 @@ def reading(payload: dict | str, image: str = "images/1001/0-chart.png"):
     return parse_reading(raw, image=image, model="test-vision", read_at=NOW)
 
 
-def feed_with_chart(tmp_path: Path, content: str, payload: dict, message_id: str = "1001") -> BroncxFeedStore:
-    store = BroncxFeedStore(tmp_path)
-    store.append(BroncxPost(message_id=message_id, posted_at=POSTED, content=content, received_at=POSTED, attachments=("image0.jpg",)))
+def feed_with_chart(tmp_path: Path, content: str, payload: dict, message_id: str = "1001") -> MentorFeedStore:
+    store = MentorFeedStore(tmp_path)
+    store.append(MentorPost(message_id=message_id, posted_at=POSTED, content=content, received_at=POSTED, attachments=("image0.jpg",)))
     images = ChartImageStore(tmp_path)
     path = images.save(message_id, 0, "image0.jpg", b"\x89PNG fake")
     images.append_reading(reading(payload, image=images.relative(path)))
@@ -133,7 +133,7 @@ def test_ignored_chart_direction_brings_no_invalidation(tmp_path: Path) -> None:
 
 
 def test_text_without_direction_takes_the_chart_direction(tmp_path: Path) -> None:
-    # Broncx 2026-09-30 09:04 UTC: "Took this @here" plus a long position tool on BTC 15m.
+    # Mentor 2026-09-30 09:04 UTC: "Took this @here" plus a long position tool on BTC 15m.
     took_this = {"symbol": "BTCUSDT", "timeframe": "15m",
                  "position_tool": {"entry": 83092.7, "red_box_outer_edge": 82842.9, "green_box_outer_edge": 83991.7}}
     store = feed_with_chart(tmp_path, "Took this @here", took_this)
@@ -148,10 +148,10 @@ def test_text_without_direction_takes_the_chart_direction(tmp_path: Path) -> Non
 LONG_TOOL = {"position_tool": {"entry": 83092.7, "red_box_outer_edge": 82842.9, "green_box_outer_edge": 83991.7}}
 
 
-def feed_with_text_then_chart(tmp_path: Path, first: str, second: str, payload: dict) -> BroncxFeedStore:
-    store = BroncxFeedStore(tmp_path)
-    store.append(BroncxPost(message_id="1000", posted_at=POSTED - timedelta(minutes=30), content=first, received_at=POSTED))
-    store.append(BroncxPost(message_id="1001", posted_at=POSTED, content=second, received_at=POSTED, attachments=("image0.jpg",)))
+def feed_with_text_then_chart(tmp_path: Path, first: str, second: str, payload: dict) -> MentorFeedStore:
+    store = MentorFeedStore(tmp_path)
+    store.append(MentorPost(message_id="1000", posted_at=POSTED - timedelta(minutes=30), content=first, received_at=POSTED))
+    store.append(MentorPost(message_id="1001", posted_at=POSTED, content=second, received_at=POSTED, attachments=("image0.jpg",)))
     images = ChartImageStore(tmp_path)
     path = images.save("1001", 0, "image0.jpg", b"\x89PNG fake")
     images.append_reading(reading(payload, image=images.relative(path)))
@@ -185,10 +185,10 @@ def test_image_only_follow_up_cannot_flip_his_written_direction(tmp_path: Path) 
 
 
 def test_new_position_after_he_closed_the_old_one_counts(tmp_path: Path) -> None:
-    store = BroncxFeedStore(tmp_path)
-    store.append(BroncxPost(message_id="0999", posted_at=POSTED - timedelta(hours=2), content="shorting here", received_at=POSTED))
-    store.append(BroncxPost(message_id="1000", posted_at=POSTED - timedelta(hours=1), content="closed my short", received_at=POSTED))
-    store.append(BroncxPost(message_id="1001", posted_at=POSTED, content="Took this", received_at=POSTED, attachments=("image0.jpg",)))
+    store = MentorFeedStore(tmp_path)
+    store.append(MentorPost(message_id="0999", posted_at=POSTED - timedelta(hours=2), content="shorting here", received_at=POSTED))
+    store.append(MentorPost(message_id="1000", posted_at=POSTED - timedelta(hours=1), content="closed my short", received_at=POSTED))
+    store.append(MentorPost(message_id="1001", posted_at=POSTED, content="Took this", received_at=POSTED, attachments=("image0.jpg",)))
     images = ChartImageStore(tmp_path)
     images.append_reading(reading(LONG_TOOL, image=images.relative(images.save("1001", 0, "image0.jpg", b"png"))))
     view = active_view(store.load(), observed_at=NOW, symbol="BTCUSDT", candles=[candle(15, 83300)], price_now=PRICE)
@@ -284,8 +284,8 @@ class FakeVision:
 
 
 def test_read_pending_reads_each_image_once(tmp_path: Path) -> None:
-    store = BroncxFeedStore(tmp_path)
-    store.append(BroncxPost(message_id="1001", posted_at=POSTED, content="", received_at=POSTED, attachments=("a.png",)))
+    store = MentorFeedStore(tmp_path)
+    store.append(MentorPost(message_id="1001", posted_at=POSTED, content="", received_at=POSTED, attachments=("a.png",)))
     images = ChartImageStore(tmp_path)
     images.save("1001", 0, "a.png", b"png")
     vision = FakeVision(json.dumps(SHORT_TOOL))
@@ -295,8 +295,8 @@ def test_read_pending_reads_each_image_once(tmp_path: Path) -> None:
 
 
 def test_model_down_keeps_the_image_for_the_next_cycle(tmp_path: Path) -> None:
-    store = BroncxFeedStore(tmp_path)
-    store.append(BroncxPost(message_id="1001", posted_at=POSTED, content="", received_at=POSTED, attachments=("a.png",)))
+    store = MentorFeedStore(tmp_path)
+    store.append(MentorPost(message_id="1001", posted_at=POSTED, content="", received_at=POSTED, attachments=("a.png",)))
     images = ChartImageStore(tmp_path)
     images.save("1001", 0, "a.png", b"png")
     with pytest.raises(VisionError):
@@ -352,7 +352,7 @@ def poller(tmp_path: Path, messages: list[dict], downloads: dict[str, bytes | Ex
             raise result
         return result
 
-    instance = DiscordFeedPoller(SecretValue("bot-secret-value"), DiscordFeedConfig(CHANNEL, frozenset({OWNER})), BroncxFeedStore(tmp_path),
+    instance = DiscordFeedPoller(SecretValue("bot-secret-value"), DiscordFeedConfig(CHANNEL, frozenset({OWNER})), MentorFeedStore(tmp_path),
                                  http_get=http_get, http_get_bytes=http_get_bytes, clock=lambda: NOW)
     return instance, requests
 
@@ -388,8 +388,8 @@ def test_failed_download_keeps_the_post(tmp_path: Path) -> None:
 
 def test_backfill_fetches_images_of_already_stored_posts_once(tmp_path: Path) -> None:
     message = forward("1554215667501105000", [{"filename": "chart.png", "url": CDN, "content_type": "image/png"}])
-    store = BroncxFeedStore(tmp_path)
-    store.append(BroncxPost(message_id="9554215667501105000", posted_at=POSTED, content="", received_at=POSTED, attachments=("chart.png",)))
+    store = MentorFeedStore(tmp_path)
+    store.append(MentorPost(message_id="9554215667501105000", posted_at=POSTED, content="", received_at=POSTED, attachments=("chart.png",)))
     instance, requests = poller(tmp_path, [message], {CDN: b"png"})
     assert instance.backfill_images() == (1, 0)
     assert instance.backfill_images() == (0, 0)
@@ -402,8 +402,8 @@ def test_a_failed_image_is_fetched_again_without_downloading_the_saved_one(tmp_p
         {"filename": "a.png", "url": CDN, "content_type": "image/png"},
         {"filename": "b.png", "url": second, "content_type": "image/png"},
     ])
-    store = BroncxFeedStore(tmp_path)
-    store.append(BroncxPost(message_id="9554215667501105000", posted_at=POSTED, content="", received_at=POSTED, attachments=("a.png", "b.png")))
+    store = MentorFeedStore(tmp_path)
+    store.append(MentorPost(message_id="9554215667501105000", posted_at=POSTED, content="", received_at=POSTED, attachments=("a.png", "b.png")))
     downloads: dict[str, bytes | Exception] = {CDN: b"a", second: OSError("timeout")}
     instance, requests = poller(tmp_path, [message], downloads)
     assert instance.backfill_images() == (1, 1)

@@ -63,7 +63,7 @@ def test_one_no_in_the_flowchart_books_a_no_trade() -> None:
 
 def test_warnings_flag_bias_weekend_and_small_reward() -> None:
     entry = tj.build_entry(_form(target="104"), {"bias": "SHORT", "weekend": True, "ny_open_block": True}, T0, 1)
-    assert entry["warnings"] == ["gegen den HTF-Bias (SHORT)", "Wochenende: Broncx handelt am Wochenende nicht", "im NY-Open-Block", "Chance-Risiko nur 0.80 R"]
+    assert entry["warnings"] == ["gegen den HTF-Bias (SHORT)", "Wochenende: Mentor handelt am Wochenende nicht", "im NY-Open-Block", "Chance-Risiko nur 0.80 R"]
 
 
 def test_context_snapshot_marks_weekend_and_ny_block() -> None:

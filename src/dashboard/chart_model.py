@@ -395,7 +395,7 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
             "state": scenario.state.value,
             "score": _flt(scenario.score),
             "score_type": scenario.score_type.value,
-            "score_parts": {**(scenario.trade_template.get("score_parts") or {}), **({"broncx": float(scenario.trade_template["external_weight"])} if scenario.trade_template.get("external_weight") else {})} or None,
+            "score_parts": {**(scenario.trade_template.get("score_parts") or {}), **({"mentor": float(scenario.trade_template["external_weight"])} if scenario.trade_template.get("external_weight") else {})} or None,
             "trigger": _flt(scenario.trigger_level),
             "entry_low": _flt(scenario.entry_zone_low),
             "entry_high": _flt(scenario.entry_zone_high),
@@ -430,7 +430,7 @@ def _shadow_scores(model_candles: Sequence[Any], context: Any, levels: Any, trad
     """Score per scenario id from a second pipeline run with trades and the footprint made from them.
 
     The trades cover only the last hours before the plan (journal window), so the footprint is partial: it reaches
-    back 2 to 4 candles, not the whole chart window. Positioning, funding and Broncx are not part of it yet."""
+    back 2 to 4 candles, not the whole chart window. Positioning, funding and Mentor are not part of it yet."""
     from src.dashboard.footprint_data import TICK_BY_SYMBOL
     from src.orderflow_scenario.engines.pipeline import Pipeline, PipelineInputs
     from src.orderflow_scenario.footprint import footprint_from_trades

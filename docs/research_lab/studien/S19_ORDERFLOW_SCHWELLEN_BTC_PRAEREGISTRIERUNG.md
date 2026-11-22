@@ -4,7 +4,7 @@
 |---|---|
 | Studie | S19 (nächste freie Nummer nach S18, 09.11.2026) |
 | Version | **1.0, eingefroren am 10.11.2026 auf Uzis Wort** („s19 … starten“, 11:17 Uhr Ortszeit). Regeln als Code: `src/research_lab/studies/s19.py` (`VERSION = "1.0"`), Skript `scripts/research_lab_s19.py`, Tests `tests/test_research_lab_s19.py`; Regelstand = Commit dieses Einfrierens. Zähllauf 0.3 (10.11. 00:49): T, H, E testbar, I, A, C nicht testbar (Abschnitt 7) |
-| Anlass | Master-Analyse 09.11.2026 aus Kundensicht (Broncx), Punkt P8: „Schwellen stammen aus Quellen, nie an BTC gemessen“; Glossar `../../knowledge/ORDERFLOW_BEGRIFFE.md` |
+| Anlass | Master-Analyse 09.11.2026 aus Kundensicht (Mentor), Punkt P8: „Schwellen stammen aus Quellen, nie an BTC gemessen“; Glossar `../../knowledge/ORDERFLOW_BEGRIFFE.md` |
 | Geprüfter Code | `src/orderflow_scenario/footprint.py` (F1–F5) und `src/orderflow_scenario/engines/orderflow_interpretation.py` (R1–R4), Konstanten in Abschnitt 2 des Glossars; Regelstand = Commit beim Einfrieren |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
 | Holdout | ab 2025-01-01, wird nicht geladen. Training bis 2022-12-31, Validierung 2023-01-01 bis 2024-12-31 (Abschnitt 3 des Protokolls) |

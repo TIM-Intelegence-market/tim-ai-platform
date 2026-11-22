@@ -1,6 +1,6 @@
-"""Broncx chart images: local copies and what a local vision model reads from them.
+"""Mentor chart images: local copies and what a local vision model reads from them.
 
-Broncx often posts a chart with drawn levels and arrows instead of (or next to)
+Mentor often posts a chart with drawn levels and arrows instead of (or next to)
 text. The feed bot downloads those images when it picks a post up (Discord's
 attachment links expire after about a day) and a local vision model (Ollama,
 default ``qwen3.5:9b``) reads what is drawn on them. Nothing leaves the Mac.
@@ -37,13 +37,13 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Callable
 
-from .broncx_feed import (
+from .mentor_feed import (
     _PLAUSIBLE_HIGH,
     _PLAUSIBLE_LOW,
     _SYMBOLS,
-    BroncxGuidance,
-    BroncxLevel,
-    BroncxPost,
+    MentorGuidance,
+    MentorLevel,
+    MentorPost,
     parse_guidance,
 )
 
@@ -232,7 +232,7 @@ class OllamaVision:
 
     def __init__(self, model: str | None = None, url: str | None = None, timeout: float = 300.0,
                  post: Callable[[str, dict[str, Any], float], dict[str, Any]] | None = None) -> None:
-        self.model = model or os.environ.get("TIM_BRONCX_VISION_MODEL") or DEFAULT_VISION_MODEL
+        self.model = model or os.environ.get("TIM_MENTOR_VISION_MODEL") or DEFAULT_VISION_MODEL
         self.url = (url or os.environ.get("TIM_OLLAMA_URL") or DEFAULT_OLLAMA_URL).rstrip("/")
         self.timeout = timeout
         self._post = post or _post_json
@@ -318,11 +318,11 @@ class ChartImageStore:
         known = self.readings() if readings is None else readings
         return [known[key] for key in (self.relative(path) for path in self.images_for(message_id)) if key in known and known[key].error is None]
 
-    def unread(self, posts: list[BroncxPost]) -> list[tuple[BroncxPost, Path]]:
+    def unread(self, posts: list[MentorPost]) -> list[tuple[MentorPost, Path]]:
         known = self.readings()
         return [(post, path) for post in posts for path in self.images_for(post.message_id) if self.relative(path) not in known]
 
-    def read_pending(self, posts: list[BroncxPost], vision: OllamaVision, *, limit: int = 3,
+    def read_pending(self, posts: list[MentorPost], vision: OllamaVision, *, limit: int = 3,
                      clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc)) -> list[ChartReading]:
         """Read up to ``limit`` not-yet-read images. A model error is stored so the image is not retried forever."""
         done = []
@@ -348,13 +348,13 @@ _MANAGEMENT = re.compile(
 )
 
 
-def _direction_withheld(text: BroncxGuidance, content: str) -> bool:
+def _direction_withheld(text: MentorGuidance, content: str) -> bool:
     """The text withdrew a direction, manages a trade, or renews an earlier idea: the chart must not start a new view."""
     return text.direction_withdrawn or text.reaffirms_previous or bool(_MANAGEMENT.search(content))
 
 
-def merge_chart_reading(text: BroncxGuidance, has_text: bool, readings: list[ChartReading], reference_price: Decimal | None,
-                        *, content: str = "", chart_sets_direction: bool = True) -> BroncxGuidance:
+def merge_chart_reading(text: MentorGuidance, has_text: bool, readings: list[ChartReading], reference_price: Decimal | None,
+                        *, content: str = "", chart_sets_direction: bool = True) -> MentorGuidance:
     """Add what the charts show to the text guidance, under the stricter chart rules.
 
     ``chart_sets_direction=False`` is used for a follow-up to a view that is still open: there a chart
@@ -394,7 +394,7 @@ def merge_chart_reading(text: BroncxGuidance, has_text: bool, readings: list[Cha
                 notes.append(f"chart level {price} dropped: not within 30 % of the current price")
                 continue
             role = next((name for pattern, name in _ROLE_WORDS if pattern.search(label)), "LEVEL")
-            levels.append(BroncxLevel(raw=f"chart:{label or price}", value=price, role=role, source="chart"))
+            levels.append(MentorLevel(raw=f"chart:{label or price}", value=price, role=role, source="chart"))
             existing.add(price)
     invalidation = list(text.invalidation)
     # The position tool's stop belongs to its direction: it only invalidates a view that direction is part of.
@@ -405,7 +405,7 @@ def merge_chart_reading(text: BroncxGuidance, has_text: bool, readings: list[Cha
             if reference_price is not None and reference_price > 0 and _PLAUSIBLE_LOW <= price / reference_price <= _PLAUSIBLE_HIGH:
                 invalidation.append(f"{side} {price} (chart)")
                 if price not in existing:
-                    levels.append(BroncxLevel(raw=f"chart:invalid {side}", value=price, role="STOP", source="chart"))
+                    levels.append(MentorLevel(raw=f"chart:invalid {side}", value=price, role="STOP", source="chart"))
                     existing.add(price)
 
     symbol = text.symbol or next((reading.symbol for reading in readings if reading.symbol), None)
@@ -420,7 +420,7 @@ def merge_chart_reading(text: BroncxGuidance, has_text: bool, readings: list[Cha
                    parse_quality=quality, notes=tuple(notes), chart_readings=len(readings), bias_source=bias_source)
 
 
-def guidance_for_post(post: BroncxPost, reference_price: Decimal | None = None, *, chart_sets_direction: bool = True) -> BroncxGuidance:
+def guidance_for_post(post: MentorPost, reference_price: Decimal | None = None, *, chart_sets_direction: bool = True) -> MentorGuidance:
     """Text guidance plus the cached chart readings attached to the post."""
     text = parse_guidance(post.content, reference_price)
     return merge_chart_reading(text, bool(post.content.strip()), list(post.chart_readings), reference_price,

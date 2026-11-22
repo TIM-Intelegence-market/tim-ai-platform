@@ -23,7 +23,7 @@ from pathlib import Path
 TIM_PATHS = [
     "Library/Application Support/TIM",
     "TIM-live", "TIM-worker", "TIM-trading-team", "TIM-bili-test",
-    "Documents/TIM", "Downloads/broncx-library",
+    "Documents/TIM", "Downloads/mentor-library",
     "tim-ci-runner", "actions-runner",
     ".ssh", ".gnupg", ".aws", ".config/gh", ".docker/config.json",
     ".ollama", ".cache", ".venv", "Library/Caches", "Library/Logs",

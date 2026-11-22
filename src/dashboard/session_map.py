@@ -1,6 +1,6 @@
 """Session preparation map ("Vorbereitungs-Karte") from TIM's own candles.
 
-Builds the trader's preparation in the order the Broncx bootcamp teaches it
+Builds the trader's preparation in the order the Mentor bootcamp teaches it
 (HTF bias -> auction context -> locations), read-only and paper only:
 
 - HTF structure on 4h, 1D and 1W, aggregated from TIM's 1h candles,
@@ -51,7 +51,7 @@ SESSIONS = (
 LOCATION_TEXT = {
     "ABOVE_ACCEPTED": ("über Vortages-Value, angenommen",
                        "AMT-Regel 3: angenommen außerhalb der Balance, neuer Value wird gesucht. "
-                       "Broncx-Intraday-Modell Long: Rücklauf zum Vortages-VAH als Ort, Stop unter dem Swing."),
+                       "Mentor-Intraday-Modell Long: Rücklauf zum Vortages-VAH als Ort, Stop unter dem Swing."),
     "ABOVE_NOT_ACCEPTED": ("über Vortages-VAH, noch nicht angenommen",
                            "Noch keine zwei 30m-Schlüsse darüber: Gefahr einer Failed Auction zurück in den Value (AMT-Regel 1)."),
     "IN_VALUE": ("im Vortages-Value",
@@ -61,7 +61,7 @@ LOCATION_TEXT = {
                            "Noch keine zwei 30m-Schlüsse darunter: Gefahr einer Failed Auction zurück in den Value (AMT-Regel 1)."),
     "BELOW_ACCEPTED": ("unter Vortages-Value, angenommen",
                        "AMT-Regel 3: angenommen außerhalb der Balance, neuer Value wird gesucht. "
-                       "Broncx-Intraday-Modell Short: Rücklauf zum Vortages-VAL als Ort, Stop über dem Swing."),
+                       "Mentor-Intraday-Modell Short: Rücklauf zum Vortages-VAL als Ort, Stop über dem Swing."),
     "UNKNOWN": ("unbekannt", "Kein vollständiges Vortagesprofil vorhanden."),
 }
 MIN_TODAY_CANDLES = 4  # 30m candles (two hours) before today's developing value is compared
@@ -133,7 +133,7 @@ def structure(candles: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 
 
 def htf_bias(states: Mapping[str, str]) -> dict[str, Any]:
-    """1D and 4h decide; 1W only confirms. LTF never overrides this (Broncx)."""
+    """1D and 4h decide; 1W only confirms. LTF never overrides this (Mentor)."""
     daily, four = states.get("1D", "UNKNOWN"), states.get("4h", "UNKNOWN")
     if daily == four == "UP":
         bias = "LONG"

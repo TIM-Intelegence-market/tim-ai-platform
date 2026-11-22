@@ -1,17 +1,17 @@
-"""Read-only Discord reader for GoatHub community channels.
+"""Read-only Discord reader for Signalgruppe community channels.
 
 Two modes, chosen in the config:
 
-- ``forward`` (default): GoatHub posts are forwarded (Discord "Forward") into a
-  channel of the TIM owner's own server, as with the Broncx feed. Only
+- ``forward`` (default): Signalgruppe posts are forwarded (Discord "Forward") into a
+  channel of the TIM owner's own server, as with the Mentor feed. Only
   messages from the configured forwarder ids are accepted. Discord does not
   include the original author in a forward, so such messages show no author.
-- ``direct``: the GoatHub server's admins invited the bot into their server.
+- ``direct``: the Signalgruppe server's admins invited the bot into their server.
   The bot then reads the configured channels with author names, and accepts
   every human author there (bots are skipped).
 
 The bot never writes to Discord and never automates a user account. It reuses
-the Broncx bot secret by default (one bot, several channels).
+the Mentor bot secret by default (one bot, several channels).
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from config.secrets import SecretValue
-from src.knowledge.goathub_feed import CHANNEL_ROLES, ROLE_CALLS, SOURCE_DIRECT, SOURCE_FOLLOW, SOURCE_FORWARD, SOURCE_MANUAL, GoatHubFeedStore, GoatHubMessage
-from src.sources.broncx_discord import (
+from src.knowledge.signalgruppe_feed import CHANNEL_ROLES, ROLE_CALLS, SOURCE_DIRECT, SOURCE_FOLLOW, SOURCE_FORWARD, SOURCE_MANUAL, SignalgruppeFeedStore, SignalgruppeMessage
+from src.sources.mentor_discord import (
     API_BASE,
     DiscordFeedError,
     HttpGet,
@@ -35,16 +35,16 @@ from src.sources.broncx_discord import (
     _support_dir,
     _urllib_get,
 )
-from src.sources.broncx_discord import default_secret_path as broncx_secret_path
+from src.sources.mentor_discord import default_secret_path as mentor_secret_path
 
 __all__ = [
-    "GoatHubChannel",
-    "GoatHubConfig",
-    "GoatHubReader",
+    "SignalgruppeChannel",
+    "SignalgruppeConfig",
+    "SignalgruppeReader",
     "SyncResult",
     "default_config_path",
     "default_secret_path",
-    "message_to_goathub",
+    "message_to_signalgruppe",
 ]
 
 MODES = ("forward", "direct")
@@ -63,16 +63,16 @@ USER_AGENT = "DiscordBot (https://github.com/uezeyiraydin-cell/tim-ai-platform, 
 
 
 def default_secret_path() -> Path:
-    override = os.environ.get("TIM_GOATHUB_DISCORD_SECRET_FILE")
-    return Path(override).expanduser() if override else broncx_secret_path()
+    override = os.environ.get("TIM_SIGNALGRUPPE_DISCORD_SECRET_FILE")
+    return Path(override).expanduser() if override else mentor_secret_path()
 
 
 def default_config_path() -> Path:
-    return Path(os.environ.get("TIM_GOATHUB_DISCORD_CONFIG") or _support_dir() / "goathub-discord.json").expanduser()
+    return Path(os.environ.get("TIM_SIGNALGRUPPE_DISCORD_CONFIG") or _support_dir() / "signalgruppe-discord.json").expanduser()
 
 
 @dataclass(frozen=True, slots=True)
-class GoatHubChannel:
+class SignalgruppeChannel:
     channel_id: str
     name: str = ""
     role: str = ROLE_CALLS  # "calls": checked for trade calls; "knowledge": teaching material, never a call
@@ -88,8 +88,8 @@ class GoatHubChannel:
 
 
 @dataclass(frozen=True, slots=True)
-class GoatHubConfig:
-    channels: tuple[GoatHubChannel, ...]
+class SignalgruppeConfig:
+    channels: tuple[SignalgruppeChannel, ...]
     mode: str = "forward"
     forwarder_ids: frozenset[str] = frozenset()
 
@@ -106,18 +106,18 @@ class GoatHubConfig:
             raise DiscordFeedError("a channel id equals a forwarder (user) id; enter the channel id via 'Copy Channel ID', not your user id")
 
     @classmethod
-    def load(cls, path: Path) -> "GoatHubConfig":
+    def load(cls, path: Path) -> "SignalgruppeConfig":
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError as exc:
-            raise DiscordFeedError(f"config file missing: {path}; run 'goathub_discord_bot.py setup'") from exc
+            raise DiscordFeedError(f"config file missing: {path}; run 'signalgruppe_discord_bot.py setup'") from exc
         except ValueError as exc:
             raise DiscordFeedError(f"config file is not valid JSON: {path}") from exc
         if not isinstance(payload, dict):
             raise DiscordFeedError(f"config file must hold a JSON object: {path}")
         channels = tuple(
-            GoatHubChannel(str(item.get("id", "")), str(item.get("name") or ""), str(item.get("role") or ROLE_CALLS), str(item.get("kind") or KIND_CHANNEL))
-            if isinstance(item, dict) else GoatHubChannel(str(item))
+            SignalgruppeChannel(str(item.get("id", "")), str(item.get("name") or ""), str(item.get("role") or ROLE_CALLS), str(item.get("kind") or KIND_CHANNEL))
+            if isinstance(item, dict) else SignalgruppeChannel(str(item))
             for item in payload.get("channels") or ()
         )
         return cls(channels, str(payload.get("mode") or "forward"), frozenset(str(item) for item in payload.get("forwarder_ids") or ()))
@@ -161,7 +161,7 @@ def _is_follow_crosspost(message: dict[str, Any]) -> bool:
     return bool(message.get("webhook_id")) and bool(flags & _IS_CROSSPOST) and bool(reference.get("guild_id"))
 
 
-def message_to_goathub(message: dict[str, Any], channel: GoatHubChannel, received_at: datetime, mode: str = "direct") -> GoatHubMessage | None:
+def message_to_signalgruppe(message: dict[str, Any], channel: SignalgruppeChannel, received_at: datetime, mode: str = "direct") -> SignalgruppeMessage | None:
     """Map a Discord message (direct post, forward or typed text) to a stored community message."""
     author = message.get("author") or {}
     snapshots = message.get("message_snapshots") or []
@@ -188,7 +188,7 @@ def message_to_goathub(message: dict[str, Any], channel: GoatHubChannel, receive
     names = tuple(str(item.get("filename") or item.get("url") or "attachment") for item in attachments)
     if not content.strip() and not names:
         return None
-    return GoatHubMessage(
+    return SignalgruppeMessage(
         message_id=message_id,
         channel_id=channel.channel_id,
         posted_at=_parse_time(posted_at),
@@ -205,12 +205,12 @@ def message_to_goathub(message: dict[str, Any], channel: GoatHubChannel, receive
     )
 
 
-class GoatHubReader:
+class SignalgruppeReader:
     def __init__(
         self,
         secret: SecretValue,
-        config: GoatHubConfig,
-        store: GoatHubFeedStore,
+        config: SignalgruppeConfig,
+        store: SignalgruppeFeedStore,
         http_get: HttpGet | None = None,
         clock: Callable[[], datetime] | None = None,
         sleep: Callable[[float], None] | None = None,
@@ -228,7 +228,7 @@ class GoatHubReader:
         """Read every configured channel from its cursor to the newest message (whole history on the first run)."""
         return [self.sync_channel(channel) for channel in self.resolve_channels()]
 
-    def resolve_channels(self) -> list[GoatHubChannel]:
+    def resolve_channels(self) -> list[SignalgruppeChannel]:
         """The channels to read: plain entries as they are, each category expanded to its text channels.
 
         A channel inside a category takes the category's role; an entry for the channel itself wins.
@@ -243,7 +243,7 @@ class GoatHubReader:
                 resolved.setdefault(child.channel_id, child)
         return list(resolved.values())
 
-    def category_channels(self, category: GoatHubChannel) -> list[GoatHubChannel]:
+    def category_channels(self, category: SignalgruppeChannel) -> list[SignalgruppeChannel]:
         info = self._get(f"{API_BASE}/channels/{category.channel_id}")
         if not isinstance(info, dict) or info.get("type") != _CATEGORY_TYPE:
             raise DiscordFeedError(f"{category.channel_id} is not a category; right-click the category name and use 'Copy Category ID'")
@@ -256,9 +256,9 @@ class GoatHubReader:
         children = [item for item in channels if isinstance(item, dict) and str(item.get("parent_id") or "") == category.channel_id
                     and item.get("type") in _READABLE_CHANNEL_TYPES and _SNOWFLAKE.fullmatch(str(item.get("id", "")))]
         children.sort(key=lambda item: (int(item.get("position") or 0), int(item["id"])))
-        return [GoatHubChannel(str(item["id"]), str(item.get("name") or ""), category.role) for item in children]
+        return [SignalgruppeChannel(str(item["id"]), str(item.get("name") or ""), category.role) for item in children]
 
-    def sync_channel(self, channel: GoatHubChannel) -> SyncResult:
+    def sync_channel(self, channel: SignalgruppeChannel) -> SyncResult:
         self.store.set_channel_role(channel.channel_id, channel.role)
         after = self.store.cursors().get(channel.channel_id, "0")
         fetched = stored = duplicates = rejected = empty = 0
@@ -275,7 +275,7 @@ class GoatHubReader:
                     rejected += 1
                     continue
                 try:
-                    item = message_to_goathub(message, channel, received_at, self.config.mode)
+                    item = message_to_signalgruppe(message, channel, received_at, self.config.mode)
                 except (KeyError, TypeError, ValueError):
                     item = None  # one malformed message must not block the cursor forever
                 if item is None:
@@ -295,7 +295,7 @@ class GoatHubReader:
     def _accepted(self, message: dict[str, Any]) -> bool:
         author = message.get("author") or {}
         if _is_follow_crosspost(message):
-            return True  # a GoatHub announcement channel the owner follows ("Follow") posts here by webhook
+            return True  # a Signalgruppe announcement channel the owner follows ("Follow") posts here by webhook
         if author.get("bot"):
             return False
         if self.config.mode == "direct":

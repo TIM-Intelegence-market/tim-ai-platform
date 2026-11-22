@@ -1,8 +1,8 @@
-"""GoatHub community feed: stored channel messages, community calls and a memory export.
+"""Signalgruppe community feed: stored channel messages, community calls and a memory export.
 
-Messages come from Discord channels read by ``src/sources/goathub_discord.py``:
-either a channel in the TIM owner's own server that GoatHub posts are forwarded
-into, or GoatHub channels the bot was invited to by the server's admins. This
+Messages come from Discord channels read by ``src/sources/signalgruppe_discord.py``:
+either a channel in the TIM owner's own server that Signalgruppe posts are forwarded
+into, or Signalgruppe channels the bot was invited to by the server's admins. This
 module stores them verbatim, finds the trading calls among them and writes the
 whole channel as Markdown, so Claude's memory and TIM read the real messages.
 
@@ -25,16 +25,16 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-from .broncx_feed import BroncxGuidance, parse_guidance
+from .mentor_feed import MentorGuidance, parse_guidance
 
 __all__ = [
     "CHANNEL_ROLES",
     "CommunityCall",
-    "GoatHubFeedStore",
-    "GoatHubMessage",
+    "SignalgruppeFeedStore",
+    "SignalgruppeMessage",
     "ROLE_CALLS",
     "ROLE_KNOWLEDGE",
-    "default_goathub_dir",
+    "default_signalgruppe_dir",
     "extract_call",
     "good_calls",
     "import_screen_readings",
@@ -60,12 +60,12 @@ POPULAR_REACTIONS = 3
 SUMMARY_LIMIT_BYTES = 3800
 
 
-def default_goathub_dir() -> Path:
+def default_signalgruppe_dir() -> Path:
     """Local, untracked feed directory (``data/`` is git-ignored)."""
-    override = os.environ.get("TIM_GOATHUB_FEED_DIR")
+    override = os.environ.get("TIM_SIGNALGRUPPE_FEED_DIR")
     if override:
         return Path(override).expanduser()
-    return Path(__file__).resolve().parents[2] / "data" / "goathub_feed"
+    return Path(__file__).resolve().parents[2] / "data" / "signalgruppe_feed"
 
 
 def _stored_role(value: Any) -> str:
@@ -76,7 +76,7 @@ def _stored_role(value: Any) -> str:
 
 
 @dataclass(frozen=True, slots=True)
-class GoatHubMessage:
+class SignalgruppeMessage:
     message_id: str
     channel_id: str
     posted_at: datetime
@@ -120,7 +120,7 @@ class GoatHubMessage:
         return payload
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "GoatHubMessage":
+    def from_dict(cls, payload: dict[str, Any]) -> "SignalgruppeMessage":
         return cls(
             message_id=str(payload["message_id"]),
             channel_id=str(payload["channel_id"]),
@@ -138,24 +138,24 @@ class GoatHubMessage:
         )
 
 
-class GoatHubFeedStore:
+class SignalgruppeFeedStore:
     """Append-only JSONL store, idempotent by (channel, message id), with one cursor per channel."""
 
     def __init__(self, root: Path | None = None) -> None:
-        self.root = root or default_goathub_dir()
+        self.root = root or default_signalgruppe_dir()
         self.messages_path = self.root / "messages.jsonl"
         self.state_path = self.root / "state.json"
         self._known: set[tuple[str, str]] | None = None
 
-    def load(self) -> list[GoatHubMessage]:
+    def load(self) -> list[SignalgruppeMessage]:
         if not self.messages_path.exists():
             return []
-        messages: dict[tuple[str, str], GoatHubMessage] = {}
+        messages: dict[tuple[str, str], SignalgruppeMessage] = {}
         for line in self.messages_path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             try:
-                message = GoatHubMessage.from_dict(json.loads(line))
+                message = SignalgruppeMessage.from_dict(json.loads(line))
             except (ValueError, KeyError, TypeError):
                 continue  # a torn last line after a crash must not hide the other messages
             messages.setdefault((message.channel_id, message.message_id), message)
@@ -164,7 +164,7 @@ class GoatHubFeedStore:
             messages = {key: replace(item, channel_role=ROLE_KNOWLEDGE) if item.channel_id in knowledge else item for key, item in messages.items()}
         return sorted(messages.values(), key=lambda item: (item.posted_at, item.channel_id, item.message_id))
 
-    def append(self, message: GoatHubMessage) -> bool:
+    def append(self, message: SignalgruppeMessage) -> bool:
         if self._known is None:
             self._known = {(item.channel_id, item.message_id) for item in self.load()}
         key = (message.channel_id, message.message_id)
@@ -214,15 +214,15 @@ class GoatHubFeedStore:
             roles[channel_id] = role
             self._write_state("channel_roles", roles)
 
-    def messages_until(self, observed_at: datetime) -> list[GoatHubMessage]:
+    def messages_until(self, observed_at: datetime) -> list[SignalgruppeMessage]:
         """Messages TIM already had at ``observed_at`` (no lookahead in replays)."""
         return [message for message in self.load() if message.known_at <= observed_at]
 
 
 @dataclass(frozen=True, slots=True)
 class CommunityCall:
-    message: GoatHubMessage
-    guidance: BroncxGuidance
+    message: SignalgruppeMessage
+    guidance: MentorGuidance
     grade: str  # A: direction, symbol, level and invalidation/stop | B: direction, symbol and level | C: the rest
     reasons: tuple[str, ...]
 
@@ -246,7 +246,7 @@ class CommunityCall:
         }
 
 
-# Community posts name any coin ("long on movr", "Long HNT"); Broncx' parser only knows a few majors.
+# Community posts name any coin ("long on movr", "Long HNT"); Mentor' parser only knows a few majors.
 _TICKER_AFTER_DIRECTION = re.compile(
     r"\b(?:long|longing|short|shorting|buy|buying|sell|selling)\s+(?:on\s+|a\s+|some\s+)?\$?([A-Za-z][A-Za-z0-9]{1,9})\b", re.IGNORECASE)
 _TICKER_PAIR = re.compile(r"\b([A-Za-z][A-Za-z0-9]{1,9})\s*/\s*USDT?\b", re.IGNORECASE)
@@ -309,7 +309,7 @@ def is_trade_report_or_chatter(text: str) -> bool:
     return bool(_NOT_A_CALL.search(text))
 
 
-def extract_call(message: GoatHubMessage, reference_price: Decimal | None = None) -> CommunityCall | None:
+def extract_call(message: SignalgruppeMessage, reference_price: Decimal | None = None) -> CommunityCall | None:
     """A call is a message that states a current direction; anything else is conversation."""
     if message.channel_role == ROLE_KNOWLEDGE or not message.content.strip():
         return None  # knowledge channels hold teaching material, not calls
@@ -346,7 +346,7 @@ def extract_call(message: GoatHubMessage, reference_price: Decimal | None = None
 
 
 def good_calls(
-    messages: Iterable[GoatHubMessage],
+    messages: Iterable[SignalgruppeMessage],
     *,
     observed_at: datetime | None = None,
     max_age: timedelta | None = None,
@@ -369,12 +369,12 @@ def _quote(text: str) -> list[str]:
     return ["> " + line if line.strip() else ">" for line in text.splitlines()] or [">"]
 
 
-def _channel_title(message: GoatHubMessage) -> str:
+def _channel_title(message: SignalgruppeMessage) -> str:
     title = f"#{message.channel_name}" if message.channel_name else f"Kanal {message.channel_id}"
     return f"{title} (nur Wissen, keine Calls)" if message.channel_role == ROLE_KNOWLEDGE else title
 
 
-def _channel_heading(messages: Sequence[GoatHubMessage]) -> str:
+def _channel_heading(messages: Sequence[SignalgruppeMessage]) -> str:
     knowledge = [item for item in messages if item.channel_role == ROLE_KNOWLEDGE]
     return _channel_title(knowledge[0] if knowledge else messages[0])
 
@@ -389,11 +389,11 @@ def _call_line(call: CommunityCall) -> str:
             f"{first.replace('|', '/')} |")
 
 
-def render_channel_markdown(messages: Sequence[GoatHubMessage], generated_at: datetime) -> str:
+def render_channel_markdown(messages: Sequence[SignalgruppeMessage], generated_at: datetime) -> str:
     """The whole channel, verbatim, grouped by channel and day, with the good calls on top."""
     calls = good_calls(messages)
     lines = [
-        "# GoatHub-Kanal (vollständig)",
+        "# Signalgruppe-Kanal (vollständig)",
         "",
         f"Stand: {generated_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC. "
         f"{len(messages)} Nachrichten, {len(calls)} gute Calls (Note A/B).",
@@ -409,7 +409,7 @@ def render_channel_markdown(messages: Sequence[GoatHubMessage], generated_at: da
         lines += [_call_line(call) for call in calls]
     else:
         lines.append("Keine.")
-    by_channel: dict[str, list[GoatHubMessage]] = defaultdict(list)
+    by_channel: dict[str, list[SignalgruppeMessage]] = defaultdict(list)
     for message in messages:
         by_channel[message.channel_id].append(message)
     for channel_messages in by_channel.values():
@@ -431,7 +431,7 @@ def render_channel_markdown(messages: Sequence[GoatHubMessage], generated_at: da
     return "\n".join(lines) + "\n"
 
 
-def render_summary_markdown(messages: Sequence[GoatHubMessage], generated_at: datetime, full_path: str, limit_bytes: int = SUMMARY_LIMIT_BYTES) -> str:
+def render_summary_markdown(messages: Sequence[SignalgruppeMessage], generated_at: datetime, full_path: str, limit_bytes: int = SUMMARY_LIMIT_BYTES) -> str:
     """Short version for a memory index (under 4 KB): counts, active authors and the newest good calls."""
     calls = good_calls(messages)
     authors: dict[str, int] = defaultdict(int)
@@ -439,7 +439,7 @@ def render_summary_markdown(messages: Sequence[GoatHubMessage], generated_at: da
         authors[message.author_label] += 1
     newest = messages[-1].posted_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M") if messages else "-"
     head = [
-        "# GoatHub-Kanal (Kurzfassung)",
+        "# Signalgruppe-Kanal (Kurzfassung)",
         "",
         f"Stand {generated_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC: {len(messages)} Nachrichten, "
         f"neueste {newest} UTC, {len(calls)} gute Calls. Volltext: {full_path}",
@@ -461,7 +461,7 @@ def render_summary_markdown(messages: Sequence[GoatHubMessage], generated_at: da
     return text + ("\n".join(body) if body else "- keine") + "\n"
 
 
-def import_screen_readings(store: GoatHubFeedStore, payload: Sequence[dict[str, Any]], received_at: datetime | None = None) -> tuple[int, int]:
+def import_screen_readings(store: SignalgruppeFeedStore, payload: Sequence[dict[str, Any]], received_at: datetime | None = None) -> tuple[int, int]:
     """Store messages Claude read off the screen: [{channel_id, channel_name, author, posted_at, content, channel_role?}], idempotent by content hash.
 
     A ``channel_role`` of "knowledge" (or a channel synced as knowledge) keeps the messages out of the calls.
@@ -477,7 +477,7 @@ def import_screen_readings(store: GoatHubFeedStore, payload: Sequence[dict[str, 
         author = str(item.get("author") or "")
         content = str(item.get("content") or "")
         digest = hashlib.sha256(f"{channel_id}|{author}|{posted_at.isoformat()}|{content}".encode()).hexdigest()[:20]
-        message = GoatHubMessage(
+        message = SignalgruppeMessage(
             message_id=f"screen-{digest}", channel_id=channel_id, posted_at=posted_at, content=content,
             received_at=received_at, author_name=author, channel_name=str(item.get("channel_name") or ""),
             source=SOURCE_SCREEN, attachments=tuple(str(name) for name in item.get("attachments") or ()),
@@ -491,8 +491,8 @@ def import_screen_readings(store: GoatHubFeedStore, payload: Sequence[dict[str, 
     return stored, duplicates
 
 
-def write_memory_export(store: GoatHubFeedStore, out_dirs: Sequence[Path], generated_at: datetime | None = None) -> list[Path]:
-    """Write GOATHUB_KANAL.md, GOATHUB_KURZ.md and goathub_calls.json into each directory (atomic replace)."""
+def write_memory_export(store: SignalgruppeFeedStore, out_dirs: Sequence[Path], generated_at: datetime | None = None) -> list[Path]:
+    """Write SIGNALGRUPPE_KANAL.md, SIGNALGRUPPE_KURZ.md and signalgruppe_calls.json into each directory (atomic replace)."""
     generated_at = generated_at or datetime.now(timezone.utc)
     messages = store.load()
     calls = good_calls(messages)
@@ -500,11 +500,11 @@ def write_memory_export(store: GoatHubFeedStore, out_dirs: Sequence[Path], gener
     for out_dir in out_dirs:
         out_dir = out_dir.expanduser()
         out_dir.mkdir(parents=True, exist_ok=True)
-        full = out_dir / "GOATHUB_KANAL.md"
+        full = out_dir / "SIGNALGRUPPE_KANAL.md"
         files = {
             full: render_channel_markdown(messages, generated_at),
-            out_dir / "GOATHUB_KURZ.md": render_summary_markdown(messages, generated_at, str(full)),
-            out_dir / "goathub_calls.json": json.dumps(
+            out_dir / "SIGNALGRUPPE_KURZ.md": render_summary_markdown(messages, generated_at, str(full)),
+            out_dir / "signalgruppe_calls.json": json.dumps(
                 {"generated_at": generated_at.isoformat(), "messages": len(messages), "calls": [call.to_dict() for call in calls]},
                 ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         }

@@ -40,7 +40,7 @@ class KnowledgeResult:
     citation: Citation
 
 
-class GoatHubKnowledge:
+class SignalgruppeKnowledge:
     def __init__(self, chunk_lines: int = 8) -> None:
         if chunk_lines < 1:
             raise ValueError("chunk_lines must be at least 1")

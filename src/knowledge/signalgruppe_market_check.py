@@ -1,4 +1,4 @@
-"""Market check and paper diary for GoatHub calls (paper only, no orders).
+"""Market check and paper diary for Signalgruppe calls (paper only, no orders).
 
 Per call the check answers one question: could TIM have taken this trade on Bitunix, and would it
 have been worth it after costs? The answer is "tradable" or "not tradable" with one plain reason.
@@ -15,7 +15,7 @@ have been worth it after costs? The answer is "tradable" or "not tradable" with 
 Tradable calls go into the paper diary with entry, stop and target, kept per author. The thresholds
 below are assumptions, not measurements; the Bitunix fee is the unverified VIP0 figure from
 ``src/research_lab/bitunix/contract.py``. Prices come from a snapshot file (see
-``scripts/goathub_paper_diary.py fetch``); without prices a call is reported as "no price data",
+``scripts/signalgruppe_paper_diary.py fetch``); without prices a call is reported as "no price data",
 never guessed. Nothing here sends an order or posts anywhere.
 """
 
@@ -28,8 +28,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from .goathub_coin_analysis import analyse_coin
-from .goathub_channels import (
+from .signalgruppe_coin_analysis import analyse_coin
+from .signalgruppe_channels import (
     PROFILES,
     STATUS_NOT_CHECKABLE,
     STATUS_OPEN,
@@ -478,7 +478,7 @@ def render_diary_report(entries: Sequence[DiaryEntry], generated_at: datetime) -
     """Short German report, plain words: per author what was tradable and what the paper trades did."""
     cards = author_scorecards(entries)
     lines = [
-        "# GoatHub-Calls: Papier-Tagebuch",
+        "# Signalgruppe-Calls: Papier-Tagebuch",
         "",
         f"Stand: {generated_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC. Nur Papier, keine Orders. "
         "Annahmen: Gebühr 0,06 % je Seite (nicht bestätigt), Rutschen 0,05 % je Seite (Schätzung), mind. 5 Mio. USDT Handel in 24 h.",

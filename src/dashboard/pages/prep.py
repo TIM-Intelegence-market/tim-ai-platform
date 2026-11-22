@@ -61,7 +61,7 @@ def _prep_page(data: dict[str, Any], model: Mapping[str, Any], macro: Mapping[st
                day_entry: Mapping[str, Any] | None = None, with_day: bool = False) -> str:
     """``macro``: the macro bar (``macro_bar.build_macro_bar``), None while it loads, False = no macro section.
     ``with_day``: show today's "Mein Tag" banner for ``day_entry``."""
-    body = _hero("Vorbereitung", "Bias von oben, Vortages- und Wochen-Value, naked POCs und Sessions: Broncx' Schritte 1 bis 3 auf einer Seite. Nur Beobachtung, keine Order.")
+    body = _hero("Vorbereitung", "Bias von oben, Vortages- und Wochen-Value, naked POCs und Sessions: Mentor' Schritte 1 bis 3 auf einer Seite. Nur Beobachtung, keine Order.")
     if with_day:
         from src.dashboard.pages.my_day import prep_banner
 
@@ -142,7 +142,7 @@ def _prep_page(data: dict[str, Any], model: Mapping[str, Any], macro: Mapping[st
     ) or "<tr><td colspan='5' class='empty'>Noch keine Session mit Kerzen.</td></tr>"
     body += (
         "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Timing</p><h2>Sessions</h2>"
-        "<p class='cc-section__note'>Zeiten in deutscher Ortszeit. Broncx handelt am Wochenende nicht.</p></div></div>"
+        "<p class='cc-section__note'>Zeiten in deutscher Ortszeit. Mentor handelt am Wochenende nicht.</p></div></div>"
         "<div class='table-wrap'><table><thead><tr><th>Session</th><th>Zeit</th><th>Hoch</th><th>Tief</th><th>Status</th></tr></thead>"
         f"<tbody>{session_rows}</tbody></table></div></section>"
     )

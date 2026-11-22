@@ -1,6 +1,6 @@
 # S36 – SFP mit Orderflow-Konfluenz, HTF→Exec, BTC/ETH/SOL (Präregistrierung 1.0, eingefroren 15.11.2026)
 
-Auftrag Uzi (14.11.): "TIM sollte die Pattern auch tracken", dann "p4". Grundlage: GOAT-Handelsmodell (Bild im Thread) und der Muster-Schatten `muster-schatten/1.0` (PR #265, `src/analysis/patterns.py`). Diese Studie fragt rückwirkend, ob die Regeln des Schattens nach Kosten einen Vorteil haben. Entwurf: **nichts gelaufen, kein Ergebnis gesehen.** Mit **[Ergänzung]** markiert sind Festlegungen, die das Modell offenließ; sie gelten ab dem Einfrieren (1.0) und ändern sich danach nicht mehr.
+Auftrag Uzi (14.11.): "TIM sollte die Pattern auch tracken", dann "p4". Grundlage: Handelsmodell der Signalgruppe (Bild im Thread) und der Muster-Schatten `muster-schatten/1.0` (PR #265, `src/analysis/patterns.py`). Diese Studie fragt rückwirkend, ob die Regeln des Schattens nach Kosten einen Vorteil haben. Entwurf: **nichts gelaufen, kein Ergebnis gesehen.** Mit **[Ergänzung]** markiert sind Festlegungen, die das Modell offenließ; sie gelten ab dem Einfrieren (1.0) und ändern sich danach nicht mehr.
 
 ## Version 1.0 – eingefroren (15.11.2026, Uzis Wort "einfrieren")
 Ab hier ändert sich nichts mehr; was unten steht und im Entwurf davor, gilt in der Fassung der Änderungen 0.2 und 0.3. **Es wurde bis hierher kein R-Wert gerechnet**, nur Trade-Anzahlen (Variante M 425 / 123, Variante L 438 / 158, Training / Validierung, gepoolt BTC/ETH/SOL). Festlegungen der Auswertung (Phasen `train`, `valid` in `src/research_lab/studies/s36.py`):

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GoatHub calls on paper: market check per call, paper diary per author. No orders, nothing is posted.
+"""Signalgruppe calls on paper: market check per call, paper diary per author. No orders, nothing is posted.
 
 Subcommands:
   fetch  Download Bitunix contracts and bars (public API, no key) for the coins the calls name and write a
@@ -7,8 +7,8 @@ Subcommands:
   run    Read the feed, check every call against the snapshot, update the diary and write the report.
 
 Example:
-  python3 scripts/goathub_paper_diary.py fetch --feed-dir /mnt/project-files/goathub --out snapshot.json
-  python3 scripts/goathub_paper_diary.py run --feed-dir /mnt/project-files/goathub --snapshot snapshot.json \
+  python3 scripts/signalgruppe_paper_diary.py fetch --feed-dir /mnt/project-files/signalgruppe --out snapshot.json
+  python3 scripts/signalgruppe_paper_diary.py run --feed-dir /mnt/project-files/signalgruppe --snapshot snapshot.json \
       --diary diary.json --report papier-tagebuch.md
 """
 
@@ -25,9 +25,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.knowledge.goathub_channels import PROFILES, read_calls, source_names_hint  # noqa: E402
-from src.knowledge.goathub_feed import GoatHubFeedStore  # noqa: E402
-from src.knowledge.goathub_market_check import (  # noqa: E402
+from src.knowledge.signalgruppe_channels import PROFILES, read_calls, source_names_hint  # noqa: E402
+from src.knowledge.signalgruppe_feed import SignalgruppeFeedStore  # noqa: E402
+from src.knowledge.signalgruppe_market_check import (  # noqa: E402
     DiaryEntry,
     MarketSnapshot,
     build_diary,
@@ -72,7 +72,7 @@ def _fetch_bars(pair: str, start: datetime, end: datetime) -> list[dict]:
 def _calls(args: argparse.Namespace) -> dict:
     if hint := source_names_hint():
         print(hint, file=sys.stderr)
-    return read_calls(GoatHubFeedStore(args.feed_dir).load())
+    return read_calls(SignalgruppeFeedStore(args.feed_dir).load())
 
 
 def cmd_fetch(args: argparse.Namespace) -> int:

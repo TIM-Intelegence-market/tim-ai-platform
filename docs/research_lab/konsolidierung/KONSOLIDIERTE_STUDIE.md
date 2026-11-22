@@ -127,7 +127,7 @@ BELASTBAR heißt hier nur: Die Kennzahlen wurden aus den Handelslisten des Labor
 | S25 | Positionsgröße nach GARCH-4h-Prognose für S7b-D20-T3 | TREND-4H | C+ | Bedingt verwertbar | negativ |
 | S32 | Korb-Trendfolge: S7b-D20-T3 unverändert auf Top-25-Perps ohne BTC/ETH/SOL, 4h | TREND-4H | C+ | Bedingt verwertbar | negativ |
 | S15 | GARCH(1,1)-Volatilitätsprognose gegen 14-Tage-Varianz, BTC/ETH/SOL, 4h und 1d | PROGNOSE | C+ | Bedingt verwertbar | keine Handelsaussage (Risikoschicht) |
-| S9 | CHoCH, Retest-Band, Reaktionsschluss auf 15m (GoatHub-Lernheft) | FRÜH | C | Explorativ | keine Aussage |
+| S9 | CHoCH, Retest-Band, Reaktionsschluss auf 15m (Signalgruppe-Lernheft) | FRÜH | C | Explorativ | keine Aussage |
 | S10 | IB-Ausbruch New York mit Retest an POC/Value-Kante | FRÜH | C+ | Explorativ | keine Aussage |
 | S13 | Noise-Band-Ausbruch (Intraday-Momentum nach Zarattini/Aziz/Barbon 2024), NY-Si… | FRÜH | C+ | Bedingt verwertbar | negativ |
 | S14 | Paar-Handel (Statistical Arbitrage) ETH/BTC, SOL/BTC, SOL/ETH, 1h | FRÜH | C+ | Bedingt verwertbar | negativ |
@@ -144,9 +144,9 @@ BELASTBAR heißt hier nur: Die Kennzahlen wurden aus den Handelslisten des Labor
 | S28 | Positionierung aus dem Binance-Metrics-Archiv (OI, Top-Trader, Taker-Verhältni… | BTC-1H | C+ | Bedingt verwertbar | negativ |
 | S8 | Orderflow-KI: Richtung der nächsten 5 Minuten aus Orderflow-Merkmalen (prospek… | OF-MIN | D | Explorativ | keine Aussage |
 | S19 | Orderflow-Schwellen BTC (Imbalance, Auktionsrand, Absorption, dünnes Extrem, E… | OF-MIN | C | Bedingt verwertbar | negativ / ohne Nachweis |
-| OF2 | Orderflow-Engine nach Broncx-Modellen M1–M7, jede Session handelbar (Training … | OF-MIN | B | Bedingt verwertbar | positiv (Training, n 56, nicht belegt) |
+| OF2 | Orderflow-Engine nach Mentor-Modellen M1–M7, jede Session handelbar (Training … | OF-MIN | B | Bedingt verwertbar | positiv (Training, n 56, nicht belegt) |
 | OFX | PS5-Dauerforschung: Suche nach besseren OF2-Varianten mit Sieb und Reality-Che… | OF-MIN | B | Bedingt verwertbar | negativ (Suche ohne Ergebnis) |
-| S31 | Broncx-Bootcamp-Orderflow-Regeln B1–B8, BTCUSDT 15m/1h | OF-MIN | C+ | Explorativ | keine Aussage |
+| S31 | Mentor-Bootcamp-Orderflow-Regeln B1–B8, BTCUSDT 15m/1h | OF-MIN | C+ | Explorativ | keine Aussage |
 | S31b | Orderflow-Regeln M1–M7 (OF2) und B6/B7 auf 1h- und 4h-Kerzen, BTC | OF-MIN | C+ | Explorativ | keine Aussage |
 | S29 | Nachspielen der Journal-Regel (Setup-Pfad-Planer rückwirkend), BTC | OF-MIN | D | Nicht Reproduzierbar | keine Aussage |
 | L1 | Lernschleife Champion/Herausforderer für die Orderflow-KI (Prognosegüte) | PROGNOSE | C | Explorativ | keine Aussage |

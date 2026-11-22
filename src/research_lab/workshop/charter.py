@@ -26,7 +26,7 @@ SOURCES = {
     "reflection": "Wöchentliche Reflexion",
     "trade_reflexion": "Reflexion jedes Papier-Trades",
     "logbook_lesson": "Lehre aus dem Logbuch",
-    "community": "GoatHub/Broncx (nur Frage, kein Beleg)",
+    "community": "Signalgruppe/Mentor (nur Frage, kein Beleg)",
     "ki_runde": "Wöchentliche KI-Runde",
 }
 

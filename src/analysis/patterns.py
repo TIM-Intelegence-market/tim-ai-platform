@@ -1,4 +1,4 @@
-"""QM, OB and SFP as pure, causal detectors over closed candles (Uzi 14.11.2026, GOAT trading model).
+"""QM, OB and SFP as pure, causal detectors over closed candles (Uzi 14.11.2026, the signal group's trading model).
 
 Rule set ``muster-schatten/1.0``, frozen before the first run. Nothing here trades; the shadow in
 ``src/dashboard/pattern_shadow.py`` records what these detectors find (paper only).

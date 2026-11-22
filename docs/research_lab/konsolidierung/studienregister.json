@@ -655,7 +655,7 @@
   },
   {
    "id": "S9",
-   "titel": "CHoCH, Retest-Band, Reaktionsschluss auf 15m (GoatHub-Lernheft)",
+   "titel": "CHoCH, Retest-Band, Reaktionsschluss auf 15m (Signalgruppe-Lernheft)",
    "cluster": "FRÜH",
    "typ": "Regelfamilie (Gate)",
    "datum": "2026-10-27",
@@ -1250,7 +1250,7 @@
   },
   {
    "id": "OF2",
-   "titel": "Orderflow-Engine nach Broncx-Modellen M1–M7, jede Session handelbar (Training 2020–2022)",
+   "titel": "Orderflow-Engine nach Mentor-Modellen M1–M7, jede Session handelbar (Training 2020–2022)",
    "cluster": "OF-MIN",
    "typ": "Handelsregel (Test, nur Training)",
    "datum": "2026-11-10",
@@ -1338,12 +1338,12 @@
   },
   {
    "id": "S31",
-   "titel": "Broncx-Bootcamp-Orderflow-Regeln B1–B8, BTCUSDT 15m/1h",
+   "titel": "Mentor-Bootcamp-Orderflow-Regeln B1–B8, BTCUSDT 15m/1h",
    "cluster": "OF-MIN",
    "typ": "Regelfamilie (Gate)",
    "datum": "2026-11-12",
    "quellen": [
-    "docs/research_lab/studien/S31_BRONCX_REGELN_PRAEREGISTRIERUNG.md",
+    "docs/research_lab/studien/S31_MENTOR_REGELN_PRAEREGISTRIERUNG.md",
     "docs/research_lab/studien/S31_ZAEHLLAUF_ERGEBNIS.md",
     "PS5 (Kopie): results/s31/count_training.json"
    ],
@@ -2373,7 +2373,7 @@
    "typ": "Live-Test (nicht zugänglich)",
    "datum": "2026-11-01",
    "quellen": [
-    "/mnt/project-files/analysen/master-analyse-broncx-2026-11-09/bericht.md (Erwähnung: 133 Zeilen, 01.–09.11.)"
+    "/mnt/project-files/analysen/master-analyse-mentor-2026-11-09/bericht.md (Erwähnung: 133 Zeilen, 01.–09.11.)"
    ],
    "daten": "Kraken PF_XBTUSD",
    "aufteilung": "vorwärts",
@@ -2473,14 +2473,14 @@
   },
   {
    "id": "Prüfberichte-Chart",
-   "titel": "Indikator-Prüfung (31.10./04.11.), Orderflow-Kontrolle (06.11.), Master-Analyse Broncx (09.11.), Orderflow-Research-Bewertung (28.10.), quantfinancetogo (02.11.)",
+   "titel": "Indikator-Prüfung (31.10./04.11.), Orderflow-Kontrolle (06.11.), Master-Analyse Mentor (09.11.), Orderflow-Research-Bewertung (28.10.), quantfinancetogo (02.11.)",
    "cluster": "INFRA",
    "typ": "Prüf- und Bewertungsberichte (kein Handelstest)",
    "datum": "2026-10-31",
    "quellen": [
     "/mnt/project-files/analysen/indikator-pruefung-2026-11-04/bericht.md",
     "/mnt/project-files/analysen/orderflow-kontrolle-2026-11-06/bericht.md",
-    "/mnt/project-files/analysen/master-analyse-broncx-2026-11-09/bericht.md",
+    "/mnt/project-files/analysen/master-analyse-mentor-2026-11-09/bericht.md",
     "/mnt/project-files/analysen/orderflow-research-2026-10-28/bewertung.md",
     "/mnt/project-files/analysen/quantfinancetogo-2026-11-02/bericht.md"
    ],

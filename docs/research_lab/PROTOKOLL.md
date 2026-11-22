@@ -231,8 +231,8 @@ ATR = Average True Range, berechnet nur aus abgeschlossenen Kerzen bis zum Signa
 | ID | Hypothese | Regel | Raster | Varianten |
 |---|---|---|---|---|
 | T1 | BOS (`src/analysis/bos_detector.py`, Standardparameter) | `detect()` wird für jede Kerze t nur mit den Kerzen bis t aufgerufen, nie vektorisiert über die ganze Reihe (sonst gelangen später bestätigte Pivots in frühere Signale; eigener Test in R5). Einstieg in Richtung des Bruchs. Stop 1 × ATR(14), Ziel 2 R, Zeit-Stop 24 Kerzen | Intervall ∈ {15m, 1h} | 2 |
-| T2 | Broncx REJECTION (`src/analysis/bronxc_rules.py`) | Gegen den längeren Docht (oberer Docht länger → Short). Bei gleich langen Dochten kein Trade. Stop = Hoch bzw. Tief der Signalkerze ± 0,1 × ATR(14), Ziel 2 R, Zeit-Stop 24 Kerzen | Intervall ∈ {15m, 1h} | 2 |
-| T3 | Broncx FAILED_CONTINUATION | Gebrochenes Hoch → Short, gebrochenes Tief → Long. Sind beide gebrochen (Außenstab), kein Trade. Stop = Hoch bzw. Tief der Vorkerze ± 0,1 × ATR(14), Ziel 2 R, Zeit-Stop 24 Kerzen | Intervall ∈ {15m, 1h} | 2 |
+| T2 | Mentor REJECTION (`src/analysis/bronxc_rules.py`) | Gegen den längeren Docht (oberer Docht länger → Short). Bei gleich langen Dochten kein Trade. Stop = Hoch bzw. Tief der Signalkerze ± 0,1 × ATR(14), Ziel 2 R, Zeit-Stop 24 Kerzen | Intervall ∈ {15m, 1h} | 2 |
+| T3 | Mentor FAILED_CONTINUATION | Gebrochenes Hoch → Short, gebrochenes Tief → Long. Sind beide gebrochen (Außenstab), kein Trade. Stop = Hoch bzw. Tief der Vorkerze ± 0,1 × ATR(14), Ziel 2 R, Zeit-Stop 24 Kerzen | Intervall ∈ {15m, 1h} | 2 |
 
 ABSORPTION_CONTEXT und WEAK_CONTINUATION werden nicht getestet, weil die Regeln
 keine Richtung liefern.

@@ -2,7 +2,7 @@
 
 ## Scope
 
-Validated Observation Engine, Market Memory, Research Case Engine, Human Dashboard, News Intelligence, GoatHub Knowledge, Long-Term Intelligence, Short-Term Assistant, TEST_ONLY Paper Automation and Vision 2030 governance.
+Validated Observation Engine, Market Memory, Research Case Engine, Human Dashboard, News Intelligence, Signalgruppe Knowledge, Long-Term Intelligence, Short-Term Assistant, TEST_ONLY Paper Automation and Vision 2030 governance.
 
 ## Evidence
 
@@ -36,7 +36,7 @@ Reduced:
 
 Remaining:
 
-- News and GoatHub sources currently use explicit ingestion APIs; no authorized source connector is configured.
+- News and Signalgruppe sources currently use explicit ingestion APIs; no authorized source connector is configured.
 - Similarity search is in-memory and should move to a database index only after data volume justifies it.
 - Docker is not installed on the current Mac, so Timescale migrations were not executed against a live local container.
 - The upstream `pytest-asyncio` package emits one Python 3.14 deprecation warning; no TIM behavior is affected.
@@ -54,4 +54,4 @@ All intelligence outputs are descriptive. Similarity is feature overlap, not pre
 
 ## Recommended next evolution
 
-Add authorized, read-only source adapters for news and GoatHub material with source allowlists, content snapshots, retention rules and database persistence. Do not expand automation or model authority.
+Add authorized, read-only source adapters for news and Signalgruppe material with source allowlists, content snapshots, retention rules and database persistence. Do not expand automation or model authority.

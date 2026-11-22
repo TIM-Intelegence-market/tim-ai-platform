@@ -43,7 +43,7 @@ class LevelSet:
     poor_high: Decimal | None = None
     poor_low: Decimal | None = None
     naked_pocs: tuple[Decimal, ...] = ()
-    # Broncx guidance (see external_context.active_view): his LEVEL prices and current direction.
+    # Mentor guidance (see external_context.active_view): his LEVEL prices and current direction.
     external_levels: tuple[Decimal, ...] = ()
     external_bias: str | None = None
 
@@ -327,7 +327,7 @@ class ScenarioGenerator:
                 )
             )
 
-        # --- External levels: Broncx's levels near price, in his direction ---
+        # --- External levels: Mentor's levels near price, in his direction ---
         scenarios.extend(_external_level_scenarios(levels, scenarios, orderflow))
 
         # Normalize scores so the sum is approximately 1.0 and cap at max_scenarios.
@@ -346,14 +346,14 @@ class ScenarioGenerator:
 
 # A breakout retest (scenario A) is proposed only while price is within 1 % below the range high.
 BREAKOUT_EDGE_WINDOW = Decimal("0.01")
-# A Broncx level becomes a scenario only within 1 % of price, and not when TIM already has a trigger within 0.2 %.
+# A Mentor level becomes a scenario only within 1 % of price, and not when TIM already has a trigger within 0.2 %.
 EXTERNAL_LEVEL_WINDOW = Decimal("0.01")
 EXTERNAL_LEVEL_DUPLICATE = Decimal("0.002")
 MAX_EXTERNAL_SCENARIOS = 2
 
 
 def _external_level_scenarios(levels: LevelSet, existing: list[Scenario], orderflow: OrderflowInterpretation) -> list[Scenario]:
-    """Directional scenarios at Broncx's levels. Same mandatory confirmations as TIM's own templates."""
+    """Directional scenarios at Mentor's levels. Same mandatory confirmations as TIM's own templates."""
     bias, last = levels.external_bias, levels.last_price
     if bias not in {"LONG", "SHORT"} or last is None or last <= 0:
         return []
@@ -376,13 +376,13 @@ def _external_scenario(scenario_id: str, bias: str, level: Decimal, last: Decima
         evidence_against = ("delta_constructive",) if buyers else ()
         if level >= last:
             scenario_type, entry_model = ScenarioType.REJECTION_FAILED_BREAKOUT, EntryModel.FAILED_RETEST
-            hypothesis = f"Broncx level {level}: price tests it from below, acceptance above fails and the retest fails."
+            hypothesis = f"Mentor level {level}: price tests it from below, acceptance above fails and the retest fails."
             mandatory = ("upper_trigger_tested", "acceptance_above_fails", "return_below_level", "retest_from_below_fails", "valid_invalidation_above")
             invalidation = ("acceptance_above_level", "value_migrating_up", "constructive_breakout")
             entry_low, entry_high = level * Decimal("0.995"), level * Decimal("0.999")
         else:
             scenario_type, entry_model = ScenarioType.BREAKOUT_ACCEPTANCE, EntryModel.LIMIT_RETEST
-            hypothesis = f"Broncx level {level}: price closes below it, is accepted below and the retest from below fails."
+            hypothesis = f"Mentor level {level}: price closes below it, is accepted below and the retest from below fails."
             mandatory = ("close_below_trigger_level", "weak_price_response", "no_immediate_reclaim", "retest_from_below_fails", "valid_invalidation_defined")
             invalidation = ("close_back_above_trigger", "retest_reclaimed", "delta_negative_without_progress")
             entry_low, entry_high = level * Decimal("0.992"), level * Decimal("0.999")
@@ -392,13 +392,13 @@ def _external_scenario(scenario_id: str, bias: str, level: Decimal, last: Decima
         evidence_against = ("delta_bearish",) if sellers else ()
         if level <= last:
             scenario_type, entry_model = ScenarioType.LIQUIDITY_SWEEP_REVERSAL, EntryModel.RECLAIM
-            hypothesis = f"Broncx level {level}: price tests it from above, fails to hold below and reclaims it."
+            hypothesis = f"Mentor level {level}: price tests it from above, fails to hold below and reclaims it."
             mandatory = ("defined_liquidity_swept", "no_sustained_progress_below", "level_reclaimed", "reclaim_holds", "invalidatable_stop_available")
             invalidation = ("acceptance_below_level", "value_migrating_down", "reclaim_fails")
             entry_low, entry_high = level * Decimal("1.001"), level * Decimal("1.006")
         else:
             scenario_type, entry_model = ScenarioType.BREAKOUT_ACCEPTANCE, EntryModel.LIMIT_RETEST
-            hypothesis = f"Broncx level {level}: breakout above it with acceptance and constructive flow; retest defended."
+            hypothesis = f"Mentor level {level}: breakout above it with acceptance and constructive flow; retest defended."
             mandatory = ("close_above_trigger_level", "constructive_price_response", "no_immediate_fall_back", "retest_holds_or_momentum_continuation", "valid_invalidation_defined")
             invalidation = ("close_back_below_trigger", "delta_positive_without_progress", "retest_lost")
             entry_low, entry_high = level * Decimal("1.001"), level * Decimal("1.008")
@@ -419,7 +419,7 @@ def _external_scenario(scenario_id: str, bias: str, level: Decimal, last: Decima
         entry_model=entry_model,
         score=Decimal("0.30"),
     )
-    scenario.trade_template["level_source"] = "broncx"
+    scenario.trade_template["level_source"] = "mentor"
     return scenario
 
 

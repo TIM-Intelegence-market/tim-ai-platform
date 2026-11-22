@@ -1,7 +1,7 @@
-"""Trader journal: the trader's own paper trades, with Broncx' gate and review.
+"""Trader journal: the trader's own paper trades, with Mentor' gate and review.
 
 The trader writes down a trade idea before taking it: direction, entry, stop,
-target, the thesis and which confluences are present. Broncx' flowchart is the
+target, the thesis and which confluences are present. Mentor' flowchart is the
 gate in front of it:
 
 1. Is this trade in my plan?
@@ -15,7 +15,7 @@ That is the point of the flowchart, a skipped trade is a result too.
 TIM attaches its own context at the moment of the entry (HTF bias, location
 against yesterday's value, NY-open block, weekend) and follows TRADE entries
 on 1m candles: limit fill at the entry, then stop or target, whichever comes
-first (stop first inside one candle). Afterwards the trader answers Broncx'
+first (stop first inside one candle). Afterwards the trader answers Mentor'
 four review questions. Paper only: nothing here places an order.
 """
 
@@ -153,7 +153,7 @@ def warnings(entry: Mapping[str, Any]) -> list[str]:
     if bias in {"LONG", "SHORT"} and entry.get("direction") != bias:
         result.append(f"gegen den HTF-Bias ({bias})")
     if context.get("weekend"):
-        result.append("Wochenende: Broncx handelt am Wochenende nicht")
+        result.append("Wochenende: Mentor handelt am Wochenende nicht")
     if context.get("ny_open_block"):
         result.append("im NY-Open-Block")
     if entry.get("planned_r") is not None and entry["planned_r"] < 1.5:

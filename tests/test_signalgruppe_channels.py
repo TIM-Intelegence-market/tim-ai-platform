@@ -10,8 +10,8 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
-from scripts import goathub_channels as cli
-from src.knowledge.goathub_channels import (
+from scripts import signalgruppe_channels as cli
+from src.knowledge.signalgruppe_channels import (
     BOARD_LIMIT_CHARS,
     PROFILES,
     PriceBar,
@@ -26,7 +26,7 @@ from src.knowledge.goathub_channels import (
     scorecard,
     set_source_names,
 )
-from src.knowledge.goathub_feed import GoatHubMessage
+from src.knowledge.signalgruppe_feed import SignalgruppeMessage
 
 set_source_names({})  # tests use the neutral labels directly, never a names file on this machine
 
@@ -60,9 +60,9 @@ Hinweis: nur Test
 """
 
 
-def msg(content: str, *, channel: str = "kanal-1", author: str = "Autor A", minutes: int = 0, attachments: tuple[str, ...] = ()) -> GoatHubMessage:
+def msg(content: str, *, channel: str = "kanal-1", author: str = "Autor A", minutes: int = 0, attachments: tuple[str, ...] = ()) -> SignalgruppeMessage:
     posted = T0 + timedelta(minutes=minutes)
-    return GoatHubMessage(message_id=f"m{minutes}-{abs(hash(content)) % 10_000}", channel_id=channel, posted_at=posted, content=content,
+    return SignalgruppeMessage(message_id=f"m{minutes}-{abs(hash(content)) % 10_000}", channel_id=channel, posted_at=posted, content=content,
                           received_at=posted, author_name=author, channel_name=channel.upper(), attachments=attachments)
 
 
@@ -92,7 +92,7 @@ def test_transcript_parsing_berlin_time_reactions_and_skips(tmp_path: Path) -> N
 
 
 def test_winter_time_is_one_hour() -> None:
-    from src.knowledge.goathub_channels import BERLIN
+    from src.knowledge.signalgruppe_channels import BERLIN
     assert datetime(2026, 11, 2, 12, 0, tzinfo=BERLIN).utcoffset() == timedelta(hours=1)
 
 
@@ -242,7 +242,7 @@ def test_cli_read_and_evaluate(tmp_path: Path, capsys) -> None:
                      "--out", str(out), "--board", str(board)]) == 0
     payload = json.loads(out.read_text(encoding="utf-8"))
     assert payload["scorecards"]["futures_btc"]["target_hit"] == 1
-    assert board.read_text(encoding="utf-8").startswith("**TIM × GoatHub board**")
+    assert board.read_text(encoding="utf-8").startswith("**TIM × Signalgruppe board**")
 
 
 # --- reader repairs of 21.11.2026: words taken for coins, status posts, jokes, follow-up levels -----------------
@@ -288,9 +288,9 @@ def test_target_follow_up_joins_the_call_before_it() -> None:
 
 def test_crypto_chat_reads_only_the_named_authors_and_only_full_calls() -> None:
     from dataclasses import replace
-    from src.knowledge.goathub_feed import ROLE_KNOWLEDGE
+    from src.knowledge.signalgruppe_feed import ROLE_KNOWLEDGE
     chat = PROFILES["chat_altcoins"]
-    def chat_msg(text: str, author: str = "Autor B") -> GoatHubMessage:
+    def chat_msg(text: str, author: str = "Autor B") -> SignalgruppeMessage:
         return replace(msg(text, channel="kanal-5", author=author), channel_role=ROLE_KNOWLEDGE)
     call = read_call(chat_msg("Short abc round 3\n\n3% capital max SL 0.021"), chat)
     assert call is not None and call.symbol == "ABC" and call.call.grade == "B"
@@ -301,7 +301,7 @@ def test_crypto_chat_reads_only_the_named_authors_and_only_full_calls() -> None:
 
 
 def test_far_stop_on_a_cheap_coin_is_kept_when_a_price_is_known() -> None:
-    from src.knowledge.goathub_feed import extract_call
+    from src.knowledge.signalgruppe_feed import extract_call
     call = extract_call(msg("Short abc\nSL 0.021", channel="kanal-3", author="Autor B"), reference_price=Decimal("0.0142"))
     assert call is not None and [(l.role, l.value, l.ambiguous) for l in call.guidance.levels] == [("STOP", Decimal("0.021"), False)]
     btc = extract_call(msg("Short btc\nSL 0.5"), reference_price=Decimal("60000"))
@@ -321,7 +321,7 @@ def test_three_unnamed_box_labels_get_roles_from_the_box_shape() -> None:
 
 def test_chart_box_counts_in_the_gold_and_chat_channels_too() -> None:
     from dataclasses import replace
-    from src.knowledge.goathub_feed import ROLE_KNOWLEDGE
+    from src.knowledge.signalgruppe_feed import ROLE_KNOWLEDGE
     gold = read_call(msg("(Bild)", channel="kanal-4", author="Autor C",
                          attachments=("Gold-Chart, Long-Positionsbox; Kurs ca. 3.800,0, Ziel ca. 3.900,0, Stop ca. 3.760,0 [?]",)), PROFILES["gold_silber"])
     assert gold is not None and gold.symbol == "XAU" and gold.call.grade == "A"

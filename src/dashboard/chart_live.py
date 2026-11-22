@@ -152,7 +152,7 @@ PLAN_LIMIT = 40  # newest plans drawn per chart
 PLAN_SHOWN = {"OPEN", "FILLED", "CLOSED"}
 # Fibonacci retracement of the newest swing leg, drawn like TradingView's Fib tool (Uzi 30.10.2026):
 # 0 = end of the leg, 1 = its start, zones between the levels, 1.618 beyond the start.
-# 0.886 and 0.941 come from the GoatHub EDUCATION lesson (02.10.2026): zones where price often reacts.
+# 0.886 and 0.941 come from the Signalgruppe EDUCATION lesson (02.10.2026): zones where price often reacts.
 # Display only, never a signal or a score.
 FIB_RATIOS = (0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 0.886, 0.941, 1.0, 1.618)
 # A swing counts once price moved this many average candle ranges (ATR) against it (TradingView Auto Fib: 3).
@@ -457,7 +457,7 @@ def trade_levels(drawings: Sequence[Mapping[str, Any]], store: Mapping[str, Any]
     """Value levels and naked POCs from TIM's own trades instead of the candle estimate (Beirat 29.10.2026).
 
     For every day the store covers: previous day VAH/POC/VAL, previous week value (when all
-    seven days are stored), the running day/week POC, and naked POCs of both kinds, as Broncx
+    seven days are stored), the running day/week POC, and naked POCs of both kinds, as Mentor
     marks them: vPOC (most volume, real trades) and tPOC (most 30m periods). A POC is naked
     while no later trade (vPOC) or closed candle (tPOC) has printed inside its row. Days older
     than the store keep the candle estimate, marked as such. The plan journals do not read
@@ -726,7 +726,7 @@ def trend_drawings(candles: Sequence[Mapping[str, Any]], timeframe: str, width: 
     return result
 
 
-BAND_KEYS = ("week",)  # VWAPs drawn with ±1σ/±2σ bands (Broncx: weekly VWAP ±2σ)
+BAND_KEYS = ("week",)  # VWAPs drawn with ±1σ/±2σ bands (Mentor: weekly VWAP ±2σ)
 BANDS = ((2, "+2σ"), (1, "+1σ"), (-1, "−1σ"), (-2, "−2σ"))
 
 
@@ -1248,7 +1248,7 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
     # The Nasdaq index is delayed and has no candles outside US trading hours: no warning there.
     model["stale_after_seconds"] = None if symbol in INDEX_SYMBOLS else INTERVAL_SECONDS.get(timeframe, 0) + 300
 
-    # Uzi 09.11.2026 (Broncx-Sicht): with "Perp" the levels, value areas, TPO and VWAP come from the
+    # Uzi 09.11.2026 (Mentor-Sicht): with "Perp" the levels, value areas, TPO and VWAP come from the
     # perpetual too (klines and perp trades); spot and perp are different auctions and sit a basis apart.
     level_perp = candle_market == "perp" and symbol not in PERP_ONLY
     level_cache = (perp_cache or PERP_CACHE) if level_perp else cache

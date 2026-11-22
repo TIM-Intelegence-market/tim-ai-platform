@@ -60,7 +60,7 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 | S25 | Positionsgröße nach GARCH-4h-Prognose für S7b-D20-T3 | TREND-4H | failed | C+ | BEDINGT VERWERTBAR | negativ | n 139 / 207 |
 | S32 | Korb-Trendfolge: S7b-D20-T3 unverändert auf Top-25-Perps ohne BTC/ETH/SOL, 4h | TREND-4H | failed | C+ | BEDINGT VERWERTBAR | negativ | Training 4.682, Validierung 3.311 Trades |
 | S15 | GARCH(1,1)-Volatilitätsprognose gegen 14-Tage-Varianz, BTC/ETH/SOL, 4h und 1d | PROGNOSE | confirmed | C+ | BEDINGT VERWERTBAR | keine Handelsaussage (Risikoschicht) | mehrere Jahre, drei Coins |
-| S9 | CHoCH, Retest-Band, Reaktionsschluss auf 15m (GoatHub-Lernheft) | FRÜH | not_testable | C | EXPLORATIV | keine Aussage | höchstens 11 Signale statt 500 |
+| S9 | CHoCH, Retest-Band, Reaktionsschluss auf 15m (Signalgruppe-Lernheft) | FRÜH | not_testable | C | EXPLORATIV | keine Aussage | höchstens 11 Signale statt 500 |
 | S10 | IB-Ausbruch New York mit Retest an POC/Value-Kante | FRÜH | not_testable | C+ | EXPLORATIV | keine Aussage | S10-P 241 von 500, S10-O 15 |
 | S13 | Noise-Band-Ausbruch (Intraday-Momentum nach Zarattini/Aziz/Barbon 2024), NY-Sitzung und U… | FRÜH | failed | C+ | BEDINGT VERWERTBAR | negativ | S13-NY 1.732, S13-UTC 9.554 Trades (Training) |
 | S14 | Paar-Handel (Statistical Arbitrage) ETH/BTC, SOL/BTC, SOL/ETH, 1h | FRÜH | failed | C+ | BEDINGT VERWERTBAR | negativ | W168: 750 / 620 Trades, W720: 232 / 195 |
@@ -77,9 +77,9 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 | S28 | Positionierung aus dem Binance-Metrics-Archiv (OI, Top-Trader, Taker-Verhältnis) auf S27-… | BTC-1H | failed | C+ | BEDINGT VERWERTBAR | negativ | Validierung 17.129 Momente je Richtung (Auswertun… |
 | S8 | Orderflow-KI: Richtung der nächsten 5 Minuten aus Orderflow-Merkmalen (prospektiv) | OF-MIN | running | D | EXPLORATIV | keine Aussage | keine Auswertung |
 | S19 | Orderflow-Schwellen BTC (Imbalance, Auktionsrand, Absorption, dünnes Extrem, Exhaustion) | OF-MIN | no_proof | C | BEDINGT VERWERTBAR | negativ / ohne Nachweis | Training n bis 8.420 je Flag, Validierung n bis 5… |
-| OF2 | Orderflow-Engine nach Broncx-Modellen M1–M7, jede Session handelbar (Training 2020–2022) | OF-MIN | not_proven | B | BEDINGT VERWERTBAR | positiv (Training, n 56, nicht belegt) | 56 OF-Trades in 1.096 Tagen (0,051/Tag) |
+| OF2 | Orderflow-Engine nach Mentor-Modellen M1–M7, jede Session handelbar (Training 2020–2022) | OF-MIN | not_proven | B | BEDINGT VERWERTBAR | positiv (Training, n 56, nicht belegt) | 56 OF-Trades in 1.096 Tagen (0,051/Tag) |
 | OFX | PS5-Dauerforschung: Suche nach besseren OF2-Varianten mit Sieb und Reality-Check (Trainin… | OF-MIN | running | B | BEDINGT VERWERTBAR | negativ (Suche ohne Ergebnis) | 27.023 Konfigurationen × 300 Filter = 8.106.900 V… |
-| S31 | Broncx-Bootcamp-Orderflow-Regeln B1–B8, BTCUSDT 15m/1h | OF-MIN | not_testable | C+ | EXPLORATIV | keine Aussage | B1 34, B2 13, B3/B4 2, B5 1/6, B6 0, B7 18 (OF) /… |
+| S31 | Mentor-Bootcamp-Orderflow-Regeln B1–B8, BTCUSDT 15m/1h | OF-MIN | not_testable | C+ | EXPLORATIV | keine Aussage | B1 34, B2 13, B3/B4 2, B5 1/6, B6 0, B7 18 (OF) /… |
 | S31b | Orderflow-Regeln M1–M7 (OF2) und B6/B7 auf 1h- und 4h-Kerzen, BTC | OF-MIN | not_testable | C+ | EXPLORATIV | keine Aussage | höchster Wert B7 1h 39 Trades (Preis-Zwilling 117) |
 | S29 | Nachspielen der Journal-Regel (Setup-Pfad-Planer rückwirkend), BTC | OF-MIN | running | D | NICHT REPRODUZIERBAR | keine Aussage | unbekannt |
 | L1 | Lernschleife Champion/Herausforderer für die Orderflow-KI (Prognosegüte) | PROGNOSE | waiting | C | EXPLORATIV | keine Aussage | keine |
@@ -113,7 +113,7 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 | Kraken-Echtgeldtest | Kraken-Live-Trader (Echtgeld-Test) und Journal auto.jsonl | PROSPEKTIV | stopped | D | NICHT REPRODUZIERBAR | keine Aussage | 133 Journalzeilen (Stand 09.11.), 7 Auto-Trades b… |
 | V1-Juli | TIM V1 Juli 2026: Wissenschaftliche Validierung, 72h-Abnahme, Abgleichsbericht, Orderflow… | INFRA | reported | C | BEDINGT VERWERTBAR | keine Handelsaussage | 165 voll validierte Fälle (22.07.), 1.339 (23.07.) |
 | tim-master-P1 | tim-master: P1 Plan-Journal mit Evidenz-Gate (Software, 23.10.2026) | INFRA | reported | C | BEDINGT VERWERTBAR | keine Handelsaussage | 108 gezielte Tests grün |
-| Prüfberichte-Chart | Indikator-Prüfung (31.10./04.11.), Orderflow-Kontrolle (06.11.), Master-Analyse Broncx (0… | INFRA | reported | C | BEDINGT VERWERTBAR | keine Handelsaussage | 331 Einzelprüfungen (04.11.) |
+| Prüfberichte-Chart | Indikator-Prüfung (31.10./04.11.), Orderflow-Kontrolle (06.11.), Master-Analyse Mentor (0… | INFRA | reported | C | BEDINGT VERWERTBAR | keine Handelsaussage | 331 Einzelprüfungen (04.11.) |
 | Überzeugungsregister | TIM-Gedächtnis: Überzeugungsregister v0 (253 Aussagen, 12.11.2026) und Aussagenliste | INFRA | reported | C | BEDINGT VERWERTBAR | keine Handelsaussage | 253 Aussagen (64 Live-Regeln, 99 Forschung, 90 ex… |
 | K-C1 | Konsolidierung C1: S7b-D20-T3 unverändert (BTC/ETH/SOL 4h), unabhängig neu gerechnet und … | EIGEN | reported | A | BEDINGT VERWERTBAR | positiv (historisch), G7 und G8 verfehlt | 499 Trades (292 / 207) |
 | K-Carry | Konsolidierung T11: Funding-Carry BTC+ETH (Spot long, Perp short) nach Protokoll, plus Se… | EIGEN | reported | A | BEDINGT VERWERTBAR | positiv aber Kapitalrendite (nicht Edge) | 2 Instrumente |
@@ -361,7 +361,7 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 - Aussagen: 4h besser als 14-Tage-Varianz (p 0,026) [NUR BERICHTET]; Zahlen in Ergebnisdatei [VERIFIZIERT]
 - Verwendung in der Konsolidierung: Nur Risikobaustein; kein Beitrag zum Nettoertrag.
 
-### S9: CHoCH, Retest-Band, Reaktionsschluss auf 15m (GoatHub-Lernheft)
+### S9: CHoCH, Retest-Band, Reaktionsschluss auf 15m (Signalgruppe-Lernheft)
 
 - Cluster / Art / Beginn: FRÜH / Regelfamilie (Gate) / 2026-10-27
 - Quellen: `docs/research_lab/reports/s9_count_2026-10-27T1849Z.md`; `docs/research_lab/studien/S9_CHOCH_RETEST_PRAEREGISTRIERUNG.md`
@@ -650,7 +650,7 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 - Aussagen: Keine Familie nachgewiesen (Holm über 112) [VERIFIZIERT]
 - Verwendung in der Konsolidierung: Negativbefund für Footprint-/Absorptions-Schwellen.
 
-### OF2: Orderflow-Engine nach Broncx-Modellen M1–M7, jede Session handelbar (Training 2020–2022)
+### OF2: Orderflow-Engine nach Mentor-Modellen M1–M7, jede Session handelbar (Training 2020–2022)
 
 - Cluster / Art / Beginn: OF-MIN / Handelsregel (Test, nur Training) / 2026-11-10
 - Quellen: `docs/research_lab/studien/OF2_ORDERFLOW_ENGINE_PRAEREGISTRIERUNG.md`; `docs/research_lab/reports/bitunix/of2_training_of_trades_aa853e1.json`; `docs/research_lab/reports/bitunix/target_50usd_of2_training.json`; `PS5 (Kopie): results/of2/run_aa853e1/training.json`
@@ -684,10 +684,10 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 - Aussagen: 0 bestanden bei 8,1 Mio. Varianten [VERIFIZIERT]; Bestes t bei n ≥ 130: 2,66; 73 Varianten scheitern nur am Reality-Check [VERIFIZIERT]; Kein Kandidat heißt nicht: Kein Vorteil existiert (Suchraum begrenzt) [VERIFIZIERT]
 - Verwendung in der Konsolidierung: Zählt vollständig für den Mehrfachtest-Zähler der gesamten Forschung (N ≥ 26.707 Konfigurationen).
 
-### S31: Broncx-Bootcamp-Orderflow-Regeln B1–B8, BTCUSDT 15m/1h
+### S31: Mentor-Bootcamp-Orderflow-Regeln B1–B8, BTCUSDT 15m/1h
 
 - Cluster / Art / Beginn: OF-MIN / Regelfamilie (Gate) / 2026-11-12
-- Quellen: `docs/research_lab/studien/S31_BRONCX_REGELN_PRAEREGISTRIERUNG.md`; `docs/research_lab/studien/S31_ZAEHLLAUF_ERGEBNIS.md`; `PS5 (Kopie): results/s31/count_training.json`
+- Quellen: `docs/research_lab/studien/S31_MENTOR_REGELN_PRAEREGISTRIERUNG.md`; `docs/research_lab/studien/S31_ZAEHLLAUF_ERGEBNIS.md`; `PS5 (Kopie): results/s31/count_training.json`
 - Daten: BTC 15m/1h, Training 2020–2022
 - Aufteilung: Zähllauf Training
 - Kosten: Bitunix-Kosten, Kostengate
@@ -1214,7 +1214,7 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 ### Kraken-Echtgeldtest: Kraken-Live-Trader (Echtgeld-Test) und Journal auto.jsonl
 
 - Cluster / Art / Beginn: PROSPEKTIV / Live-Test (nicht zugänglich) / 2026-11-01
-- Quellen: `/mnt/project-files/analysen/master-analyse-broncx-2026-11-09/bericht.md (Erwähnung: 133 Zeilen, 01.–09.11.)`
+- Quellen: `/mnt/project-files/analysen/master-analyse-mentor-2026-11-09/bericht.md (Erwähnung: 133 Zeilen, 01.–09.11.)`
 - Daten: Kraken PF_XBTUSD
 - Aufteilung: vorwärts
 - Kosten: Kraken-gemessen
@@ -1262,10 +1262,10 @@ Vollständigkeit gilt nur im durchsuchten Umfang (Abschnitt „Nicht zugänglich
 - Aussagen: Register 48 Varianten, 0 Kandidaten (Stand 23.10.) [VERIFIZIERT]
 - Verwendung in der Konsolidierung: Bestätigt: kein Journal-Eintrag darf als belegtes Setup gelten.
 
-### Prüfberichte-Chart: Indikator-Prüfung (31.10./04.11.), Orderflow-Kontrolle (06.11.), Master-Analyse Broncx (09.11.), Orderflow-Research-Bewertung (28.10.), quantfinancetogo (02.11.)
+### Prüfberichte-Chart: Indikator-Prüfung (31.10./04.11.), Orderflow-Kontrolle (06.11.), Master-Analyse Mentor (09.11.), Orderflow-Research-Bewertung (28.10.), quantfinancetogo (02.11.)
 
 - Cluster / Art / Beginn: INFRA / Prüf- und Bewertungsberichte (kein Handelstest) / 2026-10-31
-- Quellen: `/mnt/project-files/analysen/indikator-pruefung-2026-11-04/bericht.md`; `/mnt/project-files/analysen/orderflow-kontrolle-2026-11-06/bericht.md`; `/mnt/project-files/analysen/master-analyse-broncx-2026-11-09/bericht.md`; `/mnt/project-files/analysen/orderflow-research-2026-10-28/bewertung.md`; `/mnt/project-files/analysen/quantfinancetogo-2026-11-02/bericht.md`
+- Quellen: `/mnt/project-files/analysen/indikator-pruefung-2026-11-04/bericht.md`; `/mnt/project-files/analysen/orderflow-kontrolle-2026-11-06/bericht.md`; `/mnt/project-files/analysen/master-analyse-mentor-2026-11-09/bericht.md`; `/mnt/project-files/analysen/orderflow-research-2026-10-28/bewertung.md`; `/mnt/project-files/analysen/quantfinancetogo-2026-11-02/bericht.md`
 - Daten: Binance-Rohdaten, TIM-Chart
 - Aufteilung: —
 - Kosten: —

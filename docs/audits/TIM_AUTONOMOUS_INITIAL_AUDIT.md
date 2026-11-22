@@ -101,7 +101,7 @@ Priorität: P0 Datenintegrität/Sicherheit/Kosten/Risiko, P1 Forschung/Multi-Coi
 | A08 | Strategie-Forschung (75 %-Ziel, vorab registriert) | P1 | A03 | „25.10. Strategie-Forschung…“ | IN_PROGRESS | Präregistrierung S4 (Entwurf, eigener Doku-PR unter `docs/research_lab/studien/`); hier nicht doppelt geführt; Ergebnis kann FAIL sein |
 | A09 | S-K-Studie auswerten (T0 23.10. 15:55) | P1 | Laufzeit | – | IN_PROGRESS (läuft) | Wöchentlicher Zwischenstand, verblindet |
 | A10 | Apache-Lizenz: Zustimmung Chris für alte Commits | P2 | Chris | „24.10. Apache-2.0-Lizenz“ | BLOCKED (Chris) | Chris um „ok“ auf GitHub bitten; Drittlizenzen-Liste fehlt noch |
-| A11 | GoatHub-Bot direkt mit Gruppen-Admin einrichten | P3 | Gruppen-Admin, Uzi | „12.10. GoatHub-Kanal mitlesen“, #400 | BLOCKED (Gruppen-Admin) | Entwurf in `docs/knowledge/GOATHUB_DISCORD_FEED.md` an Gruppen-Admin geben; keine Nachrichten ohne Uzi |
+| A11 | Signalgruppe-Bot direkt mit Gruppen-Admin einrichten | P3 | Gruppen-Admin, Uzi | „12.10. Signalgruppe-Kanal mitlesen“, #400 | BLOCKED (Gruppen-Admin) | Entwurf in `docs/knowledge/SIGNALGRUPPE_DISCORD_FEED.md` an Gruppen-Admin geben; keine Nachrichten ohne Uzi |
 | A12 | Trader-Skills: SEC-Absender, Nasdaq-Perp-Idee | P3 | Uzi | „24.10. Trader-Skill…“ | BLOCKED (Uzi) | Uzi beantwortet Bauplan-Frage |
 | A13 | billion-context Funktionstest wiederholen | P3 | – | „24.10. Claude nach billion-context…“ | READY | Kurzer Probelauf im Terminal |
 | A14 | Lokale Modelle messen (Code, Logs, Doku) | P2 | – | – | NOT_STARTED | Reproduzierbares Benchmark-Skript, keine Orders/Risiko aus LLM |

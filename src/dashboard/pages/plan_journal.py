@@ -287,7 +287,7 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         body += _hero("Plan-Journal: Level-Regel", "Eigene Pläne an den Hauptleveln (Vortag, Vorwoche, naked POC) aus dem TIM-Chart, mit Stop hinter dem 30m-Swing und Zielen an den nächsten Leveln. "
                       "Hier misst TIM, ob diese Analysen aufgehen. " + evidence)
     elif struct:
-        body += _hero("Plan-Journal: Struktur-Regel", "Dieselben Pläne mit Stop hinter dem Swing und Zielen an der Liquidität (Broncx), parallel zur TIM-Regel verfolgt. " + evidence)
+        body += _hero("Plan-Journal: Struktur-Regel", "Dieselben Pläne mit Stop hinter dem Swing und Zielen an der Liquidität (Mentor), parallel zur TIM-Regel verfolgt. " + evidence)
     else:
         body += _hero("Plan-Journal", "TIMs Long- und Short-Pläne aus dem Setup-Pfad, automatisch festgehalten und nach TIMs Regeln verfolgt. " + evidence)
     if error:

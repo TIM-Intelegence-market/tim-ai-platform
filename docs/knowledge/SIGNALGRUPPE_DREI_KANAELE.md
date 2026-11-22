@@ -1,8 +1,8 @@
-# GoatHub: drei Kanäle getrennt auswerten
+# Signalgruppe: drei Kanäle getrennt auswerten
 
-Stand 29.10.2026. Bauplan „TIM × GoatHub: Three-Channel Plan“, Schritte 2 und 3 (Leser und
+Stand 29.10.2026. Bauplan „TIM × Signalgruppe: Three-Channel Plan“, Schritte 2 und 3 (Leser und
 Nachprüfung). Schritte 1, 4 und 5 (Bot einladen, Board in #tim-live) warten auf die Zustimmung
-der GoatHub-Admins.
+der Signalgruppe-Admins.
 
 ## Was gebaut ist
 
@@ -12,8 +12,8 @@ der GoatHub-Admins.
 | `spot_coins` | Kanal 3 | Autor B | Coin (Cashtag hat Vorrang), Topf risky/safe, Kontoanteil, DCA-Schritt | 30 Tage |
 | `gold_silber` | Kanal 4 | Autor C | XAU, bei reinem Silber-Post XAG | 72 h |
 
-Code: `src/knowledge/goathub_channels.py`, Aufruf: `scripts/goathub_channels.py`, Tests:
-`tests/test_goathub_channels.py`.
+Code: `src/knowledge/signalgruppe_channels.py`, Aufruf: `scripts/signalgruppe_channels.py`, Tests:
+`tests/test_signalgruppe_channels.py`.
 
 ## Regeln der Nachprüfung
 
@@ -31,8 +31,8 @@ Code: `src/knowledge/goathub_channels.py`, Aufruf: `scripts/goathub_channels.py`
 ## Aufruf
 
 ```
-python scripts/goathub_channels.py read --transcript 11-futures-t-1.md --out calls.json
-python scripts/goathub_channels.py evaluate --feed-dir data/goathub_feed \
+python scripts/signalgruppe_channels.py read --transcript 11-futures-t-1.md --out calls.json
+python scripts/signalgruppe_channels.py evaluate --feed-dir data/signalgruppe_feed \
   --transcript kanal-4.md --bars BTC=btc_1h.csv --bars XAU=paxg_1h.csv \
   --out auswertung.json --board board.txt
 ```

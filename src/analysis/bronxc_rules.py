@@ -6,7 +6,7 @@ from typing import Sequence
 from src.models.market_data import Candle, Observation, ObservationKind
 
 
-class BroncxRules:
+class MentorRules:
     """Small deterministic Week-1 observation rules; never emits trading instructions."""
 
     def evaluate(self, candles: Sequence[Candle]) -> list[Observation]:

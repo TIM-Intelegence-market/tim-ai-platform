@@ -127,7 +127,7 @@
     },
     {
       "id": "S31",
-      "title": "Broncx-Bootcamp-Orderflow-Regeln B1–B8 als Strategie, BTCUSDT 15m/1h",
+      "title": "Mentor-Bootcamp-Orderflow-Regeln B1–B8 als Strategie, BTCUSDT 15m/1h",
       "started": "2026-11-12",
       "status": "not_testable",
       "result": "Nicht prüfbar: Keine Regel erreicht im Training 2020–2022 n ≥ 100. B1 34 Trades (+0,33 R), B2 13 (+0,44 R), B3/B4 2, B5 1/6, B6 0 (alle 1.958 Kandidaten am Kostengate), B7 18 OF / 80 Preis; B8 nicht gebaut. OF2 gesamt 56 Trades +0,27 R, Zufall −0,09 R, p 0,006.",
@@ -321,7 +321,7 @@
     },
     {
       "id": "S9",
-      "title": "CHoCH, Retest-Band, Reaktionsschluss auf 15m (GoatHub-Lernheft)",
+      "title": "CHoCH, Retest-Band, Reaktionsschluss auf 15m (Signalgruppe-Lernheft)",
       "started": "2026-10-27",
       "status": "not_testable",
       "result": "Am Machbarkeits-Gate gescheitert: höchstens 11 Signale im Training statt 500. Die meisten Setups fallen an R:R < 2 oder am verletzten Ursprung raus.",

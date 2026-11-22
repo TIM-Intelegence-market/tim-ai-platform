@@ -1,6 +1,6 @@
 """Bybit linear perp trades as a second venue for the TIM chart's volume bubbles (display only).
 
-Issue #162 (Master-Analyse 09.11.2026): Broncx's MMT layout shows "Volume Bubbles (2 venues)". TIM's
+Issue #162 (Master-Analyse 09.11.2026): Mentor's MMT layout shows "Volume Bubbles (2 venues)". TIM's
 first venue is Binance USD-M (``perp_flow.py``, REST ``aggTrades`` by id, gapless). Bybit's REST
 ``recent-trade`` has no id paging and holds only the newest 1 000 trades, so the second venue is
 the public websocket ``publicTrade.BTCUSDT`` (``wss://stream.bybit.com/v5/public/linear``), the same

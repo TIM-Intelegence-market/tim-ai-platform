@@ -7,9 +7,9 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
-from src.knowledge.goathub_channels import PROFILES, TrackedCall, read_call, set_source_names
-from src.knowledge.goathub_feed import GoatHubMessage
-from src.knowledge.goathub_market_check import (
+from src.knowledge.signalgruppe_channels import PROFILES, TrackedCall, read_call, set_source_names
+from src.knowledge.signalgruppe_feed import SignalgruppeMessage
+from src.knowledge.signalgruppe_market_check import (
     COST_PER_SIDE,
     DiaryEntry,
     Instrument,
@@ -48,7 +48,7 @@ def snapshot(path: list[tuple[float, float]], *, symbol: str = "ABCUSDT", status
 def tracked(text: str = "Short abc SL 1.1\nTarget 0.8", *, known_after: int = 0, author: str = "Autor B") -> TrackedCall:
     posted = T0
     chat = author == "Autor A"  # Autor A's altcoin posts are read from the chat channel
-    message = GoatHubMessage(message_id=f"m-{abs(hash((text, author, known_after))) % 100000}", channel_id="kanal-5" if chat else "kanal-3",
+    message = SignalgruppeMessage(message_id=f"m-{abs(hash((text, author, known_after))) % 100000}", channel_id="kanal-5" if chat else "kanal-3",
                              posted_at=posted, content=text, received_at=posted + STEP * known_after, author_name=author,
                              channel_name="KANAL-5" if chat else "KANAL-3", channel_role="knowledge" if chat else "calls")
     result = read_call(message, PROFILES["chat_altcoins" if chat else "spot_coins"], reference_price=Decimal("1.0"))
@@ -149,7 +149,7 @@ def test_snapshot_loads_bitunix_rows() -> None:
 
 
 def test_call_with_a_chart_image_but_no_stop_is_marked_for_manual_check() -> None:
-    from src.knowledge.goathub_channels import has_chart_image
+    from src.knowledge.signalgruppe_channels import has_chart_image
     call = tracked("Short abc\nTarget 0.8")
     image = replace(call, call=replace(call.call, message=replace(call.call.message, attachments=("Bild: ABC/USDT-Chart",))))
     assert has_chart_image(image.call.message) and not has_chart_image(call.call.message)
@@ -162,9 +162,9 @@ def test_stop_far_from_the_price_is_not_a_trade() -> None:
 
 
 def test_chart_calls_without_a_stop_are_listed_not_dropped() -> None:
-    message = GoatHubMessage(message_id="b1", channel_id="kanal-6", posted_at=T0, content="Small gamble long", received_at=T0,
+    message = SignalgruppeMessage(message_id="b1", channel_id="kanal-6", posted_at=T0, content="Small gamble long", received_at=T0,
                              author_name="Autor D", channel_name="KANAL-6")
-    from src.knowledge.goathub_channels import read_calls
+    from src.knowledge.signalgruppe_channels import read_calls
     calls = read_calls([replace(message, message_id="b0", content="Fc abc", posted_at=T0 - STEP, received_at=T0 - STEP), message])
     entries = build_diary(calls, snapshot(FLAT))
     assert len(entries) == 1 and entries[0].symbol == "ABC"
@@ -198,7 +198,7 @@ def test_author_levels_are_never_replaced_by_tims_analysis() -> None:
 
 
 def test_analysis_reads_no_candle_after_the_entry() -> None:
-    from src.knowledge.goathub_coin_analysis import analyse_coin
+    from src.knowledge.signalgruppe_coin_analysis import analyse_coin
     market = snapshot(FLAT + [(0.50, 0.60)] * 4)
     bars = market.bars["ABCUSDT"]
     early = analyse_coin(bars, at=T0, side="SHORT", interval=STEP)
@@ -216,7 +216,7 @@ def test_direction_check_counts_every_call_with_prices_per_author() -> None:
 
 
 def test_small_coins_get_their_own_book_with_higher_cost() -> None:
-    from src.knowledge.goathub_market_check import BOOK_SMALL, FEE_TAKER, SMALL_SLIPPAGE_PER_SIDE
+    from src.knowledge.signalgruppe_market_check import BOOK_SMALL, FEE_TAKER, SMALL_SLIPPAGE_PER_SIDE
     small = check_market(tracked(), snapshot(FLAT, volume=10_000.0))  # about 1 Mio. USDT in 24 h
     assert small.tradable and small.book == BOOK_SMALL and small.cost_pct == (FEE_TAKER + SMALL_SLIPPAGE_PER_SIDE) * 2
     big = check_market(tracked(), snapshot(FLAT))

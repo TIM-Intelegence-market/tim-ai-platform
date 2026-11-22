@@ -29,14 +29,14 @@ Tests geladen. *in ops/CI*: ein Skript dieses Pakets oder das Paket selbst wird 
 | `v2_completion` | 1729 | 0 | 1723 | 6 | mac_live_install.py,v2_backfill_candidate.py,v2_qualification_daily.py,v2_qualification_monitor.py… | ja | WERKZEUG (teils unerreicht) | Claude (in ops/CI genutzt) |
 | `task_engine` | 1639 | 0 | 1586 | 53 | m09_p1_10_repair_proof.py,m09_p1_14_self_heal_proof.py |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `operational` | 1370 | 330 | 1036 | 4 | acceptance_check.py,operational_validation.py,tim_candle_backfill.py,tim_history_recovery.py… | ja | LIVE+WERKZEUG | Betrieb (Uzi), Pflege Claude |
-| `knowledge` | 1268 | 0 | 1265 | 3 | broncx_discord_bot.py,goathub_discord_bot.py,passive_ingest.py | ja | WERKZEUG (teils unerreicht) | Claude (in ops/CI genutzt) |
+| `knowledge` | 1268 | 0 | 1265 | 3 | mentor_discord_bot.py,signalgruppe_discord_bot.py,passive_ingest.py | ja | WERKZEUG (teils unerreicht) | Claude (in ops/CI genutzt) |
 | `agents` | 1241 | 0 | 1206 | 35 | tim_monitoring_agent.py,tim_priority_agent.py,tim_review_agent.py | ja | WERKZEUG (teils unerreicht) | Claude (in ops/CI genutzt) |
 | `research` | 1172 | 1106 | 29 | 37 | audit_historical_gap_closure.py,backfill_gaps.py,classify_ingestion_gaps.py,demo_trader_report.py… | ja | LIVE | Betrieb (Uzi), Pflege Claude |
 | `market_data` | 1047 | 0 | 1045 | 2 | openmarket_api_proof.py,openmarket_store_key.py |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `agent_infra` | 915 | 0 | 915 | 0 | agent_infra_acceptance.py,agent_infra_long_context.py,tim_monitoring_agent.py,tim_priority_agent.py… | ja | WERKZEUG | Claude (in ops/CI genutzt) |
 | `obsidian_vault` | 787 | 0 | 781 | 6 | agent_infra_acceptance.py,agent_infra_long_context.py,tim_monitoring_agent.py |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `tim_v2` | 777 | 0 | 0 | 777 |  |  | UNERREICHT | BEHALTEN als Entwurf (V2-Kern laut `docs/tim_v2/architecture.md`), Frist 30.11.: Einstieg oder Archiv; Uzi |
-| `sources` | 729 | 0 | 726 | 3 | broncx_discord_bot.py,goathub_discord_bot.py,passive_ingest.py | ja | WERKZEUG (teils unerreicht) | Claude (in ops/CI genutzt) |
+| `sources` | 729 | 0 | 726 | 3 | mentor_discord_bot.py,signalgruppe_discord_bot.py,passive_ingest.py | ja | WERKZEUG (teils unerreicht) | Claude (in ops/CI genutzt) |
 | `repair_diagnosis` | 693 | 0 | 637 | 56 |  |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `research_intelligence` | 670 | 0 | 669 | 1 |  |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `server_readiness` | 660 | 0 | 0 | 660 |  |  | UNERREICHT | ARCHIVIERT 26.10.2026: mit Tests aus `platform-main` entfernt, Stand 06c8bc2 im Zweig `archiv/unerreichte-pakete-2026-10-26`; Claude |

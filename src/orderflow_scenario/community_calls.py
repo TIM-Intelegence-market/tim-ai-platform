@@ -1,11 +1,11 @@
-"""GoatHub community calls next to TIM's own analysis (display only).
+"""Signalgruppe community calls next to TIM's own analysis (display only).
 
-TIM treats the GoatHub community as HUMAN_COMMUNITY_TRADING_RESEARCH: human trading research
+TIM treats the Signalgruppe community as HUMAN_COMMUNITY_TRADING_RESEARCH: human trading research
 that is read as a hypothesis with author, time and evidence.
 
-Good calls (grade A/B, see ``src/knowledge/goathub_feed.py``) for the analysed
+Good calls (grade A/B, see ``src/knowledge/signalgruppe_feed.py``) for the analysed
 symbol are listed with their levels checked against the candles and their
-numeric invalidation checked by close. Unlike Broncx guidance they do not
+numeric invalidation checked by close. Unlike Mentor guidance they do not
 weight scores and add no scenarios: community authors have no track record in
 TIM yet. They never count as confirmation and never change the decision.
 """
@@ -16,20 +16,20 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Sequence
 
-from src.knowledge.goathub_feed import GoatHubMessage, good_calls
+from src.knowledge.signalgruppe_feed import SignalgruppeMessage, good_calls
 from src.models.market_data import Candle
 
 from .external_context import _base, _invalidation_check, _level_check, _reference, _since
 
 __all__ = ["COMMUNITY_CALLS_RULE", "DEFAULT_CALL_MAX_AGE", "SOURCE_CLASS", "build_community_calls"]
 
-# How TIM classifies the GoatHub community: people sharing trading research, i.e. hypotheses
+# How TIM classifies the Signalgruppe community: people sharing trading research, i.e. hypotheses
 # with author, time and evidence, never confirmation.
 SOURCE_CLASS = "HUMAN_COMMUNITY_TRADING_RESEARCH"
 
 DEFAULT_CALL_MAX_AGE = timedelta(hours=24)
 COMMUNITY_CALLS_RULE = (
-    "GoatHub community calls are shown for review only: they do not change scores, scenarios, "
+    "Signalgruppe community calls are shown for review only: they do not change scores, scenarios, "
     "confirmations or the decision, and calls posted or received after the analysis time are not used."
 )
 
@@ -39,7 +39,7 @@ def _hours(delta: timedelta) -> float:
 
 
 def build_community_calls(
-    messages: Sequence[GoatHubMessage],
+    messages: Sequence[SignalgruppeMessage],
     *,
     observed_at: datetime,
     symbol: str,
