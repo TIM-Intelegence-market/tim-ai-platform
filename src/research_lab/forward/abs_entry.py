@@ -248,7 +248,7 @@ def accumulation(hours: Sequence[Window], events: Sequence[dict[str, Any]], now_
     if not atr or width > p.accu_atr_mult * atr:
         return None
     since = span[0].start_ms
-    recent = [e for e in events if since <= e["at_ms"] <= now_ms]
+    recent = [e for e in events if since <= e["at_ms"] <= now_ms and "extreme" in e]   # not the unturned circles
     cvd = sum(w.delta for w in span)
     floor = sum(1 for e in recent if e["side"] == "VERKAUF" and e["extreme"] <= bottom + 0.25 * width)
     roof = sum(1 for e in recent if e["side"] == "KAUF" and e["extreme"] >= top - 0.25 * width)

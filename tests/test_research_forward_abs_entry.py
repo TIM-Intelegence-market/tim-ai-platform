@@ -251,6 +251,16 @@ def test_circle_without_turn_is_written_down_and_not_traded():
     assert [e["ergebnis"] for e in out["events"]] == ["nicht gedreht"]
 
 
+def test_unturned_circle_does_not_disturb_a_later_event():
+    out = abs_entry.simulate(days(scenario(exit_absorption=False)), STARTED,
+                             circles=orders((T600 - 60 * MINUTE_MS + 10_000, 64_500.0, 300.0, -1),
+                                            (T600 + 10_000, 64_015.0, 300.0, -1)))
+    assert [e["ergebnis"] for e in out["events"]] == ["nicht gedreht", "Einstieg"]
+    assert abs_entry.accumulation([abs_entry.Window(STARTED + h * 3_600_000, STARTED + (h + 1) * 3_600_000,
+                                                    64_500, 64_510, 64_490, 64_500, 1, 0, 1, 0, 0)
+                                   for h in range(16)], out["events"], T600 + 3_600_000, abs_entry.PARAMS) is None
+
+
 def test_circle_below_the_size_is_ignored_and_old_volume_rule_is_off():
     out = abs_entry.simulate(days(scenario()), STARTED, circles=orders((T600 + 10_000, 64_015.0, 20.0, -1)))
     assert out["events"] == [] and out["trades"] == [] and out["open"] is None
