@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.knowledge.goathub_channels import PROFILES, read_calls  # noqa: E402
+from src.knowledge.goathub_channels import PROFILES, read_calls, source_names_hint  # noqa: E402
 from src.knowledge.goathub_feed import GoatHubFeedStore  # noqa: E402
 from src.knowledge.goathub_market_check import (  # noqa: E402
     DiaryEntry,
@@ -70,6 +70,8 @@ def _fetch_bars(pair: str, start: datetime, end: datetime) -> list[dict]:
 
 
 def _calls(args: argparse.Namespace) -> dict:
+    if hint := source_names_hint():
+        print(hint, file=sys.stderr)
     return read_calls(GoatHubFeedStore(args.feed_dir).load())
 
 

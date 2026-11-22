@@ -1,12 +1,12 @@
-"""Three GoatHub channels read separately, every call checked against the price afterwards.
+"""Channels of the group read separately, every call checked against the price afterwards.
 
-The plan agreed with the GoatHub admins (Broncx) has three sources, each with its own reader
-and its own scorecard:
+The plan agreed with the group's admins has several sources, each with its own reader and its
+own scorecard (authors and channels are neutral labels, see ``PROFILES``):
 
-* ``futures_broncx``: Broncx's BTC futures analyses (FUTURES-TRADING-BRONCX and
-  FUTURES-TRADING-EXPLANATIONS),
-* ``spot_goatfather``: goatfather's spot calls and DCA plan (GOATFATHER-CHANNEL),
-* ``gold_eydu``: EyDu's gold and silver calls (XAU-XAG).
+* ``futures_btc``: BTC futures analyses,
+* ``spot_coins``: spot calls and DCA plan,
+* ``gold_silber``: gold and silver calls,
+* ``chat_altcoins`` and ``chart_calls``: altcoin calls from the chat and from chart posts.
 
 Messages come from the read-only Discord bot (``scripts/goathub_discord_bot.py``) or from the
 screen transcripts in ``goathub-verlauf/kanaele`` (``parse_transcript``). Each call stays a
@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import json
+import os
 import re
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
@@ -82,21 +84,63 @@ class ChannelProfile:
     coin_calls: bool = False
 
 
+# Privacy: the repository names no person and no channel of the group. Profiles carry neutral labels
+# ("Autor A", "Kanal 1"); which real author or channel a label stands for is in a local file outside
+# the repository (``TIM_QUELLEN_NAMEN`` or ``~/Library/Application Support/TIM/quellen-namen.json``):
+#     {"autoren": {"Autor A": ["<name as written in the feed>"]}, "kanaele": {"Kanal 1": ["<channel name or id>"]}}
+# Without that file no real post matches a profile, so nothing is read as a call (the scripts say so).
+NAMES_ENV = "TIM_QUELLEN_NAMEN"
+DEFAULT_NAMES_FILE = Path.home() / "Library" / "Application Support" / "TIM" / "quellen-namen.json"
+
 PROFILES: dict[str, ChannelProfile] = {
-    "futures_broncx": ChannelProfile(
-        "futures_broncx", "Broncx futures", ("futures-trading-broncx", "futures-trading-explanations"), ("broncx",), timedelta(hours=72),
-        default_symbol="BTC"),
-    "spot_goatfather": ChannelProfile(
-        "spot_goatfather", "goatfather spot", ("goatfather-channel",), ("goatfather",), timedelta(days=30), coin_calls=True),
-    "gold_eydu": ChannelProfile(
-        "gold_eydu", "EyDu gold", ("xau-xag",), ("eydu",), timedelta(hours=72), default_symbol="XAU"),
+    "futures_btc": ChannelProfile(
+        "futures_btc", "Futures BTC (Autor A)", ("kanal-1", "kanal-2"), ("autor a",), timedelta(hours=72), default_symbol="BTC"),
+    "spot_coins": ChannelProfile(
+        "spot_coins", "Spot-Coins (Autor B)", ("kanal-3",), ("autor b",), timedelta(days=30), coin_calls=True),
+    "gold_silber": ChannelProfile(
+        "gold_silber", "Gold/Silber (Autor C)", ("kanal-4",), ("autor c",), timedelta(hours=72), default_symbol="XAU"),
     "chat_altcoins": ChannelProfile(
-        "chat_altcoins", "Crypto chat altcoins", ("crypto-chat",), ("goatfather", "broncx", "butter aus sahne"), timedelta(days=7),
+        "chat_altcoins", "Chat Altcoins", ("kanal-5",), ("autor b", "autor a", "autor d"), timedelta(days=7),
         read_knowledge_channel=True, min_grade="B"),
-    "better_calls": ChannelProfile(
-        "better_calls", "Better Call Butter", ("better-call-butter", "better-calls"), ("butter aus sahne",), timedelta(hours=72),
+    "chart_calls": ChannelProfile(
+        "chart_calls", "Chart-Calls (Autor D)", ("kanal-6",), ("autor d",), timedelta(hours=72),
         coin_from_chart_command=True, coin_calls=True),
 }
+
+_labels: dict[str, dict[str, str]] | None = None  # real name (normalised) -> label, per kind
+
+
+def set_source_names(names: dict[str, Any] | None) -> None:
+    """Use this label mapping (same shape as the names file); None reads the file again on next use."""
+    global _labels
+    if names is None:
+        _labels = None
+        return
+    _labels = {
+        "autoren": {_author_key(real): _author_key(label) for label, reals in (names.get("autoren") or {}).items() for real in reals},
+        "kanaele": {_channel_key(real): _channel_key(label) for label, reals in (names.get("kanaele") or {}).items() for real in reals},
+    }
+
+
+def source_names_file() -> Path:
+    return Path(os.environ.get(NAMES_ENV) or DEFAULT_NAMES_FILE).expanduser()
+
+
+def source_names_hint() -> str | None:
+    """German one-liner for the scripts when the local names file is missing (then no real post matches)."""
+    path = source_names_file()
+    return None if path.is_file() else f"Hinweis: Namensliste fehlt ({path}); ohne sie wird kein Beitrag einem Profil zugeordnet."
+
+
+def _label(kind: str, key: str) -> str:
+    if _labels is None:
+        path = source_names_file()
+        try:
+            set_source_names(json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {})
+        except (OSError, ValueError):
+            set_source_names({})
+    return _labels[kind].get(key, key)  # type: ignore[index]
+
 
 _SILVER = re.compile(r"\b(silver|xag)\b", re.IGNORECASE)
 _GOLD = re.compile(r"\b(gold|xau)\b", re.IGNORECASE)
@@ -119,13 +163,13 @@ _CHART_LEVELS = {
 
 
 def _channel_key(value: str) -> str:
-    """'#📈 | FUTURES-TRADING-BRONCX' and 'futures-trading-broncx' name the same channel."""
+    """'#📈 | SOME-CHANNEL' and 'some-channel' name the same channel."""
     text = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     return text
 
 
 def profile_for(message: GoatHubMessage) -> ChannelProfile | None:
-    keys = {_channel_key(message.channel_id), _channel_key(message.channel_name)}
+    keys = {_label("kanaele", _channel_key(message.channel_id)), _label("kanaele", _channel_key(message.channel_name))}
     for profile in PROFILES.values():
         if keys & set(profile.channels):
             return profile
@@ -336,20 +380,20 @@ def read_call(message: GoatHubMessage, profile: ChannelProfile, reference_price:
     chart images count as a call. Gold: XAU unless the post is only about silver (XAG); other words
     the generic reader takes for a ticker are dropped. Spot: bucket, account size and DCA step are kept.
     """
-    if _author_key(message.author_name) not in profile.authors or _RESULT_POST.search(message.content):
+    if _label("autoren", _author_key(message.author_name)) not in profile.authors or _RESULT_POST.search(message.content):
         return None
     if profile.read_knowledge_channel and message.channel_role == ROLE_KNOWLEDGE:
         message = replace(message, channel_role=ROLE_CALLS)
     call = extract_call(message, reference_price=reference_price)
     if call is not None and profile.min_grade == "B" and call.grade not in ("A", "B"):
         return None
-    if profile.key == "spot_goatfather" and call is not None:
+    if profile.key == "spot_coins" and call is not None:
         tags = {tag.upper() for tag in _CASHTAG.findall(message.content)}
         if len(tags) == 1 and call.guidance.symbol not in tags:
             call = _regrade(replace(call, guidance=replace(call.guidance, symbol=tags.pop())))
-    if profile.key == "futures_broncx" and call is not None and call.guidance.symbol not in _MAJORS:
+    if profile.key == "futures_btc" and call is not None and call.guidance.symbol not in _MAJORS:
         call = _regrade(replace(call, guidance=replace(call.guidance, symbol=profile.default_symbol)))
-    if profile.key == "gold_eydu" and call is not None:
+    if profile.key == "gold_silber" and call is not None:
         silver, gold = bool(_SILVER.search(message.content)), bool(_GOLD.search(message.content))
         symbol = "XAG" if silver and not gold else "XAU"
         if symbol != call.guidance.symbol:
@@ -361,7 +405,7 @@ def read_call(message: GoatHubMessage, profile: ChannelProfile, reference_price:
         return None
     if call is None:
         return None
-    extras = _spot_extras(message.content) if profile.key == "spot_goatfather" else {}
+    extras = _spot_extras(message.content) if profile.key == "spot_coins" else {}
     return TrackedCall(profile.key, call, extras)
 
 

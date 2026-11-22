@@ -8,9 +8,9 @@ der GoatHub-Admins.
 
 | Profil | Kanäle | Autor | Leser | Laufzeit |
 | --- | --- | --- | --- | --- |
-| `futures_broncx` | FUTURES-TRADING-BRONCX, FUTURES-TRADING-EXPLANATIONS | Broncx | BTC, wenn nicht ETH/SOL genannt; Long-/Short-Box aus dem Chart-Anhang zählt als Call | 72 h |
-| `spot_goatfather` | GOATFATHER-CHANNEL | goatfather | Coin (Cashtag hat Vorrang), Topf risky/safe, Kontoanteil, DCA-Schritt | 30 Tage |
-| `gold_eydu` | XAU-XAG | EyDu | XAU, bei reinem Silber-Post XAG | 72 h |
+| `futures_btc` | Kanal 1, Kanal 2 | Autor A | BTC, wenn nicht ETH/SOL genannt; Long-/Short-Box aus dem Chart-Anhang zählt als Call | 72 h |
+| `spot_coins` | Kanal 3 | Autor B | Coin (Cashtag hat Vorrang), Topf risky/safe, Kontoanteil, DCA-Schritt | 30 Tage |
+| `gold_silber` | Kanal 4 | Autor C | XAU, bei reinem Silber-Post XAG | 72 h |
 
 Code: `src/knowledge/goathub_channels.py`, Aufruf: `scripts/goathub_channels.py`, Tests:
 `tests/test_goathub_channels.py`.
@@ -33,7 +33,7 @@ Code: `src/knowledge/goathub_channels.py`, Aufruf: `scripts/goathub_channels.py`
 ```
 python scripts/goathub_channels.py read --transcript 11-futures-t-1.md --out calls.json
 python scripts/goathub_channels.py evaluate --feed-dir data/goathub_feed \
-  --transcript 16-xau-xag.md --bars BTC=btc_1h.csv --bars XAU=paxg_1h.csv \
+  --transcript kanal-4.md --bars BTC=btc_1h.csv --bars XAU=paxg_1h.csv \
   --out auswertung.json --board board.txt
 ```
 

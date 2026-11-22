@@ -2,7 +2,7 @@
 """Three GoatHub channels read separately: calls, outcome check, scorecards and a board preview.
 
 Subcommands:
-  read      list the calls each channel reader finds (Broncx futures, goatfather spot, EyDu gold)
+  read      list the calls each channel reader finds (futures, spot, gold; authors and channels are neutral labels)
   evaluate  check every call against price bars and write scorecards plus the board text
 
 Messages come from the bot's feed directory (``--feed-dir``, default data/goathub_feed) and/or
@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.knowledge.goathub_channels import (  # noqa: E402
     PROFILES,
+    source_names_hint,
     evaluate,
     load_bars_csv,
     parse_transcript,
@@ -56,6 +57,8 @@ def _observed_at(value: str | None) -> datetime:
 
 
 def cmd_read(args: argparse.Namespace) -> int:
+    if hint := source_names_hint():
+        print(hint, file=sys.stderr)
     calls = read_calls(_messages(args))
     payload = {key: [item.to_dict() for item in items] for key, items in calls.items()}
     for key, items in calls.items():

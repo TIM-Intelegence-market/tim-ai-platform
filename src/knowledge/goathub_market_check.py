@@ -401,7 +401,7 @@ def _settle(tracked: TrackedCall, verdict: MarketVerdict, snapshot: MarketSnapsh
 def build_diary(calls: Mapping[str, Iterable[TrackedCall]], snapshot: MarketSnapshot, *, min_grade: Sequence[str] = ("A", "B")) -> list[DiaryEntry]:
     """One diary row per call of grade A/B (the others name no coin with a level or stop), oldest first.
 
-    Channels whose calls come without levels (Better Call Butter) list every directional call with a coin."""
+    Channels whose calls come without levels (chart calls) list every directional call with a coin."""
     entries = []
     for tracked_calls in calls.values():
         for tracked in tracked_calls:
