@@ -213,3 +213,18 @@ def test_direction_check_counts_every_call_with_prices_per_author() -> None:
     assert all(card["direction"]["1h"] == {"calls": 1, "right": 1} for card in cards.values())
     report = render_diary_report(entries, T0)
     assert "in Richtung des Calls" in report and "## TIM-Analysen" in report
+
+
+def test_small_coins_get_their_own_book_with_higher_cost() -> None:
+    from src.knowledge.goathub_market_check import BOOK_SMALL, FEE_TAKER, SMALL_SLIPPAGE_PER_SIDE
+    small = check_market(tracked(), snapshot(FLAT, volume=10_000.0))  # about 1 Mio. USDT in 24 h
+    assert small.tradable and small.book == BOOK_SMALL and small.cost_pct == (FEE_TAKER + SMALL_SLIPPAGE_PER_SIDE) * 2
+    big = check_market(tracked(), snapshot(FLAT))
+    assert big.tradable and big.book == "normal" and big.cost_pct < small.cost_pct
+    assert check_market(tracked("Short abc SL 1.02\nTarget 0.9"), snapshot(FLAT, volume=10_000.0)).code == "too_expensive"  # stop 2 %, cost 0.72 %
+    winning = FLAT + [(0.75, 0.85)]
+    entries = build_diary({"x": [tracked()]}, snapshot(winning, volume=10_000.0)) + build_diary({"x": [tracked()]}, snapshot(winning))
+    assert entries[0].book == BOOK_SMALL and entries[0].net_r < entries[1].net_r  # same trade, more cost in the small book
+    cards = author_scorecards(entries)
+    assert {key for key in cards} == {"autor b", "autor b|klein"}
+    assert "kleine Coins" in render_diary_report(entries, T0)
