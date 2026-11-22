@@ -64,6 +64,9 @@ MIN_QUOTE_VOLUME_24H = Decimal("5000000")  # USDT turnover in the 24 h before th
 MAX_COST_SHARE_OF_RISK = Decimal("0.10")  # round-trip cost at most 10 % of the stop distance
 MIN_NET_REWARD_TO_RISK = Decimal("1")  # with a target: net reward at least the net risk
 RUNAWAY_SHARE = Decimal("0.5")  # price already covered half the way to the target
+STANDARD_STOP = Decimal("0.06")  # TIM's own rule for coin calls without a stop: 6 % against the entry, target 2R (12 %)
+STANDARD_TARGET_R = Decimal("2")
+DRIFT_HOURS = (1, 4, 24, 72)  # control: plain price change after the entry, whatever stop or target does
 MAX_STOP_DISTANCE = Decimal("0.30")  # a stop further than 30 % from the entry is a typo or another scale, not a trade
 MIN_VOLUME_COVERAGE = Decimal("0.8")  # share of the 24 h window that must be covered by bars
 
@@ -169,6 +172,7 @@ class MarketVerdict:
     risk_pct: Decimal | None = None
     cost_pct: Decimal = COST_PER_SIDE * 2
     detail: str = ""
+    rule: str = "autor"  # "autor": levels as the author wrote them; "tim_standard": TIM's fixed stop and target (coin calls without levels)
 
     @property
     def reason(self) -> str:
@@ -220,21 +224,32 @@ def check_market(tracked: TrackedCall, snapshot: MarketSnapshot) -> MarketVerdic
     # Levels are read against the price at the posting (that is what the author saw), prices from the bars.
     outcome = check_outcome(tracked, [bar.price_bar() for bar in bars], observed_at=snapshot.taken_at)
     stop, target = outcome.stop, outcome.target
-    if stop is None:
-        code = CODE_STOP_IN_IMAGE if has_chart_image(message) else CODE_NO_STOP
-        return MarketVerdict(False, code, entry_time=entry_bar.open_time, entry=entry_bar.open, target=target, quote_volume_24h=volume)
-
     long = tracked.bias == "LONG"
     entry = entry_bar.open
+    rule = "autor"
+    if stop is None:
+        if PROFILES[tracked.profile].coin_calls and target is None and not has_chart_image(message):
+            # A coin is only named ("Short ake"): measure it with TIM's own fixed rule, reported apart from the author's levels.
+            rule = "tim_standard"
+            sign = 1 if long else -1
+            stop = entry * (1 - sign * STANDARD_STOP)
+            target = entry * (1 + sign * STANDARD_STOP * STANDARD_TARGET_R)
+        else:
+            code = CODE_STOP_IN_IMAGE if has_chart_image(message) else CODE_NO_STOP
+            return MarketVerdict(False, code, entry_time=entry_bar.open_time, entry=entry_bar.open, target=target, quote_volume_24h=volume)
     # What happened between the post and our entry bar: stop or target touched already?
-    gap = [bar for bar in bars if posted_bar.open_time <= bar.open_time < entry_bar.open_time]
+    gap = [bar for bar in bars if posted_bar.open_time <= bar.open_time < entry_bar.open_time] if rule == "autor" else []
     if any((bar.low <= stop if long else bar.high >= stop) for bar in gap) or (entry <= stop if long else entry >= stop):
         return MarketVerdict(False, CODE_STOP_HIT, entry_bar.open_time, entry, stop, target, volume)
     if target is not None and (any((bar.high >= target if long else bar.low <= target) for bar in gap) or (entry >= target if long else entry <= target)):
         return MarketVerdict(False, CODE_TARGET_REACHED, entry_bar.open_time, entry, stop, target, volume)
     moved = (entry - posted_bar.open) if long else (posted_bar.open - entry)
     risk = abs(entry - stop)
-    if target is not None:
+    if rule == "tim_standard":
+        if moved >= risk / 2:  # already half a stop distance in the call's favour since the post
+            return MarketVerdict(False, CODE_RAN_AWAY, entry_bar.open_time, entry, stop, target, volume, rule=rule,
+                                 detail="schon die halbe Stop-Distanz gelaufen")
+    elif target is not None:
         way = abs(target - posted_bar.open)
         if way > 0 and moved / way >= RUNAWAY_SHARE:
             return MarketVerdict(False, CODE_RAN_AWAY, entry_bar.open_time, entry, stop, target, volume,
@@ -256,7 +271,7 @@ def check_market(tracked: TrackedCall, snapshot: MarketSnapshot) -> MarketVerdic
         if (reward_pct - cost_pct) / (risk_pct + cost_pct) < MIN_NET_REWARD_TO_RISK:
             return MarketVerdict(False, CODE_TOO_EXPENSIVE, entry_bar.open_time, entry, stop, target, volume, risk_pct,
                                  detail="Gewinn nach Kosten kleiner als Risiko")
-    return MarketVerdict(True, CODE_TRADABLE, entry_bar.open_time, entry, stop, target, volume, risk_pct)
+    return MarketVerdict(True, CODE_TRADABLE, entry_bar.open_time, entry, stop, target, volume, risk_pct, rule=rule)
 
 
 # --------------------------------------------------------------------------- paper diary
@@ -281,6 +296,8 @@ class DiaryEntry:
     exit_price: Decimal | None = None
     net_r: Decimal | None = None  # result in multiples of the risk, after costs
     text: str = ""
+    rule: str = "autor"  # "autor" or "tim_standard" (TIM's own fixed stop/target, reported apart)
+    drift: dict | None = None  # control: price change in % in the call's direction 1/4/24/72 h after entry
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {}
@@ -311,6 +328,20 @@ def _price_at(bars: Sequence[MarketBar], when: datetime) -> Decimal | None:
     return bar.open if bar is not None else (bars[-1].close if bars else None)
 
 
+def _drift(bars: Sequence[MarketBar], entry: Decimal, entry_time: datetime, long: bool, taken_at: datetime) -> dict:
+    """Control without stop or target: how far the price moved in the call's direction after 1/4/24/72 h (only what already happened)."""
+    result = {}
+    for hours in DRIFT_HOURS:
+        when = entry_time + timedelta(hours=hours)
+        if when > taken_at:
+            continue
+        price = _price_at(bars, when)
+        if price is not None:
+            move = (price - entry) / entry * 100 * (1 if long else -1)
+            result[f"{hours}h"] = f"{move:.2f}"
+    return result
+
+
 def _settle(tracked: TrackedCall, verdict: MarketVerdict, snapshot: MarketSnapshot) -> DiaryEntry:
     message = tracked.call.message
     base = dict(message_id=message.message_id, profile=tracked.profile, author=message.author_label, channel=message.channel_name or message.channel_id,
@@ -319,26 +350,38 @@ def _settle(tracked: TrackedCall, verdict: MarketVerdict, snapshot: MarketSnapsh
     if not verdict.tradable or verdict.entry is None or verdict.stop is None or verdict.entry_time is None:
         return DiaryEntry(**base)
     bars = snapshot.bars[_pair(tracked.symbol or "")]
-    # Walk the bars from our entry on (not from the posting), with the call re-dated to the entry.
-    moved = replace(tracked, call=replace(tracked.call, message=replace(message, posted_at=verdict.entry_time)))
-    outcome = check_outcome(moved, [bar.price_bar() for bar in bars], observed_at=snapshot.taken_at, horizon=PROFILES[tracked.profile].horizon)
     long = tracked.bias == "LONG"
     risk = abs(verdict.entry - verdict.stop)
     cost_r = (COST_PER_SIDE * 2 * verdict.entry) / risk
-    status, exit_time, exit_price = outcome.status, outcome.resolved_at, None
+    deadline = verdict.entry_time + PROFILES[tracked.profile].horizon
+    status, exit_time, exit_price = STATUS_OPEN, None, None
+    for bar in (b for b in bars if verdict.entry_time <= b.open_time <= snapshot.taken_at):
+        if bar.open_time > deadline:
+            status, exit_time = "expired", deadline
+            break
+        hit_stop = bar.low <= verdict.stop if long else bar.high >= verdict.stop
+        hit_target = verdict.target is not None and (bar.high >= verdict.target if long else bar.low <= verdict.target)
+        if hit_stop:  # a bar that touches both counts as stopped: it does not say which came first
+            status, exit_time = STATUS_STOPPED, bar.open_time
+            break
+        if hit_target:
+            status, exit_time = STATUS_TARGET, bar.open_time
+            break
+    else:
+        if snapshot.taken_at > deadline:
+            status, exit_time = "expired", deadline
     if status == STATUS_STOPPED:
         exit_price = verdict.stop
     elif status == STATUS_TARGET:
         exit_price = verdict.target
-    elif status in ("expired", STATUS_OPEN):
+    else:
         # marked at the deadline (expired) or at the latest bar (open)
         exit_price = _price_at(bars, exit_time) if exit_time is not None else bars[-1].close
-    else:
-        return DiaryEntry(**{**base, "verdict": CODE_NO_STOP, "reason": _REASON_DE[CODE_NO_STOP]})
     gross = ((exit_price - verdict.entry) if long else (verdict.entry - exit_price)) / risk if exit_price is not None else None
     net = None if gross is None else gross - cost_r
     return DiaryEntry(**base, entry_time=verdict.entry_time, entry=verdict.entry, stop=verdict.stop, target=verdict.target, status=status,
-                      exit_time=exit_time, exit_price=exit_price, net_r=None if net is None else net.quantize(Decimal("0.01")))
+                      exit_time=exit_time, exit_price=exit_price, net_r=None if net is None else net.quantize(Decimal("0.01")),
+                      rule=verdict.rule, drift=_drift(bars, verdict.entry, verdict.entry_time, long, snapshot.taken_at))
 
 
 def build_diary(calls: Mapping[str, Iterable[TrackedCall]], snapshot: MarketSnapshot, *, min_grade: Sequence[str] = ("A", "B")) -> list[DiaryEntry]:
@@ -348,7 +391,7 @@ def build_diary(calls: Mapping[str, Iterable[TrackedCall]], snapshot: MarketSnap
     entries = []
     for tracked_calls in calls.values():
         for tracked in tracked_calls:
-            listed = PROFILES[tracked.profile].coin_from_chart_command and tracked.symbol and tracked.bias in ("LONG", "SHORT")
+            listed = PROFILES[tracked.profile].coin_calls and tracked.symbol and tracked.bias in ("LONG", "SHORT")
             if (tracked.call.grade not in min_grade and not listed) or tracked.call.message.known_at > snapshot.taken_at:
                 continue
             entries.append(_settle(tracked, check_market(tracked, snapshot), snapshot))
@@ -375,8 +418,9 @@ def author_scorecards(entries: Sequence[DiaryEntry]) -> dict[str, dict[str, Any]
     """Per author: how many calls, how many were tradable and what the entered trades earned (in R, after costs)."""
     cards: dict[str, dict[str, Any]] = {}
     for entry in entries:
-        card = cards.setdefault(_author_key(entry.author), {
-            "author": entry.author, "calls": 0, "tradable": 0, "target_hit": 0, "stopped": 0, "open": 0, "expired": 0,
+        standard = entry.rule == "tim_standard"
+        card = cards.setdefault(f"{_author_key(entry.author)}{'|tim_standard' if standard else ''}", {
+            "author": entry.author + (" (TIM-Standardregel: Stop 6 %, Ziel 12 %, ohne Stop vom Autor)" if standard else ""), "calls": 0, "tradable": 0, "target_hit": 0, "stopped": 0, "open": 0, "expired": 0,
             "net_r_closed": Decimal(0), "net_r_open": Decimal(0), "not_tradable_reasons": {}})
         card["calls"] += 1
         if entry.entered:
@@ -403,6 +447,7 @@ def render_diary_report(entries: Sequence[DiaryEntry], generated_at: datetime) -
         f"Stand: {generated_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC. Nur Papier, keine Orders. "
         "Annahmen: Gebühr 0,06 % je Seite (nicht bestätigt), Rutschen 0,05 % je Seite (Schätzung), mind. 5 Mio. USDT Handel in 24 h.",
         "Einstieg ist erst dann, wenn TIM den Beitrag gelesen hat, nicht beim Posten.",
+        "Calls mit Stop vom Autor und Calls, bei denen nur ein Coin genannt wird (TIM setzt dann selbst Stop und Ziel), stehen getrennt.",
     ]
     for card in cards.values():
         reasons = ", ".join(f"{_REASON_DE[code]} {count}x" for code, count in sorted(card["not_tradable_reasons"].items(), key=lambda item: -item[1])) or "-"

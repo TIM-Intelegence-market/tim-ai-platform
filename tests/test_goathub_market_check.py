@@ -165,4 +165,30 @@ def test_better_calls_without_a_stop_are_listed_not_dropped() -> None:
     from src.knowledge.goathub_channels import read_calls
     calls = read_calls([replace(message, message_id="b0", content="Fc ake", posted_at=T0 - STEP, received_at=T0 - STEP), message])
     entries = build_diary(calls, snapshot(FLAT))
-    assert len(entries) == 1 and entries[0].verdict == "no_stop" and entries[0].symbol == "AKE"
+    assert len(entries) == 1 and entries[0].symbol == "AKE"
+    assert entries[0].verdict == "tradable" and entries[0].rule == "tim_standard"  # only a coin named: TIM's own stop and target
+
+
+def test_coin_call_without_levels_gets_tims_fixed_stop_and_target() -> None:
+    entry = build_diary({"x": [tracked("Short ake")]}, snapshot(FLAT + [(0.85, 0.95), (0.75, 0.85)]))[0]
+    assert entry.rule == "tim_standard" and entry.stop == Decimal("1.06") and entry.target == Decimal("0.88")  # 6 % stop, 12 % target
+    assert entry.status == "target_hit" and Decimal("1.5") < entry.net_r < Decimal("2.0")
+    assert entry.drift is not None and entry.drift["1h"] and "72h" not in entry.drift  # only what already happened
+    lost = build_diary({"x": [tracked("Short ake")]}, snapshot(FLAT + [(1.05, 1.15)]))[0]
+    assert lost.status == "stopped" and lost.net_r < Decimal("-1")
+
+
+def test_author_levels_are_never_replaced_by_the_standard_rule() -> None:
+    entry = build_diary({"x": [tracked("Short ake SL 1.1\nTarget 0.8")]}, snapshot(FLAT))[0]
+    assert entry.rule == "autor" and entry.stop == Decimal("1.1")
+
+
+def test_standard_rule_skips_a_call_the_price_already_ran_away_from() -> None:
+    drop = [(0.99, 1.01)] + [(0.93, 0.95)] * 7  # fell about 6 % while TIM was reading
+    assert check_market(tracked("Short ake", known_after=3), snapshot(drop)).code == "ran_away"
+
+
+def test_report_keeps_author_levels_and_standard_rule_apart() -> None:
+    entries = build_diary({"x": [tracked("Short ake SL 1.1\nTarget 0.8"), tracked("Short ake")]}, snapshot(FLAT + [(0.75, 0.85)]))
+    cards = author_scorecards(entries)
+    assert len(cards) == 2 and any("TIM-Standardregel" in card["author"] for card in cards.values())

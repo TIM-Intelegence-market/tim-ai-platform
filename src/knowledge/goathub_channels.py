@@ -78,6 +78,8 @@ class ChannelProfile:
     # The coin comes from the author's last chart command ("Fc coti 15m") and calls rarely carry a level or stop:
     # the paper diary lists them anyway, so they show up as "no stop named" instead of silently missing.
     coin_from_chart_command: bool = False
+    # Calls are mostly just "this coin": the paper diary measures them with TIM's own fixed stop and target when the author names none.
+    coin_calls: bool = False
 
 
 PROFILES: dict[str, ChannelProfile] = {
@@ -85,7 +87,7 @@ PROFILES: dict[str, ChannelProfile] = {
         "futures_broncx", "Broncx futures", ("futures-trading-broncx", "futures-trading-explanations"), ("broncx",), timedelta(hours=72),
         default_symbol="BTC"),
     "spot_goatfather": ChannelProfile(
-        "spot_goatfather", "goatfather spot", ("goatfather-channel",), ("goatfather",), timedelta(days=30)),
+        "spot_goatfather", "goatfather spot", ("goatfather-channel",), ("goatfather",), timedelta(days=30), coin_calls=True),
     "gold_eydu": ChannelProfile(
         "gold_eydu", "EyDu gold", ("xau-xag",), ("eydu",), timedelta(hours=72), default_symbol="XAU"),
     "chat_altcoins": ChannelProfile(
@@ -93,7 +95,7 @@ PROFILES: dict[str, ChannelProfile] = {
         read_knowledge_channel=True, min_grade="B"),
     "better_calls": ChannelProfile(
         "better_calls", "Better Call Butter", ("better-call-butter", "better-calls"), ("butter aus sahne",), timedelta(hours=72),
-        coin_from_chart_command=True),
+        coin_from_chart_command=True, coin_calls=True),
 }
 
 _SILVER = re.compile(r"\b(silver|xag)\b", re.IGNORECASE)
