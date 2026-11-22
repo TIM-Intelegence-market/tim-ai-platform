@@ -1,8 +1,19 @@
-# Absorption als Einstieg, Ausstieg an der nächsten Gegen-Absorption: Schattenregel R-ABS-2 (Präregistrierung 0.5, ENTWURF, nicht eingefroren)
+# Absorption als Einstieg, Ausstieg an der nächsten Gegen-Absorption: Schattenregel R-ABS-2 (Präregistrierung 0.6, ENTWURF, nicht eingefroren)
 
 Auftrag Uzi 17.11.2026 ("Die Absorption könnte doch getradet werden"). Anlass: BTCUSDT 1h, 17.11. (Handy-Screenshot). Bei ~65.200 (1D-VAH-Bereich) zeigt der Chart eine Kauf-Absorption (Kreis "500"), danach fällt der Preis bis ~63.300 nahe der Opt Put Wall 63.000; unten steht ein Kreis nahe 63.600. Uzi: Absorption als Einstieg ist "auf jeden Fall ein guter Ansatz"; **bei der nächsten Absorption werden je nach Long/Short die Gewinne realisiert**; wichtige Zonen und vor allem **Akkumulation** sollen erkennbar sein. **Nichts gerechnet, kein Ergebnis gesehen. Ob der Fall vom 17.11. von den unten definierten Schwellen überhaupt erfasst würde, ist ungeprüft.**
 
 Status: Entwurf. Einfrieren (1.0) erst auf Uzis "einfrieren", Zeitplan erst auf "Zeitplan an", Merge nur auf "merge". Nur Papier/Schatten, kein Echtgeld, Holdout 2025 tabu, kein Backtest (Orderflow nur vorwärts).
+
+## Änderung 0.6 (Uzi 22.11., "Kreise")
+Anlass: Uzi markierte am 21.11. vier Kreise im Chart (55.200, 57.300, 59.200, 60.800), die 0.5 nicht als Ereignis sah. Ursache: 0.5 erkennt Absorption an Volumen, Delta-Anteil und Schluss eines 5m-Fensters im Spot; die Chart-Kreise sind etwas anderes, nämlich einzelne große Taker-Orders am Perp. Neu, eigener Journal-Ordner, 0.5-Trades zählen nicht mit:
+
+- **Ereignis = Kreis, gegen den der Markt dreht.** Kreis = eine Taker-Order am Binance-Perp ab `circle_min_btc` = 200 BTC (Sammler `src/dashboard/perp_flow.py`, dieselbe Quelle wie die Kreise im Chart; dort zusätzlich Bybit, hier nur Binance). Dreh = innerhalb von `circle_wait_min` = 15 min schließt ein 5m-Spot-Fenster mindestens `turn_pct` = 0,10 % jenseits des Spot-Schlusses der Order-Minute.
+- **Richtung** ergibt sich aus der Order: großer Verkauf + Dreh nach oben = LONG, großer Kauf + Dreh nach unten = SHORT. Kreise beider Seiten im selben Fenster: kein Ereignis.
+- **Einstieg:** Limit am Schluss des Dreh-Fensters (Maker), sonst wie 0.5 (verfällt nach `trigger_minutes`). Zone, Stop (hinter dem Extrem seit der Order, min. 0,5 %), Einstand ab +1 R, Ziele +2 R/+3 R, Gegen-Ereignis, Kostentor und Urteil unverändert.
+- **Mitgeschrieben:** Kreise ohne Dreh als "nicht gedreht" (kein Trade, kein Akkumulations-Flag); je Ereignis Größe, Perp- und Spot-Preis, Anzahl und Summe der Kreise.
+- **Kein Vorgriff:** Der Lauf wertet nur Fenster aus, die der Perp-Sammler schon abgedeckt hat (`state.json`). Lücken des Sammlers bedeuten fehlende Kreise, nicht nachträgliche Trades.
+- **Herkunft der Schwelle (ehrlich):** 200 BTC ist an genau den vier Stellen vom 21.11. abgelesen (502, 207, 470, 203 BTC), also an einem einzigen Tag angepasst; kein Beleg für eine Wirkung. Nachspiel 21.11. (nur Plausibilität, zählt nicht): alle vier Stellen werden als gedrehter Kreis erkannt, drei davon liegen an keiner TIM-Chart-Zone (kein Trade), die vierte (Kauf-Kreis 59.400 → SHORT) wäre am Stop geendet.
+- Ohne Kreis-Quelle rechnet der Code weiter die 0.5-Erkennung (alte Tests unverändert).
 
 ## Änderung 0.5 (Uzi 19.11., "Pass es an")
 

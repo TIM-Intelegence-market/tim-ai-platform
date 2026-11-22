@@ -232,13 +232,13 @@ def orders(*rows):
     return lambda a, b: [{"ms": m, "price": px, "btc": btc, "side": side} for m, px, btc, side in rows if a <= m < b]
 
 
-def test_circle_sell_order_that_turns_is_a_long_at_market():
+def test_circle_sell_order_that_turns_is_a_long_with_a_limit():
     out = abs_entry.simulate(days(scenario(exit_absorption=False)), STARTED,
                              circles=orders((T600 + 10_000, 64_015.0, 300.0, -1)))
     trade = out["open"]
     assert trade["direction"] == "LONG" and trade["zone"]["name"] == "VT Tief"
-    p = abs_entry.PARAMS
-    assert trade["fill"] == round(64_120.0 * (1 + p.slippage), 2) and trade["entry_fee"] == p.fee   # next open, taker
+    assert trade["fill"] == 64_120.0 and trade["entry_fee"] == abs_entry.PARAMS.fee_maker   # limit at the turn's close
+    assert trade["kostenblockiert"] is False
     assert trade["stop_start"] < 64_001          # behind the low since the order
     event = out["events"][0]
     assert event["kreis"]["btc"] == 300.0 and event["kreis"]["spot"] == 64_020.0 and event["direction"] == "LONG"

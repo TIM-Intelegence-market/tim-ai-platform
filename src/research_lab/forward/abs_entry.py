@@ -334,7 +334,7 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
             cand["extreme"] = min(cand["extreme"], l) if cand["side"] < 0 else max(cand["extreme"], h)
         if pending is not None and pending.get("fill_next") and pos is None:
             long = pending["direction"] == "LONG"
-            if not p.entry_limit or pending.get("market"):
+            if not p.entry_limit:
                 pos = _open(pending, o * (1 + p.slippage if long else 1 - p.slippage), p.fee, bar.window_start_ms, p)
                 pending = None
             else:
@@ -414,10 +414,10 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
             elif zone and pos is None and pending is None and atr and event["zaehlt"]:
                 pending = {"event": event, "direction": hit["direction"], "extreme": hit["extreme"], "close": hit["close"],
                            "atr": atr, "waited": 0, "zone": event["zone"], "kontext": event["kontext"],
-                           **({"fill_next": True, "market": True} if "kreis" in hit else {}),
+                           **({"fill_next": True} if "kreis" in hit else {}),   # the turn is the trigger: limit at this close
                            "levels": sorted({round(lv, 2) for _, lv in zones.all(end_ms, p.swing_keep_h)}
                                             | {z["mid"] for z in drawn or [] if z["weight"] >= p.chart_min_weight})}
-                event["ergebnis"] = "ausgelöst, Fill zur nächsten Minute" if "kreis" in hit else "wartet auf Auslöser"
+                event["ergebnis"] = "ausgelöst, Limit am Schluss" if "kreis" in hit else "wartet auf Auslöser"
             else:
                 event["ergebnis"] = ("ohne Zone" if not zone else "Position offen" if pos is not None
                                      else "vor Start" if not event["zaehlt"] else "kein ATR")
