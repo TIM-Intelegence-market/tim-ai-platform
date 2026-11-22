@@ -1,6 +1,6 @@
 """S32: order book imbalance in a defended range ("path of least resistance"), BTCUSDT perpetual, Tardis free days.
 
-Rules: docs/research_lab/studien/S32_ORDERBUCH_UNGLEICHGEWICHT_PRAEREGISTRIERUNG_ENTWURF.md (draft 0.6).
+Rules: docs/research_lab/studien/S32_ORDERBUCH_UNGLEICHGEWICHT_PRAEREGISTRIERUNG_ENTWURF.md (1.0, frozen 22.11.2026).
 Data: Tardis.dev ``incremental_book_L2`` for Binance USDⓈ-M BTCUSDT, only the free first day of each month,
 2020-06 to 2024-12 (``depth.tardis`` refuses other days and the holdout from 2025-01-01).
 
@@ -51,7 +51,7 @@ from src.research_lab.depth import tardis
 from src.research_lab.depth.book import ASK, BID, SCALE, LocalBook
 from src.research_lab.protocol import BASE_COSTS, STRESS_COSTS, CostModel
 
-VERSION = "0.10"
+VERSION = "1.0"
 SEED = 32
 TRAINING_END = date(2022, 12, 31)
 # Everything is collected and evaluated, however few cases (Barti 16.11.2026); the bootstrap bound is the luck test.

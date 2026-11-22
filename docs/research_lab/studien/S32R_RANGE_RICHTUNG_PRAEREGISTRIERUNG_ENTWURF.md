@@ -1,9 +1,9 @@
-# S32-R: Wohin geht die Range? Begleitstudie zu S32 (Präregistrierung, Entwurf 0.1)
+# S32-R: Wohin geht die Range? Begleitstudie zu S32 (Präregistrierung 1.0)
 
 | Feld | Wert |
 |---|---|
 | Studie | S32-R, Begleitstudie zu S32 (gleiche Daten, gleiche Range-Erkennung, eigene Fragen) |
-| Version | **0.1, Entwurf.** Regeln als Code: `src/research_lab/studies/s32r.py` (`Config`, SHA-256 schließt die S32-Regeln ein), Tests `tests/test_research_lab_s32r.py`. `evaluate` gesperrt bis 1.x |
+| Version | **1.0, eingefroren am 22.11.2026** zusammen mit S32, auf Uzis Wort (Issue #315, 17.11.2026) und Bartis schriftliches Go (22.11.2026 17:40). Regeln unverändert gegenüber 0.1; geändert wurde nur `VERSION`. Config-SHA-256 `3c3544b734d6169348b1a6fd2420f6110b192e0fad51adefb0d8b6fab603bd99` (schließt die S32-Regeln ein, gleich wie im Zähllauf). Regeln als Code: `src/research_lab/studies/s32r.py` (`Config`, SHA-256 schließt die S32-Regeln ein), Tests `tests/test_research_lab_s32r.py`. `evaluate` gesperrt bis 1.x |
 | Anlass | Barti 16.11.2026: „bei welcher Range es in welche Richtung geht“, Grundverhalten und Buch „Hand in Hand“. Parameter von Uzi angenommen (Issue #315, 17.11.) |
 | Daten | wie S32: 55 kostenlose Tardis-Tage, Training 2020-06 bis 2022-12, Validierung 2023–2024, Holdout ab 2025 gesperrt |
 | Einfrieren | **zusammen mit S32**, bevor S32 ausgewertet wird (Barti 16.11.). Danach ist der eigene Recorder (#253) der Vorwärtstest für beide |

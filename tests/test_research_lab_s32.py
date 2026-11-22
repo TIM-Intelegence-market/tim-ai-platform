@@ -138,7 +138,7 @@ def test_holdout_and_non_free_days_refused(tmp_path):
 def test_evaluate_locked_while_draft():
     with pytest.raises(PermissionError):
         s32.evaluate({}, version="0.10")
-    assert s32.VERSION.startswith("0.")
+    assert s32.VERSION == "1.0"
 
 
 def test_count_is_results_blind():

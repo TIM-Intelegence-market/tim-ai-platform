@@ -76,7 +76,7 @@ def test_count_is_results_blind_and_groups():
 def test_evaluate_locked_and_runs_when_frozen():
     with pytest.raises(PermissionError):
         s32r.evaluate({}, version="0.1")
-    assert s32r.VERSION.startswith("0.")
+    assert s32r.VERSION == "1.0"
     o_up, o_dn = Result("oben", True), Result("unten", False)
     res = {d: [(_r(3.0), o_up)] * 20 + [(_r(1 / 3), o_dn)] * 20
            for d in (date(2020, 6, 1), date(2020, 7, 1), date(2023, 6, 1), date(2023, 7, 1))}

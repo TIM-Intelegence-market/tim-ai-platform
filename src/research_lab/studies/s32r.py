@@ -1,6 +1,6 @@
 """S32-R: where does a defended range go? Companion study to S32, same data, frozen together with S32.
 
-Rules: docs/research_lab/studien/S32R_RANGE_RICHTUNG_PRAEREGISTRIERUNG_ENTWURF.md (draft 0.1).
+Rules: docs/research_lab/studien/S32R_RANGE_RICHTUNG_PRAEREGISTRIERUNG_ENTWURF.md (1.0, frozen 22.11.2026).
 Data and range detection as in :mod:`src.research_lab.studies.s32` (Tardis free days 2020-06 to 2024-12, holdout from
 2025-01-01 refused, 15-minute window, both edges defended, width groups 10-20 / 20-60 / 60-100 / 100-150 bp, each
 width also per session; every group is its own question).
@@ -36,7 +36,7 @@ from pathlib import Path
 from src.research_lab.studies import s32
 from src.research_lab.studies.s32 import Second
 
-VERSION = "0.1"
+VERSION = "1.0"
 SEED = 3232
 MIN_CASES = 30
 ALPHA = 0.05
