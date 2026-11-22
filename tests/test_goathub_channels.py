@@ -326,3 +326,13 @@ def test_chart_box_counts_in_the_gold_and_chat_channels_too() -> None:
                                attachments=("Bild: AKE/USDT-Chart, Short-Positionsbox; Stop ca. 0,0100, Ziel ca. 0,0050",)), channel_role=ROLE_KNOWLEDGE)
     chat = read_call(chat_message, PROFILES["chat_altcoins"])
     assert chat is not None and chat.symbol == "AKE" and chat.bias == "SHORT" and chat.call.grade == "A"
+
+
+def test_better_calls_take_the_coin_from_the_last_chart_command() -> None:
+    channel = "better-call-butter"
+    posts = [msg("Fc coti 5m", channel=channel, author="Butter aus Sahne", minutes=0),
+             msg("Small gamble long", channel=channel, author="Butter aus Sahne", minutes=1),
+             msg("Short incoming", channel=channel, author="Butter aus Sahne", minutes=400),  # chart command is too old
+             msg("Long here", channel=channel, author="Tree Capital", minutes=2)]
+    calls = read_calls(posts)["better_calls"]
+    assert [(c.symbol, c.bias) for c in calls] == [("COTI", "LONG"), (None, "SHORT")]

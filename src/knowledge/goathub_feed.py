@@ -262,7 +262,7 @@ _NOT_TICKERS = {
     "now", "then", "today", "tomorrow", "soon", "later", "first", "second", "next", "last", "just", "still", "also",
     "can", "could", "should", "gonna", "wanna", "not", "no", "yes", "do", "did", "dont", "we", "i", "my", "our", "your",
     "a", "an", "to", "of", "by", "as", "so", "be", "are", "was", "were", "am", "has", "have", "had", "get", "got",
-    "trade", "trades", "setup", "setups", "idea", "plan", "bounce", "pump", "dump", "wick", "sweep", "bos", "mss", "ob",
+    "tight", "index", "bags", "trade", "trades", "setup", "setups", "idea", "plan", "bounce", "pump", "dump", "wick", "sweep", "bos", "mss", "ob",
 }
 # Chart words and market terms in capitals ("IMBAL", "SL") are never a coin; a coin written in lowercase is at most six letters.
 _MAX_LOWERCASE_TICKER = 6
