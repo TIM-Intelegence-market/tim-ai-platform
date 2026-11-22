@@ -220,3 +220,76 @@ def test_follow_up_measures_piercing_and_second_test():
     assert follow["zweiter_test"]["weniger_volumen"] is True and follow["zweiter_test"]["gehalten"] is True
     stats = abs_entry.stop_messung(out["events"])
     assert stats["ereignisse"] == 1 and stats["zweiter_test_weniger_volumen"] == 1
+
+
+# --- 0.6 "Kreise": a big perp taker order the market turns against -------------------------------------------
+
+T600 = STARTED + 600 * MINUTE_MS
+
+
+def orders(*rows):
+    """Circle provider over fixed orders (ms, perp price, btc, side)."""
+    return lambda a, b: [{"ms": m, "price": px, "btc": btc, "side": side} for m, px, btc, side in rows if a <= m < b]
+
+
+def test_circle_sell_order_that_turns_is_a_long_at_market():
+    out = abs_entry.simulate(days(scenario(exit_absorption=False)), STARTED,
+                             circles=orders((T600 + 10_000, 64_015.0, 300.0, -1)))
+    trade = out["open"]
+    assert trade["direction"] == "LONG" and trade["zone"]["name"] == "VT Tief"
+    p = abs_entry.PARAMS
+    assert trade["fill"] == round(64_120.0 * (1 + p.slippage), 2) and trade["entry_fee"] == p.fee   # next open, taker
+    assert trade["stop_start"] < 64_001          # behind the low since the order
+    event = out["events"][0]
+    assert event["kreis"]["btc"] == 300.0 and event["kreis"]["spot"] == 64_020.0 and event["direction"] == "LONG"
+
+
+def test_circle_without_turn_is_written_down_and_not_traded():
+    out = abs_entry.simulate(days(scenario(exit_absorption=False)), STARTED,
+                             circles=orders((STARTED + 300 * MINUTE_MS + 10_000, 64_500.0, 300.0, -1)))
+    assert out["trades"] == [] and out["open"] is None
+    assert [e["ergebnis"] for e in out["events"]] == ["nicht gedreht"]
+
+
+def test_circle_below_the_size_is_ignored_and_old_volume_rule_is_off():
+    out = abs_entry.simulate(days(scenario()), STARTED, circles=orders((T600 + 10_000, 64_015.0, 20.0, -1)))
+    assert out["events"] == [] and out["trades"] == [] and out["open"] is None
+
+
+def test_circle_buy_order_that_turns_ends_the_long():
+    bars = scenario()
+    top = STARTED + 725 * MINUTE_MS                      # the window where buyers hammer and price closes lower
+    out = abs_entry.simulate(days(bars), STARTED, circles=orders((T600 + 10_000, 64_015.0, 300.0, -1),
+                                                                 (top + 10_000, 65_120.0, 250.0, 1)))
+    short = [e for e in out["events"] if e.get("direction") == "SHORT"]
+    assert short and short[0]["side"] == "KAUF"
+    assert out["trades"] and out["trades"][0]["direction"] == "LONG"
+
+
+def test_circle_context_reads_the_collector_day_file(tmp_path):
+    import gzip
+    import json
+
+    rows = [[T600 + 5, 64_015.0, 300.0, -1], [T600 + 9, 64_016.0, 2.0, 1]]
+    (tmp_path / "perp-2026-11-22.json.gz").write_bytes(gzip.compress(json.dumps({"bubbles": rows}).encode()))
+    between = abs_entry.circle_context(tmp_path)
+    assert between(T600, T600 + 5 * MINUTE_MS) == [{"ms": T600 + 5, "price": 64_015.0, "btc": 300.0, "side": -1}]
+    assert between(T600 + 5 * MINUTE_MS, T600 + 10 * MINUTE_MS) == []
+    assert abs_entry.circle_context(None) is None
+    assert between.upto() == 0
+    (tmp_path / "state.json").write_text(json.dumps({"segments": [[T600, T600 + 7 * MINUTE_MS]]}))
+    assert between.upto() == T600 + 7 * MINUTE_MS
+
+
+def test_step_waits_for_the_perp_collector(tmp_path):
+    bars = scenario(exit_absorption=False)
+    all_days = {d: (b, p) for d, b, p in days(bars)}
+    today = DAY1 + timedelta(days=2)
+    circles = orders((T600 + 10_000, 64_015.0, 300.0, -1))
+    now = datetime.fromtimestamp(STARTED / 1000, tz=timezone.utc)
+    kw = {"now": now, "partial": lambda d: all_days[d], "circles": circles}
+    circles.upto = lambda: T600 + 4 * MINUTE_MS          # collector not yet past the window's end
+    assert abs_entry.step(tmp_path, all_days.get, today, **kw)["ereignisse"] == 0
+    circles.upto = lambda: T600 + 20 * MINUTE_MS
+    out = abs_entry.step(tmp_path, all_days.get, today, **kw)
+    assert out["ereignisse"] == 1 and out["offen"] is True and out["abweichungen"] == 0
