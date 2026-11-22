@@ -226,6 +226,28 @@ def test_tail_skips_old_rows_unparsed_and_starts_at_the_first_snapshot_in_the_wi
     assert walls._recv_ms(b'{"kind":"depth","recv_ms":123,"msg":{}}') == 123
 
 
+def test_zone_uses_every_standing_wall_not_only_the_five_largest() -> None:
+    """Offline check 22.11.2026: a smaller wall right at the put wall dropped out behind five larger walls further away."""
+    book = Book()
+    bids = [[f"{99_990 - 50 * i:.1f}", "1"] for i in range(40)]
+    for k in range(5):                                         # five large walls far below the level
+        bids.append([f"{98_060 + 50 * k:.1f}", "20"])
+    bids.append(["99010.0", "6"])                                # the small wall at the level (bucket 99 000 holds 7)
+    book.load_snapshot({"lastUpdateId": 1, "bids": bids, "asks": [[f"{100_010 + 50 * i:.1f}", "1"] for i in range(40)]})
+    tracker = walls.Tracker(50.0)
+    for minute in range(31):
+        tracker.scan(T0 + minute * 60_000, book)
+    shown, every = tracker.standing(), tracker.standing(None)
+    assert len(shown) == 5 and all(w["low"] < 98_400 for w in shown)
+    assert any(w["low"] == 99_000.0 for w in every) and len(every) == 6
+    now = datetime(2027, 1, 15, 12, tzinfo=timezone.utc)
+    view = _view(now, walls=shown, walls_all=every)
+    assert view["ruleset"] == "gamma-orderbuch/1.1" and len(view["walls"]) == 5
+    (zone,) = view["zones"]
+    assert zone["wall_low"] == 99_000.0 and "Put Wall" in zone["name"]
+    assert _view(now, walls=shown)["zones"] == []               # an old reader without walls_all keeps the old answer
+
+
 def test_public_page_gets_the_zones_in_english() -> None:
     """Uzi 22.11.2026 "öffentlich": the yellow zones on tim-online.online too, without German text."""
     from src.dashboard.public_en import english_chart_model
