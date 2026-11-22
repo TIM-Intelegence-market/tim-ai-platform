@@ -10725,19 +10725,19 @@
       "_origin": "ast",
       "id": "src_analysis_bronxc_rules",
       "community": 388,
-      "community_name": "MentorRules",
+      "community_name": "BroncxRules",
       "norm_label": "bronxc_rules.py"
     },
     {
-      "label": "MentorRules",
+      "label": "BroncxRules",
       "file_type": "code",
       "source_file": "src/analysis/bronxc_rules.py",
       "source_location": "L9",
       "_origin": "ast",
-      "id": "src_analysis_bronxc_rules_mentorrules",
+      "id": "src_analysis_bronxc_rules_broncxrules",
       "community": 388,
-      "community_name": "MentorRules",
-      "norm_label": "mentorrules"
+      "community_name": "BroncxRules",
+      "norm_label": "broncxrules"
     },
     {
       "label": ".evaluate()",
@@ -10745,9 +10745,9 @@
       "source_file": "src/analysis/bronxc_rules.py",
       "source_location": "L12",
       "_origin": "ast",
-      "id": "src_analysis_bronxc_rules_mentorrules_evaluate",
+      "id": "src_analysis_bronxc_rules_broncxrules_evaluate",
       "community": 388,
-      "community_name": "MentorRules",
+      "community_name": "BroncxRules",
       "norm_label": ".evaluate()"
     },
     {
@@ -10758,7 +10758,7 @@
       "_origin": "ast",
       "id": "src_analysis_bronxc_rules_py_observation",
       "community": 388,
-      "community_name": "MentorRules",
+      "community_name": "BroncxRules",
       "norm_label": "observation"
     },
     {
@@ -10767,9 +10767,9 @@
       "source_file": "src/analysis/bronxc_rules.py",
       "source_location": "L36",
       "_origin": "ast",
-      "id": "src_analysis_bronxc_rules_mentorrules_make",
+      "id": "src_analysis_bronxc_rules_broncxrules_make",
       "community": 388,
-      "community_name": "MentorRules",
+      "community_name": "BroncxRules",
       "norm_label": "._make()"
     },
     {
@@ -10780,7 +10780,7 @@
       "_origin": "ast",
       "id": "src_analysis_bronxc_rules_rationale_10",
       "community": 388,
-      "community_name": "MentorRules",
+      "community_name": "BroncxRules",
       "norm_label": "small deterministic week-1 observation rules; never emits trading instructions."
     },
     {
@@ -15217,23 +15217,23 @@
       "norm_label": "src/knowledge/__init__.py"
     },
     {
-      "label": "signalgruppe.py",
+      "label": "goathub.py",
       "file_type": "code",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "src_knowledge_signalgruppe",
+      "id": "src_knowledge_goathub",
       "community": 3,
       "community_name": "PassiveSourceConnector",
-      "norm_label": "signalgruppe.py"
+      "norm_label": "goathub.py"
     },
     {
       "label": "_tokens()",
       "file_type": "code",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L9",
       "_origin": "ast",
-      "id": "src_knowledge_signalgruppe_tokens",
+      "id": "src_knowledge_goathub_tokens",
       "community": 3,
       "community_name": "PassiveSourceConnector",
       "norm_label": "_tokens()"
@@ -15241,10 +15241,10 @@
     {
       "label": "KnowledgeDocument",
       "file_type": "code",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L14",
       "_origin": "ast",
-      "id": "src_knowledge_signalgruppe_knowledgedocument",
+      "id": "src_knowledge_goathub_knowledgedocument",
       "community": 3,
       "community_name": "PassiveSourceConnector",
       "norm_label": "knowledgedocument"
@@ -15252,10 +15252,10 @@
     {
       "label": ".document_id()",
       "file_type": "code",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L22",
       "_origin": "ast",
-      "id": "src_knowledge_signalgruppe_knowledgedocument_document_id",
+      "id": "src_knowledge_goathub_knowledgedocument_document_id",
       "community": 3,
       "community_name": "PassiveSourceConnector",
       "norm_label": ".document_id()"
@@ -15263,10 +15263,10 @@
     {
       "label": "Citation",
       "file_type": "code",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L27",
       "_origin": "ast",
-      "id": "src_knowledge_signalgruppe_citation",
+      "id": "src_knowledge_goathub_citation",
       "community": 3,
       "community_name": "PassiveSourceConnector",
       "norm_label": "citation"
@@ -15274,32 +15274,32 @@
     {
       "label": "KnowledgeResult",
       "file_type": "code",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L37",
       "_origin": "ast",
-      "id": "src_knowledge_signalgruppe_knowledgeresult",
+      "id": "src_knowledge_goathub_knowledgeresult",
       "community": 3,
       "community_name": "PassiveSourceConnector",
       "norm_label": "knowledgeresult"
     },
     {
-      "label": "SignalgruppeKnowledge",
+      "label": "GoatHubKnowledge",
       "file_type": "code",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L43",
       "_origin": "ast",
-      "id": "src_knowledge_signalgruppe_signalgruppeknowledge",
+      "id": "src_knowledge_goathub_goathubknowledge",
       "community": 3,
       "community_name": "PassiveSourceConnector",
-      "norm_label": "signalgruppeknowledge"
+      "norm_label": "goathubknowledge"
     },
     {
       "label": ".__init__()",
       "file_type": "code",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L44",
       "_origin": "ast",
-      "id": "src_knowledge_signalgruppe_signalgruppeknowledge_init",
+      "id": "src_knowledge_goathub_goathubknowledge_init",
       "community": 3,
       "community_name": "PassiveSourceConnector",
       "norm_label": ".__init__()"
@@ -15307,10 +15307,10 @@
     {
       "label": ".ingest()",
       "file_type": "code",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L48",
       "_origin": "ast",
-      "id": "src_knowledge_signalgruppe_signalgruppeknowledge_ingest",
+      "id": "src_knowledge_goathub_goathubknowledge_ingest",
       "community": 3,
       "community_name": "PassiveSourceConnector",
       "norm_label": ".ingest()"
@@ -15318,10 +15318,10 @@
     {
       "label": ".search()",
       "file_type": "code",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L58",
       "_origin": "ast",
-      "id": "src_knowledge_signalgruppe_signalgruppeknowledge_search",
+      "id": "src_knowledge_goathub_goathubknowledge_search",
       "community": 3,
       "community_name": "PassiveSourceConnector",
       "norm_label": ".search()"
@@ -15329,10 +15329,10 @@
     {
       "label": ".ingest_file()",
       "file_type": "code",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L76",
       "_origin": "ast",
-      "id": "src_knowledge_signalgruppe_signalgruppeknowledge_ingest_file",
+      "id": "src_knowledge_goathub_goathubknowledge_ingest_file",
       "community": 3,
       "community_name": "PassiveSourceConnector",
       "norm_label": ".ingest_file()"
@@ -15343,7 +15343,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "src_knowledge_signalgruppe_py_path",
+      "id": "src_knowledge_goathub_py_path",
       "community": 3,
       "community_name": "PassiveSourceConnector",
       "norm_label": "path"
@@ -16027,7 +16027,7 @@
       "_origin": "ast",
       "id": "src_observation_engine_observationengine_init",
       "community": 388,
-      "community_name": "MentorRules",
+      "community_name": "BroncxRules",
       "norm_label": ".__init__()"
     },
     {
@@ -30210,47 +30210,47 @@
       "norm_label": "test_no_bos_with_insufficient_or_open_candle()"
     },
     {
-      "label": "test_mentor_rules.py",
+      "label": "test_broncx_rules.py",
       "file_type": "code",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "tests_test_mentor_rules",
+      "id": "tests_test_broncx_rules",
       "community": 388,
-      "community_name": "MentorRules",
-      "norm_label": "test_mentor_rules.py"
+      "community_name": "BroncxRules",
+      "norm_label": "test_broncx_rules.py"
     },
     {
       "label": "make()",
       "file_type": "code",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L7",
       "_origin": "ast",
-      "id": "tests_test_mentor_rules_make",
+      "id": "tests_test_broncx_rules_make",
       "community": 388,
-      "community_name": "MentorRules",
+      "community_name": "BroncxRules",
       "norm_label": "make()"
     },
     {
       "label": "test_rejection_and_absorption_are_evidence_based()",
       "file_type": "code",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L12",
       "_origin": "ast",
-      "id": "tests_test_mentor_rules_test_rejection_and_absorption_are_evidence_based",
+      "id": "tests_test_broncx_rules_test_rejection_and_absorption_are_evidence_based",
       "community": 388,
-      "community_name": "MentorRules",
+      "community_name": "BroncxRules",
       "norm_label": "test_rejection_and_absorption_are_evidence_based()"
     },
     {
       "label": "test_rules_require_closed_history()",
       "file_type": "code",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L22",
       "_origin": "ast",
-      "id": "tests_test_mentor_rules_test_rules_require_closed_history",
+      "id": "tests_test_broncx_rules_test_rules_require_closed_history",
       "community": 388,
-      "community_name": "MentorRules",
+      "community_name": "BroncxRules",
       "norm_label": "test_rules_require_closed_history()"
     },
     {
@@ -31640,23 +31640,23 @@
       "norm_label": "test_child_test_environment_sets_all_and_only_explicit_test_gates()"
     },
     {
-      "label": "test_signalgruppe_knowledge.py",
+      "label": "test_goathub_knowledge.py",
       "file_type": "code",
-      "source_file": "tests/test_signalgruppe_knowledge.py",
+      "source_file": "tests/test_goathub_knowledge.py",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "tests_test_signalgruppe_knowledge",
+      "id": "tests_test_goathub_knowledge",
       "community": 3,
       "community_name": "PassiveSourceConnector",
-      "norm_label": "test_signalgruppe_knowledge.py"
+      "norm_label": "test_goathub_knowledge.py"
     },
     {
       "label": "test_authorized_knowledge_search_has_citation()",
       "file_type": "code",
-      "source_file": "tests/test_signalgruppe_knowledge.py",
+      "source_file": "tests/test_goathub_knowledge.py",
       "source_location": "L6",
       "_origin": "ast",
-      "id": "tests_test_signalgruppe_knowledge_test_authorized_knowledge_search_has_citation",
+      "id": "tests_test_goathub_knowledge_test_authorized_knowledge_search_has_citation",
       "community": 3,
       "community_name": "PassiveSourceConnector",
       "norm_label": "test_authorized_knowledge_search_has_citation()"
@@ -31664,10 +31664,10 @@
     {
       "label": "test_unauthorized_material_is_rejected()",
       "file_type": "code",
-      "source_file": "tests/test_signalgruppe_knowledge.py",
+      "source_file": "tests/test_goathub_knowledge.py",
       "source_location": "L16",
       "_origin": "ast",
-      "id": "tests_test_signalgruppe_knowledge_test_unauthorized_material_is_rejected",
+      "id": "tests_test_goathub_knowledge_test_unauthorized_material_is_rejected",
       "community": 3,
       "community_name": "PassiveSourceConnector",
       "norm_label": "test_unauthorized_material_is_rejected()"
@@ -78203,7 +78203,7 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_analysis_bronxc_rules",
-      "target": "src_analysis_bronxc_rules_mentorrules",
+      "target": "src_analysis_bronxc_rules_broncxrules",
       "confidence_score": 1.0
     },
     {
@@ -78270,11 +78270,11 @@
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L3",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_mentor_rules",
+      "source": "tests_test_broncx_rules",
       "target": "src_analysis_bronxc_rules",
       "confidence_score": 1.0
     },
@@ -78285,8 +78285,8 @@
       "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_analysis_bronxc_rules_mentorrules",
-      "target": "src_analysis_bronxc_rules_mentorrules_evaluate",
+      "source": "src_analysis_bronxc_rules_broncxrules",
+      "target": "src_analysis_bronxc_rules_broncxrules_evaluate",
       "confidence_score": 1.0
     },
     {
@@ -78296,8 +78296,8 @@
       "source_location": "L36",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_analysis_bronxc_rules_mentorrules",
-      "target": "src_analysis_bronxc_rules_mentorrules_make",
+      "source": "src_analysis_bronxc_rules_broncxrules",
+      "target": "src_analysis_bronxc_rules_broncxrules_make",
       "confidence_score": 1.0
     },
     {
@@ -78307,7 +78307,7 @@
       "source_location": "L6",
       "weight": 0.8,
       "_origin": "ast",
-      "source": "src_analysis_bronxc_rules_mentorrules",
+      "source": "src_analysis_bronxc_rules_broncxrules",
       "target": "src_models_market_data_candle",
       "confidence_score": 0.5
     },
@@ -78318,7 +78318,7 @@
       "source_location": "L6",
       "weight": 0.8,
       "_origin": "ast",
-      "source": "src_analysis_bronxc_rules_mentorrules",
+      "source": "src_analysis_bronxc_rules_broncxrules",
       "target": "src_models_market_data_observation",
       "confidence_score": 0.5
     },
@@ -78329,7 +78329,7 @@
       "source_location": "L6",
       "weight": 0.8,
       "_origin": "ast",
-      "source": "src_analysis_bronxc_rules_mentorrules",
+      "source": "src_analysis_bronxc_rules_broncxrules",
       "target": "src_models_market_data_observationkind",
       "confidence_score": 0.5
     },
@@ -78341,7 +78341,7 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_analysis_bronxc_rules_rationale_10",
-      "target": "src_analysis_bronxc_rules_mentorrules",
+      "target": "src_analysis_bronxc_rules_broncxrules",
       "confidence_score": 1.0
     },
     {
@@ -78353,7 +78353,7 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_observation_engine",
-      "target": "src_analysis_bronxc_rules_mentorrules",
+      "target": "src_analysis_bronxc_rules_broncxrules",
       "confidence_score": 1.0
     },
     {
@@ -78364,7 +78364,7 @@
       "weight": 0.8,
       "_origin": "ast",
       "source": "src_observation_engine_observationengine",
-      "target": "src_analysis_bronxc_rules_mentorrules",
+      "target": "src_analysis_bronxc_rules_broncxrules",
       "confidence_score": 0.5
     },
     {
@@ -78376,43 +78376,43 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_observation_engine_observationengine_init",
-      "target": "src_analysis_bronxc_rules_mentorrules",
+      "target": "src_analysis_bronxc_rules_broncxrules",
       "confidence_score": 1.0
     },
     {
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L3",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_mentor_rules",
-      "target": "src_analysis_bronxc_rules_mentorrules",
+      "source": "tests_test_broncx_rules",
+      "target": "src_analysis_bronxc_rules_broncxrules",
       "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L15",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_mentor_rules_test_rejection_and_absorption_are_evidence_based",
-      "target": "src_analysis_bronxc_rules_mentorrules",
+      "source": "tests_test_broncx_rules_test_rejection_and_absorption_are_evidence_based",
+      "target": "src_analysis_bronxc_rules_broncxrules",
       "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L24",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_mentor_rules_test_rules_require_closed_history",
-      "target": "src_analysis_bronxc_rules_mentorrules",
+      "source": "tests_test_broncx_rules_test_rules_require_closed_history",
+      "target": "src_analysis_bronxc_rules_broncxrules",
       "confidence_score": 1.0
     },
     {
@@ -78423,8 +78423,8 @@
       "source_location": "L24",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_analysis_bronxc_rules_mentorrules_evaluate",
-      "target": "src_analysis_bronxc_rules_mentorrules_make",
+      "source": "src_analysis_bronxc_rules_broncxrules_evaluate",
+      "target": "src_analysis_bronxc_rules_broncxrules_make",
       "confidence_score": 1.0
     },
     {
@@ -78435,7 +78435,7 @@
       "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_analysis_bronxc_rules_mentorrules_evaluate",
+      "source": "src_analysis_bronxc_rules_broncxrules_evaluate",
       "target": "src_analysis_bronxc_rules_py_observation",
       "confidence_score": 1.0
     },
@@ -78447,7 +78447,7 @@
       "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_analysis_bronxc_rules_mentorrules_evaluate",
+      "source": "src_analysis_bronxc_rules_broncxrules_evaluate",
       "target": "src_models_market_data_candle",
       "confidence_score": 1.0
     },
@@ -78459,7 +78459,7 @@
       "source_location": "L36",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_analysis_bronxc_rules_mentorrules_make",
+      "source": "src_analysis_bronxc_rules_broncxrules_make",
       "target": "src_analysis_bronxc_rules_py_observation",
       "confidence_score": 1.0
     },
@@ -78471,7 +78471,7 @@
       "source_location": "L36",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_analysis_bronxc_rules_mentorrules_make",
+      "source": "src_analysis_bronxc_rules_broncxrules_make",
       "target": "src_models_market_data_candle",
       "confidence_score": 1.0
     },
@@ -78483,7 +78483,7 @@
       "source_location": "L36",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_analysis_bronxc_rules_mentorrules_make",
+      "source": "src_analysis_bronxc_rules_broncxrules_make",
       "target": "src_models_market_data_observationkind",
       "confidence_score": 1.0
     },
@@ -96366,7 +96366,7 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_knowledge_init",
-      "target": "src_knowledge_signalgruppe",
+      "target": "src_knowledge_goathub",
       "confidence_score": 1.0
     },
     {
@@ -96378,7 +96378,7 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_knowledge_init",
-      "target": "src_knowledge_signalgruppe_citation",
+      "target": "src_knowledge_goathub_citation",
       "confidence_score": 1.0
     },
     {
@@ -96390,7 +96390,7 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_knowledge_init",
-      "target": "src_knowledge_signalgruppe_signalgruppeknowledge",
+      "target": "src_knowledge_goathub_goathubknowledge",
       "confidence_score": 1.0
     },
     {
@@ -96402,7 +96402,7 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_knowledge_init",
-      "target": "src_knowledge_signalgruppe_knowledgedocument",
+      "target": "src_knowledge_goathub_knowledgedocument",
       "confidence_score": 1.0
     },
     {
@@ -96414,62 +96414,62 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_knowledge_init",
-      "target": "src_knowledge_signalgruppe_knowledgeresult",
+      "target": "src_knowledge_goathub_knowledgeresult",
       "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L27",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe",
-      "target": "src_knowledge_signalgruppe_citation",
+      "source": "src_knowledge_goathub",
+      "target": "src_knowledge_goathub_citation",
       "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L43",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe",
-      "target": "src_knowledge_signalgruppe_signalgruppeknowledge",
+      "source": "src_knowledge_goathub",
+      "target": "src_knowledge_goathub_goathubknowledge",
       "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L14",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe",
-      "target": "src_knowledge_signalgruppe_knowledgedocument",
+      "source": "src_knowledge_goathub",
+      "target": "src_knowledge_goathub_knowledgedocument",
       "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L37",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe",
-      "target": "src_knowledge_signalgruppe_knowledgeresult",
+      "source": "src_knowledge_goathub",
+      "target": "src_knowledge_goathub_knowledgeresult",
       "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L9",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe",
-      "target": "src_knowledge_signalgruppe_tokens",
+      "source": "src_knowledge_goathub",
+      "target": "src_knowledge_goathub_tokens",
       "confidence_score": 1.0
     },
     {
@@ -96481,66 +96481,66 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_sources_passive",
-      "target": "src_knowledge_signalgruppe",
+      "target": "src_knowledge_goathub",
       "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_signalgruppe_knowledge.py",
+      "source_file": "tests/test_goathub_knowledge.py",
       "source_location": "L3",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_signalgruppe_knowledge",
-      "target": "src_knowledge_signalgruppe",
+      "source": "tests_test_goathub_knowledge",
+      "target": "src_knowledge_goathub",
       "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L59",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe_signalgruppeknowledge_search",
-      "target": "src_knowledge_signalgruppe_tokens",
+      "source": "src_knowledge_goathub_goathubknowledge_search",
+      "target": "src_knowledge_goathub_tokens",
       "confidence_score": 1.0
     },
     {
       "relation": "references",
       "context": "parameter_type",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L48",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe_signalgruppeknowledge_ingest",
-      "target": "src_knowledge_signalgruppe_knowledgedocument",
+      "source": "src_knowledge_goathub_goathubknowledge_ingest",
+      "target": "src_knowledge_goathub_knowledgedocument",
       "confidence_score": 1.0
     },
     {
       "relation": "references",
       "context": "return_type",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L76",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe_signalgruppeknowledge_ingest_file",
-      "target": "src_knowledge_signalgruppe_knowledgedocument",
+      "source": "src_knowledge_goathub_goathubknowledge_ingest_file",
+      "target": "src_knowledge_goathub_knowledgedocument",
       "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L22",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe_knowledgedocument",
-      "target": "src_knowledge_signalgruppe_knowledgedocument_document_id",
+      "source": "src_knowledge_goathub_knowledgedocument",
+      "target": "src_knowledge_goathub_knowledgedocument_document_id",
       "confidence_score": 1.0
     },
     {
@@ -96552,7 +96552,7 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_sources_passive",
-      "target": "src_knowledge_signalgruppe_knowledgedocument",
+      "target": "src_knowledge_goathub_knowledgedocument",
       "confidence_score": 1.0
     },
     {
@@ -96563,7 +96563,7 @@
       "weight": 0.8,
       "_origin": "ast",
       "source": "src_sources_passive_passivesourceconnector",
-      "target": "src_knowledge_signalgruppe_knowledgedocument",
+      "target": "src_knowledge_goathub_knowledgedocument",
       "confidence_score": 0.5
     },
     {
@@ -96576,7 +96576,7 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_sources_passive_passivesourceconnector_ingest_knowledge_file",
-      "target": "src_knowledge_signalgruppe_knowledgedocument"
+      "target": "src_knowledge_goathub_knowledgedocument"
     },
     {
       "relation": "uses",
@@ -96586,7 +96586,7 @@
       "weight": 0.8,
       "_origin": "ast",
       "source": "src_sources_passive_sourcepolicy",
-      "target": "src_knowledge_signalgruppe_knowledgedocument",
+      "target": "src_knowledge_goathub_knowledgedocument",
       "confidence_score": 0.5
     },
     {
@@ -96597,111 +96597,111 @@
       "weight": 0.8,
       "_origin": "ast",
       "source": "src_sources_passive_sourcesnapshot",
-      "target": "src_knowledge_signalgruppe_knowledgedocument",
+      "target": "src_knowledge_goathub_knowledgedocument",
       "confidence_score": 0.5
     },
     {
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_signalgruppe_knowledge.py",
+      "source_file": "tests/test_goathub_knowledge.py",
       "source_location": "L3",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_signalgruppe_knowledge",
-      "target": "src_knowledge_signalgruppe_knowledgedocument",
+      "source": "tests_test_goathub_knowledge",
+      "target": "src_knowledge_goathub_knowledgedocument",
       "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_signalgruppe_knowledge.py",
+      "source_file": "tests/test_goathub_knowledge.py",
       "source_location": "L8",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_signalgruppe_knowledge_test_authorized_knowledge_search_has_citation",
-      "target": "src_knowledge_signalgruppe_knowledgedocument",
+      "source": "tests_test_goathub_knowledge_test_authorized_knowledge_search_has_citation",
+      "target": "src_knowledge_goathub_knowledgedocument",
       "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_signalgruppe_knowledge.py",
+      "source_file": "tests/test_goathub_knowledge.py",
       "source_location": "L18",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_signalgruppe_knowledge_test_unauthorized_material_is_rejected",
-      "target": "src_knowledge_signalgruppe_knowledgedocument",
+      "source": "tests_test_goathub_knowledge_test_unauthorized_material_is_rejected",
+      "target": "src_knowledge_goathub_knowledgedocument",
       "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L72",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe_signalgruppeknowledge_search",
-      "target": "src_knowledge_signalgruppe_citation",
+      "source": "src_knowledge_goathub_goathubknowledge_search",
+      "target": "src_knowledge_goathub_citation",
       "confidence_score": 1.0
     },
     {
       "relation": "references",
       "context": "generic_arg",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L58",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe_signalgruppeknowledge_search",
-      "target": "src_knowledge_signalgruppe_knowledgeresult",
+      "source": "src_knowledge_goathub_goathubknowledge_search",
+      "target": "src_knowledge_goathub_knowledgeresult",
       "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L48",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe_signalgruppeknowledge",
-      "target": "src_knowledge_signalgruppe_signalgruppeknowledge_ingest",
+      "source": "src_knowledge_goathub_goathubknowledge",
+      "target": "src_knowledge_goathub_goathubknowledge_ingest",
       "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L76",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe_signalgruppeknowledge",
-      "target": "src_knowledge_signalgruppe_signalgruppeknowledge_ingest_file",
+      "source": "src_knowledge_goathub_goathubknowledge",
+      "target": "src_knowledge_goathub_goathubknowledge_ingest_file",
       "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L44",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe_signalgruppeknowledge",
-      "target": "src_knowledge_signalgruppe_signalgruppeknowledge_init",
+      "source": "src_knowledge_goathub_goathubknowledge",
+      "target": "src_knowledge_goathub_goathubknowledge_init",
       "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L58",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe_signalgruppeknowledge",
-      "target": "src_knowledge_signalgruppe_signalgruppeknowledge_search",
+      "source": "src_knowledge_goathub_goathubknowledge",
+      "target": "src_knowledge_goathub_goathubknowledge_search",
       "confidence_score": 1.0
     },
     {
@@ -96713,7 +96713,7 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_sources_passive",
-      "target": "src_knowledge_signalgruppe_signalgruppeknowledge",
+      "target": "src_knowledge_goathub_goathubknowledge",
       "confidence_score": 1.0
     },
     {
@@ -96724,7 +96724,7 @@
       "weight": 0.8,
       "_origin": "ast",
       "source": "src_sources_passive_passivesourceconnector",
-      "target": "src_knowledge_signalgruppe_signalgruppeknowledge",
+      "target": "src_knowledge_goathub_goathubknowledge",
       "confidence_score": 0.5
     },
     {
@@ -96736,7 +96736,7 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_sources_passive_passivesourceconnector_init",
-      "target": "src_knowledge_signalgruppe_signalgruppeknowledge",
+      "target": "src_knowledge_goathub_goathubknowledge",
       "confidence_score": 1.0
     },
     {
@@ -96747,7 +96747,7 @@
       "weight": 0.8,
       "_origin": "ast",
       "source": "src_sources_passive_sourcepolicy",
-      "target": "src_knowledge_signalgruppe_signalgruppeknowledge",
+      "target": "src_knowledge_goathub_goathubknowledge",
       "confidence_score": 0.5
     },
     {
@@ -96758,67 +96758,67 @@
       "weight": 0.8,
       "_origin": "ast",
       "source": "src_sources_passive_sourcesnapshot",
-      "target": "src_knowledge_signalgruppe_signalgruppeknowledge",
+      "target": "src_knowledge_goathub_goathubknowledge",
       "confidence_score": 0.5
     },
     {
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_signalgruppe_knowledge.py",
+      "source_file": "tests/test_goathub_knowledge.py",
       "source_location": "L3",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_signalgruppe_knowledge",
-      "target": "src_knowledge_signalgruppe_signalgruppeknowledge",
+      "source": "tests_test_goathub_knowledge",
+      "target": "src_knowledge_goathub_goathubknowledge",
       "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_signalgruppe_knowledge.py",
+      "source_file": "tests/test_goathub_knowledge.py",
       "source_location": "L7",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_signalgruppe_knowledge_test_authorized_knowledge_search_has_citation",
-      "target": "src_knowledge_signalgruppe_signalgruppeknowledge",
+      "source": "tests_test_goathub_knowledge_test_authorized_knowledge_search_has_citation",
+      "target": "src_knowledge_goathub_goathubknowledge",
       "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_signalgruppe_knowledge.py",
+      "source_file": "tests/test_goathub_knowledge.py",
       "source_location": "L18",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_signalgruppe_knowledge_test_unauthorized_material_is_rejected",
-      "target": "src_knowledge_signalgruppe_signalgruppeknowledge",
+      "source": "tests_test_goathub_knowledge_test_unauthorized_material_is_rejected",
+      "target": "src_knowledge_goathub_goathubknowledge",
       "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L78",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe_signalgruppeknowledge_ingest_file",
-      "target": "src_knowledge_signalgruppe_signalgruppeknowledge_ingest",
+      "source": "src_knowledge_goathub_goathubknowledge_ingest_file",
+      "target": "src_knowledge_goathub_goathubknowledge_ingest",
       "confidence_score": 1.0
     },
     {
       "relation": "references",
       "context": "parameter_type",
       "confidence": "EXTRACTED",
-      "source_file": "src/knowledge/signalgruppe.py",
+      "source_file": "src/knowledge/goathub.py",
       "source_location": "L76",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_knowledge_signalgruppe_signalgruppeknowledge_ingest_file",
-      "target": "src_knowledge_signalgruppe_py_path",
+      "source": "src_knowledge_goathub_goathubknowledge_ingest_file",
+      "target": "src_knowledge_goathub_py_path",
       "confidence_score": 1.0
     },
     {
@@ -97982,11 +97982,11 @@
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L4",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_mentor_rules",
+      "source": "tests_test_broncx_rules",
       "target": "src_models_market_data",
       "confidence_score": 1.0
     },
@@ -99743,11 +99743,11 @@
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L4",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_mentor_rules",
+      "source": "tests_test_broncx_rules",
       "target": "src_models_market_data_candle",
       "confidence_score": 1.0
     },
@@ -99755,11 +99755,11 @@
       "relation": "references",
       "context": "return_type",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L7",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_mentor_rules_make",
+      "source": "tests_test_broncx_rules_make",
       "target": "src_models_market_data_candle",
       "confidence_score": 1.0
     },
@@ -99968,11 +99968,11 @@
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L4",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_mentor_rules",
+      "source": "tests_test_broncx_rules",
       "target": "src_models_market_data_observationkind",
       "confidence_score": 1.0
     },
@@ -144039,58 +144039,58 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L7",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_mentor_rules",
-      "target": "tests_test_mentor_rules_make",
+      "source": "tests_test_broncx_rules",
+      "target": "tests_test_broncx_rules_make",
       "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_mentor_rules",
-      "target": "tests_test_mentor_rules_test_rejection_and_absorption_are_evidence_based",
+      "source": "tests_test_broncx_rules",
+      "target": "tests_test_broncx_rules_test_rejection_and_absorption_are_evidence_based",
       "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L22",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_mentor_rules",
-      "target": "tests_test_mentor_rules_test_rules_require_closed_history",
+      "source": "tests_test_broncx_rules",
+      "target": "tests_test_broncx_rules_test_rules_require_closed_history",
       "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L13",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_mentor_rules_test_rejection_and_absorption_are_evidence_based",
-      "target": "tests_test_mentor_rules_make",
+      "source": "tests_test_broncx_rules_test_rejection_and_absorption_are_evidence_based",
+      "target": "tests_test_broncx_rules_make",
       "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_mentor_rules.py",
+      "source_file": "tests/test_broncx_rules.py",
       "source_location": "L23",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_mentor_rules_test_rules_require_closed_history",
-      "target": "tests_test_mentor_rules_make",
+      "source": "tests_test_broncx_rules_test_rules_require_closed_history",
+      "target": "tests_test_broncx_rules_make",
       "confidence_score": 1.0
     },
     {
@@ -146294,23 +146294,23 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_signalgruppe_knowledge.py",
+      "source_file": "tests/test_goathub_knowledge.py",
       "source_location": "L6",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_signalgruppe_knowledge",
-      "target": "tests_test_signalgruppe_knowledge_test_authorized_knowledge_search_has_citation",
+      "source": "tests_test_goathub_knowledge",
+      "target": "tests_test_goathub_knowledge_test_authorized_knowledge_search_has_citation",
       "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "tests/test_signalgruppe_knowledge.py",
+      "source_file": "tests/test_goathub_knowledge.py",
       "source_location": "L16",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_signalgruppe_knowledge",
-      "target": "tests_test_signalgruppe_knowledge_test_unauthorized_material_is_rejected",
+      "source": "tests_test_goathub_knowledge",
+      "target": "tests_test_goathub_knowledge_test_unauthorized_material_is_rejected",
       "confidence_score": 1.0
     },
     {

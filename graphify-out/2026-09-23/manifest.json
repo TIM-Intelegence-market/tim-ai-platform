@@ -189,7 +189,7 @@
     "ast_hash": "6a46241a3325b9002823358fa2dfba84",
     "semantic_hash": "6a46241a3325b9002823358fa2dfba84"
   },
-  "src/knowledge/signalgruppe.py": {
+  "src/knowledge/goathub.py": {
     "mtime": 1784469057.3338747,
     "ast_hash": "6ac65e823d67719d31a5eccea996e225",
     "semantic_hash": "6ac65e823d67719d31a5eccea996e225"
@@ -584,7 +584,7 @@
     "ast_hash": "259c70992d3d95bc9a32fe7425afd076",
     "semantic_hash": "259c70992d3d95bc9a32fe7425afd076"
   },
-  "tests/test_mentor_rules.py": {
+  "tests/test_broncx_rules.py": {
     "mtime": 1784464616.527164,
     "ast_hash": "88b02ab634a49afa9054e0a24bb14cd0",
     "semantic_hash": "88b02ab634a49afa9054e0a24bb14cd0"
@@ -599,7 +599,7 @@
     "ast_hash": "61b7b9af360755f3241db7a8ea63b323",
     "semantic_hash": "61b7b9af360755f3241db7a8ea63b323"
   },
-  "tests/test_signalgruppe_knowledge.py": {
+  "tests/test_goathub_knowledge.py": {
     "mtime": 1784469109.385023,
     "ast_hash": "13f74abd8c85c3b996d0545de383edd4",
     "semantic_hash": "13f74abd8c85c3b996d0545de383edd4"

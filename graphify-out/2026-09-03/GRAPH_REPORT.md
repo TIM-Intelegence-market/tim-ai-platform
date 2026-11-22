@@ -502,7 +502,7 @@ Nodes (96): _age_seconds(), _card_markup(), _case_for_observation(), _case_row()
 
 ### Community 3 - "PassiveSourceConnector"
 Cohesion: 0.09
-Nodes (28): Citation, SignalgruppeKnowledge, KnowledgeDocument, KnowledgeResult, Path, _tokens(), NewsIntelligence, NewsItem (+20 more)
+Nodes (28): Citation, GoatHubKnowledge, KnowledgeDocument, KnowledgeResult, Path, _tokens(), NewsIntelligence, NewsItem (+20 more)
 
 ### Community 4 - "orderflow/metrics.py"
 Cohesion: 0.09
@@ -542,7 +542,7 @@ Nodes (41): duplicate_records, generated_at, input_hash, issues, provenance_coun
 
 ### Community 13 - "Candle"
 Cohesion: 0.06
-Nodes (54): ResearchCaseEngine, BOSDetector, Observation, SwingPoint, MentorRules, Observation, Small deterministic Week-1 observation rules; never emits trading instructions., Observation (+46 more)
+Nodes (54): ResearchCaseEngine, BOSDetector, Observation, SwingPoint, BroncxRules, Observation, Small deterministic Week-1 observation rules; never emits trading instructions., Observation (+46 more)
 
 ### Community 14 - "tim_manager/test_acceptance.py"
 Cohesion: 0.11

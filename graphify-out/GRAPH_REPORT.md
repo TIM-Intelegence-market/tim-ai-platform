@@ -398,7 +398,7 @@
 - expected_graph_hash
 - graph_path
 - request_timeout_seconds
-- MentorRules
+- BroncxRules
 - startup_timeout_seconds
 - working_directory
 - ResearchAuditEngine
@@ -508,7 +508,7 @@ Nodes (35): DashboardServer, DashboardState, render(), populated_state(), parame
 
 ### Community 3 - "PassiveSourceConnector"
 Cohesion: 0.13
-Nodes (20): Citation, SignalgruppeKnowledge, KnowledgeDocument, KnowledgeResult, Path, _tokens(), PassiveSourceConnector, Any (+12 more)
+Nodes (20): Citation, GoatHubKnowledge, KnowledgeDocument, KnowledgeResult, Path, _tokens(), PassiveSourceConnector, Any (+12 more)
 
 ### Community 4 - "orderflow/metrics.py"
 Cohesion: 0.09
@@ -1950,9 +1950,9 @@ Nodes (3): pattern, type, graph_path
 Cohesion: 0.67
 Nodes (3): request_timeout_seconds, exclusiveMinimum, type
 
-### Community 388 - "MentorRules"
+### Community 388 - "BroncxRules"
 Cohesion: 0.31
-Nodes (6): MentorRules, Observation, Small deterministic Week-1 observation rules; never emits trading instructions., make(), test_rejection_and_absorption_are_evidence_based(), test_rules_require_closed_history()
+Nodes (6): BroncxRules, Observation, Small deterministic Week-1 observation rules; never emits trading instructions., make(), test_rejection_and_absorption_are_evidence_based(), test_rules_require_closed_history()
 
 ### Community 389 - "startup_timeout_seconds"
 Cohesion: 0.67
@@ -2016,7 +2016,7 @@ _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `Trade` connect `Trade` to `CatchUpResult`, `GenericOrderflowAdapter`, `OutboxItem`, `DataQualityFramework`, `orderflow/metrics.py`, `ObservationEngine`, `DurableIngestionStore`, `catchup.py`, `OrderflowValidationEngine`, `CatchUpCoordinator`, `DataQualityGate`, `TIMRecoveryContext`, `pipeline.py`, `MarketRepository`, `CandleAggregator`, `BinanceTradeStream`, `durable.py`?**
   _High betweenness centrality (0.058) - this node is a cross-community bridge._
-- **Why does `Candle` connect `Candle` to `DataQualityFramework`, `GenericOrderflowAdapter`, `OutboxItem`, `MentorRules`, `ObservationEngine`, `ObservationKind`, `DataQualityGate`, `TIMRecoveryContext`, `pipeline.py`, `MarketRepository`, `CandleAggregator`, `Trade`?**
+- **Why does `Candle` connect `Candle` to `DataQualityFramework`, `GenericOrderflowAdapter`, `OutboxItem`, `BroncxRules`, `ObservationEngine`, `ObservationKind`, `DataQualityGate`, `TIMRecoveryContext`, `pipeline.py`, `MarketRepository`, `CandleAggregator`, `Trade`?**
   _High betweenness centrality (0.018) - this node is a cross-community bridge._
 - **Why does `request()` connect `test_workspace_gateway.py` to `evaluate_watchdog`, `DashboardState`, `catchup.py`?**
   _High betweenness centrality (0.011) - this node is a cross-community bridge._
