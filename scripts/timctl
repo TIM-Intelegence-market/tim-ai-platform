@@ -76,6 +76,9 @@ def run(command: list[str], *, timeout: float = 15, env: dict[str, str] | None =
 
 
 SYSTEMD_UNIT = "tim-runtime.service"
+# launchd waits ExitTimeOut (45 s in ops/launchd/com.tim.runtime.plist) before it kills the runtime and
+# only then does bootout return, so the wait here has to be longer than that.
+LAUNCHD_BOOTOUT_TIMEOUT = 60
 
 # Same file and env override as src/dashboard/security.py (read here directly so timctl does not
 # import the dashboard package). Present with a *.ts.net host = owner switched on phone access.
@@ -288,7 +291,7 @@ class RuntimeControl:
             if result.returncode != 0 and self.service_status()["loaded"]:
                 raise RuntimeControlError("systemd refused to stop the TIM runtime")
             return
-        result = self._launchctl("bootout", self.launch_domain, str(self.plist_path), timeout=30)
+        result = self._launchctl("bootout", self.launch_domain, str(self.plist_path), timeout=LAUNCHD_BOOTOUT_TIMEOUT)
         if result.returncode != 0 and self.service_status()["loaded"]:
             raise RuntimeControlError("launchd refused to boot out the TIM runtime")
 
