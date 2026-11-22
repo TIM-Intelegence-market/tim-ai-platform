@@ -74,8 +74,8 @@ def test_long_on_sell_absorption_exits_on_counter_absorption():
     trade = out["trades"][0]
     assert trade["direction"] == "LONG"
     assert trade["zone"]["name"] == "VT Tief"
-    assert trade["exit_reason"] == "Gegen-Absorption"
-    assert trade["net_r"] > 1.0          # the move was ridden, not cut at a level
+    assert trade["ziel_1_erreicht"] is True and trade["exit_reason"] == "Ziel 3R"   # Uzi 19.11.: 2-3 R
+    assert 2.3 < trade["net_r"] < 2.5    # half at +2 R, half at +3 R, minus costs
     assert trade["breakeven"] is True
     assert trade["stop_start"] < 64_001  # behind the wick ...
     assert trade["stop_start"] <= trade["fill"] * 0.995 + 0.01   # ... and at least 0.5 % away (Uzi "go Stop")
@@ -95,7 +95,8 @@ def test_no_look_ahead_cutting_the_future_does_not_change_the_past():
     cut = full[: 600 + 5 + 3]   # three minutes after the absorption window
     early = abs_entry.simulate(days(cut), STARTED)
     late = abs_entry.simulate(days(full), STARTED)
-    assert early["events"][0] == {**late["events"][0], "ergebnis": early["events"][0]["ergebnis"]}
+    assert early["events"][0] == {**late["events"][0], "ergebnis": early["events"][0]["ergebnis"],
+                                  "nachlauf": early["events"][0]["nachlauf"]}   # the follow-up is measured later
     assert early["open"]["fill"] == late["trades"][0]["fill"]
 
 
@@ -165,7 +166,7 @@ def test_verdict_rule():
 def test_comparison_next_level_is_recorded_but_not_the_rule():
     out = abs_entry.simulate(days(scenario()), STARTED)
     trade = out["trades"][0]
-    assert "ref_level" in trade and trade["exit_reason"] == "Gegen-Absorption"
+    assert "ref_level" in trade and trade["exit_reason"] == "Ziel 3R"
     lvl = trade["ref_level"]
     assert lvl["target"] is None or lvl["target"] > trade["fill"]
 
@@ -187,3 +188,130 @@ def test_comparison_rows_in_verdict_and_old_trades_unchanged():
     old = {"id": "L-1", "closed_at": "x", "net_r": 0.5, "hash": "h"}
     kept, dev = abs_entry.chain([old], [{"id": "L-1", "closed_at": "x", "net_r": 0.5, "ref_level": {"target": None}}])
     assert dev == [] and kept == [old]
+
+
+def test_counter_absorption_before_the_target_still_ends_the_trade():
+    out = abs_entry.simulate(days(scenario()), STARTED, abs_entry.Params(target_r_1=5.0, target_r_2=6.0))
+    trade = out["trades"][0]
+    assert trade["exit_reason"] == "Gegen-Absorption" and trade["ziel_1_erreicht"] is False and trade["net_r"] > 1.0
+
+
+def test_chart_zone_decides_when_a_snapshot_exists():
+    zone = {"low": 63_950.0, "high": 64_020.0, "mid": 63_985.0, "weight": 5, "labels": ["1W Tief", "1D VAL"]}
+    weak = {**zone, "weight": 2}
+    seen = []
+    out = abs_entry.simulate(days(scenario()), STARTED, chart=lambda at: seen.append(at) or [zone])
+    assert out["trades"][0]["zone"]["quelle"] == "chart" and out["trades"][0]["zone"]["name"].startswith("TIM-Chart: 1W Tief")
+    assert seen and all(at % (5 * MINUTE_MS) == 0 for at in seen)
+    assert abs_entry.simulate(days(scenario()), STARTED, chart=lambda at: [weak])["trades"] == []   # own zone does not rescue
+    assert abs_entry.simulate(days(scenario()), STARTED, chart=lambda at: None)["trades"][0]["zone"]["quelle"] == "eigen"
+
+
+def test_follow_up_measures_piercing_and_second_test():
+    bars = scenario(exit_absorption=False)
+    t = bars[-1].window_start_ms + MINUTE_MS
+    for k in range(10):   # back to the absorbed low with little volume, 4 dollars through it, closing above
+        bars.append(bar(t + k * MINUTE_MS, 64_010, 64_030, 63_997 if k == 7 else 64_005, 64_020, buy=0.2, sell=0.2))
+    for k in range(10, 260):
+        bars.append(bar(t + k * MINUTE_MS, 64_020, 64_030, 64_010, 64_020))
+    out = abs_entry.simulate(days(bars), STARTED)
+    follow = out["events"][0]["nachlauf"]
+    assert follow["fertig"] is True and follow["ueber_extrem_pct"] == pytest.approx(4 / 64_001 * 100, abs=1e-3)
+    assert follow["zweiter_test"]["weniger_volumen"] is True and follow["zweiter_test"]["gehalten"] is True
+    stats = abs_entry.stop_messung(out["events"])
+    assert stats["ereignisse"] == 1 and stats["zweiter_test_weniger_volumen"] == 1
+
+
+# --- 0.6 "Kreise": a big perp taker order the market turns against -------------------------------------------
+
+T600 = STARTED + 600 * MINUTE_MS
+
+
+def orders(*rows):
+    """Circle provider over fixed orders (ms, perp price, btc, side)."""
+    return lambda a, b: [{"ms": m, "price": px, "btc": btc, "side": side} for m, px, btc, side in rows if a <= m < b]
+
+
+def test_circle_sell_order_that_turns_is_a_long_with_a_limit():
+    out = abs_entry.simulate(days(scenario(exit_absorption=False)), STARTED,
+                             circles=orders((T600 + 10_000, 64_015.0, 300.0, -1)))
+    trade = out["open"]
+    assert trade["direction"] == "LONG" and trade["zone"]["name"] == "VT Tief"
+    assert trade["fill"] == 64_120.0 and trade["entry_fee"] == abs_entry.PARAMS.fee_maker   # limit at the turn's close
+    assert trade["kostenblockiert"] is False
+    assert trade["stop_start"] < 64_001          # behind the low since the order
+    event = out["events"][0]
+    assert event["kreis"]["btc"] == 300.0 and event["kreis"]["spot"] == 64_020.0 and event["direction"] == "LONG"
+
+
+def test_circle_without_turn_is_written_down_and_not_traded():
+    out = abs_entry.simulate(days(scenario(exit_absorption=False)), STARTED,
+                             circles=orders((STARTED + 300 * MINUTE_MS + 10_000, 64_500.0, 300.0, -1)))
+    assert out["trades"] == [] and out["open"] is None
+    assert [e["ergebnis"] for e in out["events"]] == ["nicht gedreht"]
+
+
+def test_unturned_circle_does_not_disturb_a_later_event():
+    out = abs_entry.simulate(days(scenario(exit_absorption=False)), STARTED,
+                             circles=orders((T600 - 60 * MINUTE_MS + 10_000, 64_500.0, 300.0, -1),
+                                            (T600 + 10_000, 64_015.0, 300.0, -1)))
+    assert [e["ergebnis"] for e in out["events"]] == ["nicht gedreht", "Einstieg"]
+    assert abs_entry.accumulation([abs_entry.Window(STARTED + h * 3_600_000, STARTED + (h + 1) * 3_600_000,
+                                                    64_500, 64_510, 64_490, 64_500, 1, 0, 1, 0, 0)
+                                   for h in range(16)], out["events"], T600 + 3_600_000, abs_entry.PARAMS) is None
+
+
+def test_circle_below_the_size_is_ignored_and_old_volume_rule_is_off():
+    out = abs_entry.simulate(days(scenario()), STARTED, circles=orders((T600 + 10_000, 64_015.0, 20.0, -1)))
+    assert out["events"] == [] and out["trades"] == [] and out["open"] is None
+
+
+def test_circle_buy_order_that_turns_ends_the_long():
+    bars = scenario()
+    top = STARTED + 725 * MINUTE_MS                      # the window where buyers hammer and price closes lower
+    out = abs_entry.simulate(days(bars), STARTED, circles=orders((T600 + 10_000, 64_015.0, 300.0, -1),
+                                                                 (top + 10_000, 65_120.0, 250.0, 1)))
+    short = [e for e in out["events"] if e.get("direction") == "SHORT"]
+    assert short and short[0]["side"] == "KAUF"
+    assert out["trades"] and out["trades"][0]["direction"] == "LONG"
+
+
+def test_circle_context_reads_the_collector_day_file(tmp_path):
+    import gzip
+    import json
+
+    rows = [[T600 + 5, 64_015.0, 300.0, -1], [T600 + 9, 64_016.0, 2.0, 1]]
+    (tmp_path / "perp-2026-11-22.json.gz").write_bytes(gzip.compress(json.dumps({"bubbles": rows}).encode()))
+    between = abs_entry.circle_context(tmp_path)
+    assert between(T600, T600 + 5 * MINUTE_MS) == [{"ms": T600 + 5, "price": 64_015.0, "btc": 300.0, "side": -1}]
+    assert between(T600 + 5 * MINUTE_MS, T600 + 10 * MINUTE_MS) == []
+    assert abs_entry.circle_context(None) is None
+    assert between.upto() == 0
+    (tmp_path / "state.json").write_text(json.dumps({"segments": [[T600, T600 + 7 * MINUTE_MS]]}))
+    assert between.upto() == T600 + 7 * MINUTE_MS
+
+
+def test_step_waits_for_the_perp_collector(tmp_path):
+    bars = scenario(exit_absorption=False)
+    all_days = {d: (b, p) for d, b, p in days(bars)}
+    today = DAY1 + timedelta(days=2)
+    circles = orders((T600 + 10_000, 64_015.0, 300.0, -1))
+    now = datetime.fromtimestamp(STARTED / 1000, tz=timezone.utc)
+    kw = {"now": now, "partial": lambda d: all_days[d], "circles": circles}
+    circles.upto = lambda: T600 + 4 * MINUTE_MS          # collector not yet past the window's end
+    assert abs_entry.step(tmp_path, all_days.get, today, **kw)["ereignisse"] == 0
+    circles.upto = lambda: T600 + 20 * MINUTE_MS
+    out = abs_entry.step(tmp_path, all_days.get, today, **kw)
+    assert out["ereignisse"] == 1 and out["offen"] is True and out["abweichungen"] == 0
+
+
+def test_without_zone_run_trades_a_turned_circle_anywhere_and_keeps_the_old_digest():
+    from dataclasses import replace
+
+    far = [(d, flat_day(d) if i < 2 else b, pr) for i, (d, b, pr) in enumerate(days(scenario(exit_absorption=False)))]
+    circles = orders((T600 + 10_000, 64_015.0, 300.0, -1))
+    assert abs_entry.simulate(far, STARTED, circles=circles)["open"] is None
+    free = replace(abs_entry.PARAMS, need_zone=False)
+    trade = abs_entry.simulate(far, STARTED, free, circles=circles)["open"]
+    assert trade["direction"] == "LONG" and trade["zone"] is None
+    assert abs_entry.PARAMS.digest() == "230d890f9a3ddd02" and free.digest() != abs_entry.PARAMS.digest()
