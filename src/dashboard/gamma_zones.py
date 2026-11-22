@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 
 from src.research_lab.orderbook import walls as wall_rules
 
-RULESET = "gamma-orderbuch/1.0"
+RULESET = "gamma-orderbuch/1.1"  # 1.1 (22.11.2026): every standing wall counts, not only the 5 largest per side
 SCHEMA = "tim_gamma_zone_watch/1"
 LEVEL_KEYS = ("flip", "call_wall", "put_wall", "oi_call", "oi_put")  # expected move and max pain are no gamma levels
 TOLERANCE_PCT = 0.003   # wall within 0.3 % of the gamma level
@@ -93,10 +93,13 @@ def build(gamma: Mapping[str, Any] | None, walls_view: Mapping[str, Any] | None,
         return {**out, "status": "CATCHING_UP", "note": "Orderbuch-Archiv wird noch eingelesen"}
     if now - datetime.fromisoformat(out["walls_as_of"]) > STALE_AFTER or not walls_view.get("synced"):
         return {**out, "status": "STALE", "note": "Orderbuch-Stand ist alt oder ohne Anschluss, Zonen ausgeblendet"}
-    out["walls"] = [dict(w) for w in walls_view.get("walls") or []]
+    out["walls"] = [dict(w) for w in walls_view.get("walls") or []]   # the largest per side, for the display
     if not gamma or not gamma.get("levels"):
         return {**out, "status": "NO_GAMMA", "note": "kein Gamma-Stand"}
-    out["zones"] = confirm(gamma["levels"], out["walls"])
+    # Offline check 22.11.2026 (5 h real book): with only the 5 largest walls per side a smaller wall right at the
+    # put wall dropped out, zones were missing in 130 of 319 minutes and flickered. Zones look at every standing wall.
+    every = walls_view.get("walls_all")
+    out["zones"] = confirm(gamma["levels"], [dict(w) for w in (every if every is not None else out["walls"])])
     return out
 
 
