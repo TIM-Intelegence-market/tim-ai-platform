@@ -336,3 +336,12 @@ def test_better_calls_take_the_coin_from_the_last_chart_command() -> None:
              msg("Long here", channel=channel, author="Tree Capital", minutes=2)]
     calls = read_calls(posts)["better_calls"]
     assert [(c.symbol, c.bias) for c in calls] == [("COTI", "LONG"), (None, "SHORT")]
+
+
+def test_chart_command_with_perp_suffix_names_the_coin() -> None:
+    channel = "better-call-butter"
+    posts = [msg("Fc erausdtp", channel=channel, author="Butter aus Sahne", minutes=0),
+             msg("Taking a long", channel=channel, author="Butter aus Sahne", minutes=1),
+             msg("Fc nilusdt.p 5m", channel=channel, author="Butter aus Sahne", minutes=10),
+             msg("Small long here", channel=channel, author="Butter aus Sahne", minutes=11)]
+    assert [(c.symbol, c.bias) for c in read_calls(posts)["better_calls"]] == [("ERA", "LONG"), ("NIL", "LONG")]

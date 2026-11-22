@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.knowledge.goathub_channels import read_calls  # noqa: E402
+from src.knowledge.goathub_channels import PROFILES, read_calls  # noqa: E402
 from src.knowledge.goathub_feed import GoatHubFeedStore  # noqa: E402
 from src.knowledge.goathub_market_check import (  # noqa: E402
     DiaryEntry,
@@ -79,7 +79,9 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     wanted: dict[str, datetime] = {}  # pair -> earliest time we need (24 h before the first call is known)
     for items in calls.values():
         for tracked in items:
-            if tracked.call.grade in ("A", "B") and tracked.symbol and tracked.bias in ("LONG", "SHORT"):
+            # coin tips without levels are grade C but still get TIM's own analysis, so they need prices too
+            graded = tracked.call.grade in ("A", "B") or PROFILES[tracked.profile].coin_calls
+            if graded and tracked.symbol and tracked.bias in ("LONG", "SHORT"):
                 pair = f"{tracked.symbol}USDT"
                 need = min(tracked.call.message.posted_at, tracked.call.message.known_at) - timedelta(hours=25)
                 wanted[pair] = min(need, wanted.get(pair, need))

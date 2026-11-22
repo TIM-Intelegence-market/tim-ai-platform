@@ -387,7 +387,7 @@ def _join_follow_ups(messages: Sequence[GoatHubMessage]) -> list[GoatHubMessage]
     return joined
 
 
-_CHART_COMMAND = re.compile(r"^\s*fc\s+\$?([a-z][a-z0-9]{1,9}?)(?:usdt?)?(?:\s+\d+\s?[mhdw])?\s*$", re.IGNORECASE)
+_CHART_COMMAND = re.compile(r"^\s*fc\s+\$?([a-z][a-z0-9]{1,9}?)(?:usdt?(?:\.?p)?)?(?:\s+\d+\s?[mhdw])?\s*$", re.IGNORECASE)  # "erausdtp" = ERA perp
 CHART_COMMAND_WINDOW = timedelta(hours=2)
 
 
