@@ -528,7 +528,7 @@ def _live_section(symbol: str, view: str) -> str:
         f"<section class='cc-section tc-live' id='tc-live' data-keep-view='chart' data-symbol='{_safe(symbol)}' data-tf='{_safe(view)}'>"
         "<div class='tc-split' id='tc-split'>" + pane("", view) + pane("-2", second) + "</div>"
         + chart_legend("de") +
-        "<p class='cc-note'>Mausrad = zoomen, ziehen = verschieben, Preisachse ziehen = Höhe ändern, Doppelklick auf die Achse = zurücksetzen. "
+        "<p class='cc-note'>Mausrad = zoomen, ziehen = verschieben, Preisachse ziehen = Höhe ändern, Doppelklick auf die Achse = zurücksetzen. Handy: zwei Finger = zoomen, ein Finger = verschieben, Preisachse ziehen = Höhe ändern, zweimal auf die Achse tippen = zurücksetzen. "
         "Jede Linie beginnt dort, wo das Level entstanden ist (Hochs/Tiefs an ihrer Kerze, Profile am Beginn ihres Tages/ihrer Woche), "
         "und trägt Zeitrahmen und Namen, z. B. <b>1D VAH</b> oder <b>1W POC</b>. Ein ← heißt: Beginn liegt links außerhalb der geladenen Kerzen. "
         "<b>TPO</b>: Tagesprofil aus 30-Minuten-Perioden (Buchstaben A, B, C … ab 00:00 UTC) hinter den Kerzen, Value Area heller, POC gelb, Single Prints orange; "

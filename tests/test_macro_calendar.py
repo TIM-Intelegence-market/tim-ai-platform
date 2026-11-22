@@ -142,9 +142,15 @@ def test_export_from_the_fomc_fixture_round_trips_into_chart_markers(tmp_path: P
 
 def test_chart_fits_a_phone_screen() -> None:
     """Uzi 06.11.2026 (iPhone): the action buttons ran off the right edge and the page scrolled sideways;
-    a vertical swipe over the chart switched the automatic price scale off."""
+    a vertical swipe over the chart switched the automatic price scale off. Uzi 22.11.2026: the chart
+    could neither be zoomed nor moved freely and the price axis could not be stretched by finger."""
     css = Path("src/dashboard/assets/extra.css").read_text()
     assert ".tc-live__actions{display:flex;flex-wrap:wrap" in css
+    assert "touch-action:none" in css.split(".tc-live__chart{", 1)[1].split("}", 1)[0]  # the browser keeps its hands off the chart
     script = Path("src/dashboard/assets/tim_chart.js").read_text()
-    assert "vertTouchDrag: false" in script
+    main = script.split("const chart = LWC.createChart(box,", 1)[1].split("});", 1)[0]
+    assert "vertTouchDrag: true" in main  # one finger moves the main chart freely and stretches its price axis
+    lower = script.split("const sub = LWC.createChart(subBox,", 1)[1].split("});", 1)[0]
+    assert "vertTouchDrag: false" in lower  # the indicator windows below still let the page scroll
+    assert "applyOptions({ autoScale: false })" in script  # an up/down drag frees the price axis, else the library ignores it
     assert script.count("autoPrice()") == 2  # "Go to now" and "Show all" bring the price axis back to auto
