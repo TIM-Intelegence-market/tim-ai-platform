@@ -109,6 +109,12 @@ TEXT_EN: tuple[tuple[str, str], ...] = (
     (r"^größter offener (Call|Put)-Bestand unter dem Preis \((\d+) (\w+)\)$", r"largest \1 open interest below the price (\2 \3)"),
     (r"^Hauptverfall (\S+) \((\d+) % des OI\)$", r"main expiry \1 (\2 % of open interest)"),
     (r"^erwartete Bewegung bis Verfall, ATM-IV ([\d.]+) %$", r"expected move until expiry, ATM IV \1 %"),
+    # Gamma zones with an order book wall (gamma_zones.py).
+    (r"^Gamma-Zone ", "Gamma zone "),
+    (r"^Gamma-Level (.+?) bei ([\d.,]+) mit Kaufmauer im Orderbuch: ([\d.,]+) BTC \(([\d,]+) Mio \$\), ([\d,]+)-fach über üblich, steht seit (\S+) (\S+) Uhr\. Aufträge können jederzeit zurückgezogen werden\.$",
+     r"Gamma level \1 at \2 with a buy wall in the order book: \3 BTC (\4 m$), \5× the usual size, standing since \6 \7. Orders can be pulled at any time."),
+    (r"^Gamma-Level (.+?) bei ([\d.,]+) mit Verkaufsmauer im Orderbuch: ([\d.,]+) BTC \(([\d,]+) Mio \$\), ([\d,]+)-fach über üblich, steht seit (\S+) (\S+) Uhr\. Aufträge können jederzeit zurückgezogen werden\.$",
+     r"Gamma level \1 at \2 with a sell wall in the order book: \3 BTC (\4 m$), \5× the usual size, standing since \6 \7. Orders can be pulled at any time."),
     # Estimated liquidation clusters (liquidation_data.py).
     (r"^Liq-Cluster oben \(Modell\)$", "Liq cluster above (model)"),
     (r"^Liq-Cluster unten \(Modell\)$", "Liq cluster below (model)"),
@@ -116,6 +122,10 @@ TEXT_EN: tuple[tuple[str, str], ...] = (
     (r"^stärkste geschätzte Long-Liquidationen unter dem Preis$", "strongest estimated long liquidations below the price"),
 )
 NOTES_EN: tuple[tuple[str, str], ...] = (
+    (r"^Gamma-Zonen mit Orderbuch: (\d+) bestätigt, Berührungen (\d+) \((\d+) gehalten, (\d+) gebrochen\), Urteil ab (\d+)\.$",
+     r"Gamma zones with an order book wall: \1 confirmed, touches \2 (\3 held, \4 broken), verdict from \5. Display only, not a signal."),
+    (r"^Gamma-Zonen mit Orderbuch: (\d+) bestätigt\.$", r"Gamma zones with an order book wall: \1 confirmed. Display only, not a signal."),
+    (r"^Gamma-Zonen: ", "Gamma zones: order book data not available, zones hidden."),
     (r"^Kerzen aus der TIM-Runtime", "Candles from the TIM runtime (exchange not reachable)."),
     (r"^Keine Kerzen", "No candles for this selection."),
     (r"^Keine Tages-/Wochenlevel", "No day/week levels yet: too few closed 30m and 1h candles."),
