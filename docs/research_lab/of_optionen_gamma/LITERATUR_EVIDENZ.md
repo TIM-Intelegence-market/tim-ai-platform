@@ -40,7 +40,7 @@ gelesen, Details ungeprüft.
 | O14 | Auf unregulierten Krypto-Börsen ist ein erheblicher Teil des gemeldeten Volumens Wash-Trading. | Cong, Li, Tang, Yang (2023), *Management Science* 69(11) | ~29 Krypto-Börsen | BELEGT | Datenqualität: Volumen kleiner Börsen (auch Bitunix, ungeprüft) nicht ungeprüft als echten Flow werten. |
 | O15 | Preisunterschiede zwischen Börsen sind teils groß und hängen an Kapitalverkehrsgrenzen; gemeinsame Orderflow-Komponente treibt Preise. | Makarov, Schoar (2020), *J. Financial Economics* 135(2) | 34 Börsen | BELEGT | Begründet Multi-Exchange-Bestätigung (Signal 10), sagt aber nichts zu Nettoertrag. |
 | O16 | Preisfindung bei BTC läuft vor allem über Derivate (Perps). | Alexander, Choi, Park, Sohn (2020), *J. Futures Markets* 40(1); Aleti, Mizrach (2021), *J. Futures Markets* 41(2) | BitMEX, CME, Spot | BELEGT | Perp-Flow wichtiger als Spot-Flow. PS5 hat live nur Spot (Lücke). |
-| O17 | Absorption, Footprint, "Stacked Imbalances", Delta-Divergenz als Handelsregeln. | Händlerliteratur, Kurse (u. a. Broncx-Bootcamp im TIM-Ordner) | – | **OFFEN** (keine begutachtete Studie gefunden) | Nur als Hypothesen mit fester Regel prüfen. |
+| O17 | Absorption, Footprint, "Stacked Imbalances", Delta-Divergenz als Handelsregeln. | Händlerliteratur, Kurse (u. a. Bootcamp-Unterlagen im TIM-Ordner) | – | **OFFEN** (keine begutachtete Studie gefunden) | Nur als Hypothesen mit fester Regel prüfen. |
 
 TIM-eigene Orderflow-Befunde (GETESTET, alle "nicht belegt"):
 
