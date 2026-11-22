@@ -138,11 +138,28 @@
     rightPriceScale: { borderColor: 'rgba(120,134,156,0.35)', scaleMargins: { top: 0.06, bottom: 0.18 } },
     timeScale: { borderColor: 'rgba(120,134,156,0.35)', timeVisible: true, secondsVisible: false, rightOffset: 8, tickMarkFormatter: tickLabel },
     localization: { locale: LOCALE, priceFormatter: fmt, timeFormatter: t => FULL_FMT.format(asDate(t)) },
-    // Phone: a vertical swipe over the chart scrolls the page. Otherwise it moved the chart up or down and
-    // switched the automatic price scale off (Uzi 06.11.2026: price axis 68k-86k around 75k-81k candles).
-    handleScroll: { vertTouchDrag: false },
+    // Phone: one finger moves the chart freely (also up and down), dragging the price axis stretches it, two
+    // fingers zoom (Uzi 22.11.2026: could neither zoom nor move it). Until then a vertical swipe scrolled the
+    // page, which also blocked the price axis. The page still scrolls outside the chart; "Go to now" and
+    // "Show all" switch the automatic price scale back on.
+    handleScroll: { vertTouchDrag: true },
   });
   const autoPrice = () => chart.priceScale('right').applyOptions({ autoScale: true });
+  // The library ignores an up/down drag while the price axis scales itself, so the chart only moved sideways.
+  // A drag that starts mostly up or down switches the automatic price axis off first (like TradingView); a
+  // sideways drag keeps it. Runs before the library sees the move: pointer events come before touch and mouse
+  // events, and the library starts its drag at the same 5 px.
+  let dragFrom = null;
+  box.addEventListener('pointerdown', e => { dragFrom = e.isPrimary ? { x: e.clientX, y: e.clientY } : null; }, { capture: true, passive: true });
+  box.addEventListener('pointermove', e => {
+    if (!dragFrom || !e.isPrimary || !e.buttons) return;
+    const dx = Math.abs(e.clientX - dragFrom.x), dy = Math.abs(e.clientY - dragFrom.y);
+    if (dx + dy < 5) return;
+    const onAxis = e.clientX - box.getBoundingClientRect().left > chart.timeScale().width();  // the axis has its own drag
+    if (dy > dx && !onAxis && chart.priceScale('right').options().autoScale) chart.priceScale('right').applyOptions({ autoScale: false });
+    dragFrom = null;
+  }, { capture: true, passive: true });
+  for (const name of ['pointerup', 'pointercancel']) box.addEventListener(name, () => { dragFrom = null; }, { capture: true, passive: true });
   const candles = chart.addCandlestickSeries({
     upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350',
     priceLineColor: '#c3cad6',

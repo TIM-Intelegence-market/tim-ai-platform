@@ -313,7 +313,7 @@ def chart_page(symbol: str | None, timeframe: str | None, summary: str = "") -> 
         f"<section class='cc-section tc-live' id='tc-live' data-lang='en' data-symbol='{_safe(symbol)}' data-tf='{_safe(view)}'>"
         "<div class='tc-split' id='tc-split'>" + pane("", view) + pane("-2", second) + "</div>"
         + chart_legend("en") +
-        "<p class='cc-note'>Mouse wheel = zoom, drag = pan, drag the price axis = change height, double-click the axis = reset. "
+        "<p class='cc-note'>Mouse wheel = zoom, drag = pan, drag the price axis = change height, double-click the axis = reset. Phone: two fingers = zoom, one finger = move, drag the price axis = change height, double-tap the axis = reset. "
         "<b>BOS / MSS</b> count only on a close (a wick through the level is a sweep): BOS = break of the last swing in trend direction, "
         "MSS = close beyond the <b>Strong Low</b> (uptrend) or <b>Strong High</b> (downtrend), the low/high the last push came from. "
         "Dashed and running to now: the open Strong Low/High and the <b>BOS target</b>. Swings: 3 candles per side. "
