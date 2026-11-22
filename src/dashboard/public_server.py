@@ -299,13 +299,18 @@ class PublicDashboardServer:
             with self.state.lock:
                 footprint = dict(self.state.footprint)
                 gamma = dict(self.state.gamma)
+                gamma_zones = dict(getattr(self.state, "gamma_zones", None) or {})
                 liquidation = dict(self.state.liquidation)
                 perp, open_interest = perp_chart_inputs(self.state, query.get("symbol"))
                 bybit = dict(getattr(self.state, "bybit_flow", None) or {})
             from src.dashboard.chart_live import load_plan_journals
+            from src.dashboard.gamma_zones import load as load_zone_watch
 
+            # Uzi 22.11.2026 "öffentlich": the yellow gamma zones (order book wall at a gamma level) on the public chart too.
+            zone_watch_path = getattr(self.state, "gamma_zone_watch_path", None)
             model = build_live_chart(query.get("symbol"), query.get("tf"), self.state.chart_series(), footprint=footprint,
                                      plan_journals=load_plan_journals(self.journal_paths()) if member else None, gamma=gamma,
+                                     gamma_zones=gamma_zones, gamma_zone_watch=load_zone_watch(zone_watch_path) if zone_watch_path else None,
                                      liquidation=liquidation, perp=perp, open_interest=open_interest, bybit=bybit,
                                      market=query.get("market"),
                                      context=chart_context(query.get("symbol")))

@@ -395,3 +395,43 @@ def test_funnel_on_blocks_even_with_login_check(control, monkeypatch, tmp_path) 
     _mac_dashboard(module, instance, monkeypatch, ifconfig_hosts=[TAILNET], open_hosts=[TAILNET],
                    serve_status='{"AllowFunnel": {"%s:443": true}}' % HOST)
     assert instance.tailnet_view_block_reason(instance.listeners(8765)) == "tailscale funnel is on"
+
+
+def _failing_run(monkeypatch: pytest.MonkeyPatch, module, outcome) -> None:
+    def fake(command, **kwargs):
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(module.subprocess, "run", fake)
+
+
+def test_run_names_operation_and_timeout_when_launchctl_hangs(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load_timctl()
+    _failing_run(monkeypatch, module, subprocess.TimeoutExpired(["/bin/launchctl"], 30))
+    with pytest.raises(module.RuntimeControlError) as caught:
+        module.run(["/bin/launchctl", "bootout", "gui/501", "/Users/someone/secret.plist"], timeout=30)
+    message = str(caught.value)
+    assert message.startswith("required local command failed: launchctl bootout (TimeoutExpired after ")
+    assert message.endswith("s, limit 30s)")
+    assert "secret" not in message and "gui/501" not in message
+
+
+def test_run_names_oserror_when_command_cannot_start(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load_timctl()
+    _failing_run(monkeypatch, module, FileNotFoundError(2, "No such file", "/bin/launchctl"))
+    with pytest.raises(module.RuntimeControlError, match=r"^required local command failed: launchctl print \(FileNotFoundError after "):
+        module.run(["/bin/launchctl", "print", "gui/501/com.tim.runtime"])
+
+
+def test_run_does_not_name_arguments_that_are_not_a_plain_subcommand(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load_timctl()
+    _failing_run(monkeypatch, module, PermissionError(13, "denied"))
+    with pytest.raises(module.RuntimeControlError, match=r"^required local command failed: lsof \(PermissionError after "):
+        module.run(["/usr/sbin/lsof", "-nP", "-iTCP:8765"])
+
+
+def test_run_returns_a_normal_launchctl_error_code_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load_timctl()
+    _failing_run(monkeypatch, module, completed(["/bin/launchctl", "print"], returncode=113))
+    assert module.run(["/bin/launchctl", "print", "gui/501/com.tim.runtime"]).returncode == 113

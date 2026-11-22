@@ -246,3 +246,18 @@ def test_zone_uses_every_standing_wall_not_only_the_five_largest() -> None:
     (zone,) = view["zones"]
     assert zone["wall_low"] == 99_000.0 and "Put Wall" in zone["name"]
     assert _view(now, walls=shown)["zones"] == []               # an old reader without walls_all keeps the old answer
+
+
+def test_public_page_gets_the_zones_in_english() -> None:
+    """Uzi 22.11.2026 "öffentlich": the yellow zones on tim-online.online too, without German text."""
+    from src.dashboard.public_en import english_chart_model
+
+    now = datetime(2027, 1, 15, 12, tzinfo=timezone.utc)
+    drawings, notes = gamma_zones.chart_drawings(_view(now), {"visits": [{"outcome": "gehalten"}, {"outcome": "gebrochen"}]}, now)
+    model = english_chart_model({"drawings": drawings, "notes": notes, "groups": {"gamma_ob": "x"}})
+    (drawing,) = model["drawings"]
+    assert drawing["label"].startswith("Gamma zone ") and drawing["band"] == [99_000.0, 99_200.0]
+    assert drawing["note"].startswith("Gamma level ") and "buy wall" in drawing["note"] and "pulled at any time" in drawing["note"]
+    assert model["notes"] == ["Gamma zones with an order book wall: 1 confirmed, touches 2 (1 held, 1 broken), verdict from 30. Display only, not a signal."]
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/public_server.py").read_text(encoding="utf-8")
+    assert "gamma_zones=gamma_zones" in script
