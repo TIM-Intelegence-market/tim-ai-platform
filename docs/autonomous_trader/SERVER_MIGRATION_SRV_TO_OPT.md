@@ -8,7 +8,7 @@ Gehört zu Schritt 1 aus [`DEBIAN_SERVER_SETUP_TASK_PACKAGE.md`](DEBIAN_SERVER_S
 | Teil | Alt (`/srv/tim`, User-Units von `tim-server`) | Neu (`/opt/tim`, System-Units) |
 |---|---|---|
 | Runtime | `runtime/code`, Branch `opencode/runtime-clean-reconstruction` (6ce74a9, 26.09.), nicht auf GitHub | PR #135 (Branch `claude/project-thread-0jjxoq`), installiert, Units deaktiviert |
-| Market-Feeds | `market-feeds/code`, Branch `agent/broncx-orderflow` (9bcede7), schreibt `venue_trades`, nicht auf GitHub | fehlt |
+| Market-Feeds | `market-feeds/code`, Branch `agent/mentor-orderflow` (9bcede7), schreibt `venue_trades`, nicht auf GitHub | fehlt |
 | Watchdog, Liveness, Backup | User-Units | System-Units vorhanden |
 | Qwen-Worker | User-Unit **und** System-Dienst auf `/srv/tim/repo` (läuft doppelt) | bewusst nicht portiert |
 | Datenbank | `127.0.0.1:5432/tim`, Rolle `tim` | dieselbe; `/etc/tim/database-password` = Wert aus `/srv/tim/runtime/secrets/` |

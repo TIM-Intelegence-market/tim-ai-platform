@@ -14,7 +14,7 @@ from src.research_lab.workshop.sources import import_journal_review, import_refl
 
 NOW = "2026-10-31T12:00:00Z"
 LOGBOOK = [
-    {"id": "S9", "title": "CHoCH, Retest-Band, Reaktionsschluss auf 15m (GoatHub-Lernheft)", "status": "not_testable"},
+    {"id": "S9", "title": "CHoCH, Retest-Band, Reaktionsschluss auf 15m (Signalgruppe-Lernheft)", "status": "not_testable"},
     {"id": "S1", "title": "BTC-Schwankung an CPI-Terminen", "status": "confirmed"},
 ]
 
@@ -79,8 +79,8 @@ def test_holdout_period_is_locked_for_archive_data(tmp_path: Path) -> None:
 
 def test_known_dead_idea_is_flagged_unless_declared_derived(tmp_path: Path) -> None:
     queue = _queue(tmp_path)
-    again = _add(queue, "CHoCH Retest auf 15m", tags=["goathub"])
-    derived = _add(queue, "CHoCH Retest auf 15m ohne Band", hypothesis="andere", tags=["goathub"], derived_from="S9")
+    again = _add(queue, "CHoCH Retest auf 15m", tags=["signalgruppe"])
+    derived = _add(queue, "CHoCH Retest auf 15m ohne Band", hypothesis="andere", tags=["signalgruppe"], derived_from="S9")
     verdicts = {v.idea_id: v for v in check_ideas(queue, LOGBOOK, now=NOW)}
     assert verdicts[again].status == "already_tested" and "S9" in verdicts[again].reasons[0]
     assert verdicts[derived].status == "ready" and "Ableitung von S9" in verdicts[derived].reasons[0]

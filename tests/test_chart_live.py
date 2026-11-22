@@ -417,7 +417,7 @@ def test_layers_are_sorted_in_named_layouts():
 def test_chart_script_names_no_third_party_trader():
     """Uzi 09.11.2026: the name must not show anywhere on /chart."""
     script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
-    assert "broncx" not in script.lower() and "bronxc" not in script.lower()
+    assert "mentor" not in script.lower() and "bronxc" not in script.lower()
 
 
 def test_two_charts_side_by_side_are_independent() -> None:

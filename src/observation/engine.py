@@ -7,7 +7,7 @@ from typing import Sequence
 from uuid import NAMESPACE_URL, uuid5
 
 from src.analysis.bos_detector import BOSDetector
-from src.analysis.bronxc_rules import BroncxRules
+from src.analysis.bronxc_rules import MentorRules
 from src.models.market_data import Candle, Observation
 
 OBSERVATION_VERSION = 1
@@ -22,9 +22,9 @@ def candle_input_hash(candles: Sequence[Candle]) -> str:
 class ObservationEngine:
     """Central deterministic event layer. It enriches rules; it never infers values."""
 
-    def __init__(self, bos: BOSDetector | None = None, bronxc: BroncxRules | None = None) -> None:
+    def __init__(self, bos: BOSDetector | None = None, bronxc: MentorRules | None = None) -> None:
         self.bos = bos or BOSDetector()
-        self.bronxc = bronxc or BroncxRules()
+        self.bronxc = bronxc or MentorRules()
         self._seen: set[str] = set()
 
     def evaluate(self, candles: Sequence[Candle]) -> list[Observation]:

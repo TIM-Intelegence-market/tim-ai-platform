@@ -409,7 +409,7 @@ def _open(pending: dict[str, Any], fill: float, entry_fee: float, at_ms: int, p:
 def _ref_level(long: bool, fill: float, risk: float, levels: Sequence[float]) -> dict[str, Any]:
     """Comparison variant (Uzi "Vergleich an", 17.11.): exit at the next known zone in trade direction, original stop.
 
-    Sources: Valtos OFTC L11 p.11 / L12 p.9 (trade from one level to the next), Broncx bootcamp (targets at VAH/VAL,
+    Sources: Valtos OFTC L11 p.11 / L12 p.9 (trade from one level to the next), Mentor bootcamp (targets at VAH/VAL,
     HVN). Never part of the verdict; the counter-absorption exit stays the rule.
     """
     ahead = [lv for lv in levels if (lv > fill if long else lv < fill)]

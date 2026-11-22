@@ -74,7 +74,7 @@ def test_failed_run_and_tampered_bundle_give_no_verdict(tmp_path: Path, logbook:
 def test_monthly_reflection_counts_and_proposals(tmp_path: Path) -> None:
     queue = IdeaQueue(tmp_path / "IDEEN.jsonl")
     for i in range(3):
-        idea = queue.add(source="community", title=f"Goat {i}", hypothesis=f"h{i}", data=["archive_spot_klines"], at=AT)
+        idea = queue.add(source="community", title=f"Idee {i}", hypothesis=f"h{i}", data=["archive_spot_klines"], at=AT)
         queue.set_status(idea, "already_tested", ["ähnlich S9"], at=AT)
     perp = queue.add(source="uzi", title="Perp CVD", hypothesis="hp", data=["perp_live"], at=AT)
     queue.set_status(perp, "waiting_data", ["F5"], at=AT)
@@ -85,7 +85,7 @@ def test_monthly_reflection_counts_and_proposals(tmp_path: Path) -> None:
     data = monthly_reflection("2026-10", queue=queue, logbook=logbook, trade_records=trades)
     assert data["ideas_new"] == 5 and data["drafts"] == 1 and data["edges_after_costs"] == []
     assert data["source_outcomes"] == {"uzi": {"failed": 1}}
-    assert len(data["proposals"]) == 3 and "Perp" in data["proposals"][0] and "GoatHub" in data["proposals"][1]
+    assert len(data["proposals"]) == 3 and "Perp" in data["proposals"][0] and "Signalgruppe" in data["proposals"][1]
     assert "2 von 3 Trades" in data["proposals"][2]
     text = render_reflection(data)
     assert "Handelsvorteile nach Kosten belegt: **0**" in text and "Bestätigte Ergebnisse" in text

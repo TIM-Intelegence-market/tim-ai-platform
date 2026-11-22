@@ -1,6 +1,6 @@
 """Perp-Schatten: TIM's 15m and 1h plan rule on perpetual candles with a volume profile from real perp trades.
 
-Master-Analyse 09.11.2026 (Kundensicht Broncx, P1c + P5; Uzi: "das muss unbedingt gefixt werden"). The paper
+Master-Analyse 09.11.2026 (Kundensicht Mentor, P1c + P5; Uzi: "das muss unbedingt gefixt werden"). The paper
 journals SHORT (15m) and MID (1h) price everything on Binance spot candles and estimate POC/VAH/VAL from candles,
 while the account trades Kraken perpetuals and the trader reads the chart on the perp. This shadow runs the same
 rule (plan_journal.update, tim/1) a second time:

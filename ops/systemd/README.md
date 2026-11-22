@@ -26,7 +26,7 @@ Gegenstück zu `ops/launchd/` für den Debian-Server aus
 | `tim.env.example` | `EnvironmentVariables` der Plists | Vorlage für `/etc/tim/tim.env`, ohne Secrets |
 
 Bewusst nicht portiert: `awake` und `power-state-telemetry` (nur Mac),
-`local-qwen-worker`, `broncx-discord-feed` (bleiben auf dem Mac),
+`local-qwen-worker`, `mentor-discord-feed` (bleiben auf dem Mac),
 `continuous-coverage*` (gehören zur Mac-Kampagne vom 2026-09-24; der Server
 bekommt eine eigene Deklaration, Paket P7).
 

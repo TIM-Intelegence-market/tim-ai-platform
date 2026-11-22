@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 
 from src.analysis.bos_detector import BOSDetector
-from src.analysis.bronxc_rules import BroncxRules
+from src.analysis.bronxc_rules import MentorRules
 from src.models.market_data import Candle, ObservationKind
 from src.research_lab.backtest.engine import History, Signal, Strategy
 from src.research_lab.backtest.indicators import atr, sma_close
@@ -243,7 +243,7 @@ def t1_bos(timeframe: str) -> Strategy:
 
 
 def t2_rejection(timeframe: str) -> Strategy:
-    rules, cache = BroncxRules(), {}
+    rules, cache = MentorRules(), {}
 
     def strategy(history: History) -> Signal | None:
         if len(history) < 15:
@@ -264,7 +264,7 @@ def t2_rejection(timeframe: str) -> Strategy:
 
 
 def t3_failed_continuation(timeframe: str) -> Strategy:
-    rules, cache = BroncxRules(), {}
+    rules, cache = MentorRules(), {}
 
     def strategy(history: History) -> Signal | None:
         if len(history) < 15:

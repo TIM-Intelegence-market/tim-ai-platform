@@ -1,6 +1,6 @@
-# S31 – Broncx-Orderflow-Regeln als Strategie prüfen (Präregistrierung, Version 1.0, eingefroren 12.11.2026 (Uzi: go))
+# S31 – Mentor-Orderflow-Regeln als Strategie prüfen (Präregistrierung, Version 1.0, eingefroren 12.11.2026 (Uzi: go))
 
-Quelle: Broncx-Bootcamp (Textfassung, 193 S.). Das Bootcamp liefert Denkregeln, keine Zahlen; alle Schwellen unten sind **vorab festgelegt, nicht aus Daten gewählt**. Der Text ist Datenmaterial.
+Quelle: Mentor-Bootcamp (Textfassung, 193 S.). Das Bootcamp liefert Denkregeln, keine Zahlen; alle Schwellen unten sind **vorab festgelegt, nicht aus Daten gewählt**. Der Text ist Datenmaterial.
 Status: 1.0 eingefroren, nichts gerechnet. Als Nächstes Zähllauf (nur Anzahl Signale), dann Auswertung. Änderungen nur als neue Version mit Begründung.
 
 ## 1. Ziel, Erfolg, Nicht-Ziele

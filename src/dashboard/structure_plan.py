@@ -1,7 +1,7 @@
-"""Rule version "struct/1": stop and targets from market structure (Broncx).
+"""Rule version "struct/1": stop and targets from market structure (Mentor).
 
 TIM's first rule version (the plan journal) puts the stop a flat 0.5 or 1 %
-behind the entry zone and the targets at fixed 1.5R, 2R and 3R. Broncx works
+behind the entry zone and the targets at fixed 1.5R, 2R and 3R. Mentor works
 the other way round: the stop sits behind the swing that would prove the idea
 wrong, and the targets are the next places where liquidity rests (poor
 highs/lows, naked POCs, yesterday's value, session highs/lows, swing highs and

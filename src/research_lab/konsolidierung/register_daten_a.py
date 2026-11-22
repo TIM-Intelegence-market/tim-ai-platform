@@ -122,7 +122,7 @@ EINTRAEGE_A = [
       "Statistisch belegte Prognose der 4h-Schwankung; sie enthält keinen Handelsvorteil, und die Nutzung für die Positionsgröße ist in S25 nicht bestanden.",
       ["Kein Gewinn-Edge", "Persistenz bei BTC an der Grenze"], [("4h besser als 14-Tage-Varianz (p 0,026)", B), ("Zahlen in Ergebnisdatei", V)],
       "Nur Risikobaustein; kein Beitrag zum Nettoertrag."),
-    e("S9", "CHoCH, Retest-Band, Reaktionsschluss auf 15m (GoatHub-Lernheft)", "FRÜH", "Regelfamilie (Gate)", "2026-10-27",
+    e("S9", "CHoCH, Retest-Band, Reaktionsschluss auf 15m (Signalgruppe-Lernheft)", "FRÜH", "Regelfamilie (Gate)", "2026-10-27",
       [DOC + "reports/s9_count_2026-10-27T1849Z.md", DOC + "studien/S9_CHOCH_RETEST_PRAEREGISTRIERUNG.md"],
       "BTCUSDT 15m (175.392 Kerzen bis 2024-12)", "Zähllauf Training", "—", "kein Registerplatz", "höchstens 11 Signale statt 500",
       "Am Machbarkeits-Gate gescheitert: höchstens 11 Signale im Training statt 500 (Validierung höchstens 6 statt 250).", "not_testable", "C", "EXPLORATIV", "keine Aussage",

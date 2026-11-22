@@ -105,7 +105,7 @@ Worten nicht vor, aber sie zeigen, was er bisher geplant hat:
   `docs/autonomous_trader/IMPLEMENTATION_ROADMAP.md`: die Stufen L0 bis L6 (Daten → Beobachtungen →
   Setup-Vorschläge → Paper Orders → Shadow → Limited Live → überwachte Autonomie),
   die Zielarchitektur und die Phasen 0 bis 10 mit ihren Gates.
-- `docs/knowledge/BRONCX_DISCORD_FEED.md` (der Bootcamp-Katalog ist nicht öffentlich): die Trading-Methode, an der sich TIM
+- `docs/knowledge/MENTOR_DISCORD_FEED.md` (der Bootcamp-Katalog ist nicht öffentlich): die Trading-Methode, an der sich TIM
   orientiert (Orderflow, Auction Market Theory, Marktstruktur, Liquidität;
   Kette Kontext → Ort → Struktur → Orderflow → Reaktion → Szenario →
   Invalidierung).
@@ -155,8 +155,8 @@ widersprechen, gilt der Code, und du nennst den Widerspruch.
    `docs/research_lab/REGISTER.jsonl`. Alle 48 registrierten Varianten sind
    durchgefallen (42 im Training, 6 in der Validierung). Ergebnis laut Bericht:
    „kein Vorteil in Training/Validierung gefunden“, der Holdout wurde nicht
-   angefasst. Darunter TIMs eigene Regeln T1 (BOS), T2 (Broncx REJECTION) und
-   T3 (Broncx FAILED_CONTINUATION), alle mit negativem Erwartungswert. Kaufen und
+   angefasst. Darunter TIMs eigene Regeln T1 (BOS), T2 (Mentor REJECTION) und
+   T3 (Mentor FAILED_CONTINUATION), alle mit negativem Erwartungswert. Kaufen und
    Halten lag im selben Zeitraum bei +252,7 % (Training) und +465,7 % (Validierung).
 2. **Register-Obergrenze:** Das Protokoll erlaubt höchstens 60 Varianten für diesen
    Holdout. 48 sind verbraucht (Abschnitte 6 und 10).

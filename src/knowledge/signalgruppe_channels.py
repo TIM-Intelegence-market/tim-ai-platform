@@ -8,8 +8,8 @@ own scorecard (authors and channels are neutral labels, see ``PROFILES``):
 * ``gold_silber``: gold and silver calls,
 * ``chat_altcoins`` and ``chart_calls``: altcoin calls from the chat and from chart posts.
 
-Messages come from the read-only Discord bot (``scripts/goathub_discord_bot.py``) or from the
-screen transcripts in ``goathub-verlauf/kanaele`` (``parse_transcript``). Each call stays a
+Messages come from the read-only Discord bot (``scripts/signalgruppe_discord_bot.py``) or from the
+screen transcripts in ``signalgruppe-verlauf/kanaele`` (``parse_transcript``). Each call stays a
 hypothesis with author, time and the original text: the scorecard says how such calls played
 out, it never turns a call into a signal. Outcomes only use candles that opened at or after the
 minute the call was posted (no look-ahead). Nothing in this module posts to Discord;
@@ -30,8 +30,8 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 from zoneinfo import ZoneInfo
 
-from .broncx_feed import BroncxGuidance, BroncxLevel
-from .goathub_feed import ROLE_CALLS, ROLE_KNOWLEDGE, SOURCE_SCREEN, CommunityCall, GoatHubMessage, extract_call
+from .mentor_feed import MentorGuidance, MentorLevel
+from .signalgruppe_feed import ROLE_CALLS, ROLE_KNOWLEDGE, SOURCE_SCREEN, CommunityCall, SignalgruppeMessage, extract_call
 
 __all__ = [
     "BOARD_LIMIT_CHARS",
@@ -168,7 +168,7 @@ def _channel_key(value: str) -> str:
     return text
 
 
-def profile_for(message: GoatHubMessage) -> ChannelProfile | None:
+def profile_for(message: SignalgruppeMessage) -> ChannelProfile | None:
     keys = {_label("kanaele", _channel_key(message.channel_id)), _label("kanaele", _channel_key(message.channel_name))}
     for profile in PROFILES.values():
         if keys & set(profile.channels):
@@ -194,8 +194,8 @@ def _reaction_count(line: str) -> int:
     return sum(int(item) for item in re.findall(r"(?<![\w.])(\d+)(?=\s*(?:,|$|\())", line.split(":", 1)[1]))
 
 
-def parse_transcript(path: Path, *, channel_id: str | None = None, received_at: datetime | None = None) -> list[GoatHubMessage]:
-    """Messages from a screen transcript (``### 28.07.26 12:08 | Broncx [GOAT]`` blocks).
+def parse_transcript(path: Path, *, channel_id: str | None = None, received_at: datetime | None = None) -> list[SignalgruppeMessage]:
+    """Messages from a screen transcript (``### 28.07.26 12:08 | Mentor [TEAM]`` blocks).
 
     Times in the transcripts are Berlin time. Attachments keep their description, reactions are
     summed. Blocks without text and without attachment are skipped. Message ids are stable, so
@@ -207,7 +207,7 @@ def parse_transcript(path: Path, *, channel_id: str | None = None, received_at: 
     channel_name = title
     channel = channel_id or _channel_key(re.sub(r"^[^A-Za-z0-9]+", "", title.split("|")[-1]))
     received = received_at or datetime.now(timezone.utc)
-    messages: list[GoatHubMessage] = []
+    messages: list[SignalgruppeMessage] = []
     block: list[str] = []
     header: re.Match[str] | None = None
 
@@ -233,7 +233,7 @@ def parse_transcript(path: Path, *, channel_id: str | None = None, received_at: 
         if not content and not attachments:
             return
         digest = hashlib.sha1(f"{channel}|{header.group(0)}|{index}".encode()).hexdigest()[:20]
-        messages.append(GoatHubMessage(
+        messages.append(SignalgruppeMessage(
             message_id=f"transcript-{digest}", channel_id=channel, posted_at=posted, content=content or "(Bild)",
             received_at=received, author_name=re.sub(r"\s*\[[^\]]*\]\s*$", "", author).strip(), channel_name=channel_name,
             source=SOURCE_SCREEN, attachments=tuple(attachments), reactions=reactions, channel_role=ROLE_CALLS,
@@ -299,7 +299,7 @@ _PRICE_LABELS = re.compile(r"Preislabels?\s+([^\[;]+)", re.IGNORECASE)
 _LABEL_NUMBER = re.compile(r"\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?")
 
 
-def _box_labels(attachment: str, bias: str) -> list[BroncxLevel]:
+def _box_labels(attachment: str, bias: str) -> list[MentorLevel]:
     """Roles of three unnamed box labels from the box geometry (English number format, as the transcriber writes them).
 
     Long box: target on top, entry in the middle, stop below. Short box: stop on top, entry in the middle, target below.
@@ -313,10 +313,10 @@ def _box_labels(attachment: str, bias: str) -> list[BroncxLevel]:
         return []
     top, middle, bottom = values
     roles = (("TARGET", top), ("ENTRY", middle), ("STOP", bottom)) if bias == "LONG" else (("STOP", top), ("ENTRY", middle), ("TARGET", bottom))
-    return [BroncxLevel(f"{role.lower()} {value}", value, role, source="chart") for role, value in roles]
+    return [MentorLevel(f"{role.lower()} {value}", value, role, source="chart") for role, value in roles]
 
 
-def chart_reading(attachments: Sequence[str]) -> tuple[str | None, tuple[BroncxLevel, ...]]:
+def chart_reading(attachments: Sequence[str]) -> tuple[str | None, tuple[MentorLevel, ...]]:
     """Direction and levels of a position box described in a transcript attachment (estimated, source "chart")."""
     for attachment in attachments:
         box = _CHART_BOX.search(attachment)
@@ -325,7 +325,7 @@ def chart_reading(attachments: Sequence[str]) -> tuple[str | None, tuple[BroncxL
         levels = []
         for role, pattern in _CHART_LEVELS.items():
             if match := pattern.search(attachment):
-                levels.append(BroncxLevel(match.group(0), _german_number(match.group(1)), role, source="chart"))
+                levels.append(MentorLevel(match.group(0), _german_number(match.group(1)), role, source="chart"))
         bias = box.group(1).upper()
         return bias, tuple(levels) or tuple(_box_labels(attachment, bias))
     return None, ()
@@ -340,17 +340,17 @@ def _attachment_symbol(attachments: Sequence[str]) -> str | None:
     return found.pop() if len(found) == 1 else None
 
 
-def has_chart_image(message: GoatHubMessage) -> bool:
+def has_chart_image(message: SignalgruppeMessage) -> bool:
     """The post carries a chart picture, so a stop or target may sit in the image and not in the text."""
     return any(re.search(r"\b(?:chart|tradingview|bild)\b", text, re.IGNORECASE) for text in message.attachments)
 
 
-def _with_chart(message: GoatHubMessage, call: CommunityCall | None, profile: ChannelProfile) -> CommunityCall | None:
+def _with_chart(message: SignalgruppeMessage, call: CommunityCall | None, profile: ChannelProfile) -> CommunityCall | None:
     bias, levels = chart_reading(message.attachments)
     if bias is None:
         return call
     if call is None:
-        guidance = BroncxGuidance(bias, profile.default_symbol, None, levels, (), (), (), False, "STRUCTURED" if levels else "PARTIAL",
+        guidance = MentorGuidance(bias, profile.default_symbol, None, levels, (), (), (), False, "STRUCTURED" if levels else "PARTIAL",
                                   ("direction and levels read from the chart image",), chart_readings=1, bias_source="chart")
         reasons = [f"Richtung {bias} (Chart)"]
     else:
@@ -373,10 +373,10 @@ def _regrade(call: CommunityCall) -> CommunityCall:
     return replace(call, grade=grade)
 
 
-def read_call(message: GoatHubMessage, profile: ChannelProfile, reference_price: Decimal | None = None) -> TrackedCall | None:
+def read_call(message: SignalgruppeMessage, profile: ChannelProfile, reference_price: Decimal | None = None) -> TrackedCall | None:
     """One channel's reader: a call (any grade) by the channel's own author, or None.
 
-    Futures: Broncx's channel is about BTC unless he names ETH or SOL, and his position boxes in the
+    Futures: Mentor's channel is about BTC unless he names ETH or SOL, and his position boxes in the
     chart images count as a call. Gold: XAU unless the post is only about silver (XAG); other words
     the generic reader takes for a ticker are dropped. Spot: bucket, account size and DCA step are kept.
     """
@@ -414,12 +414,12 @@ FOLLOW_UP_WINDOW = timedelta(minutes=3)
 _LEVEL_ONLY = re.compile(r"^\s*(?:tps?|targets?|sl|stop(?:\s?loss)?|entry)\b[^\n]{0,30}$", re.IGNORECASE)
 
 
-def _join_follow_ups(messages: Sequence[GoatHubMessage]) -> list[GoatHubMessage]:
+def _join_follow_ups(messages: Sequence[SignalgruppeMessage]) -> list[SignalgruppeMessage]:
     """Merge a level-only post ("Target 77$") into the same author's call posted up to 3 minutes before it.
 
     The merged message keeps the first message's id and time, so the call is dated when it was first posted.
     """
-    joined: list[GoatHubMessage] = []
+    joined: list[SignalgruppeMessage] = []
     for message in messages:
         previous = joined[-1] if joined else None
         if (previous is not None and _LEVEL_ONLY.match(message.content) and previous.channel_id == message.channel_id
@@ -435,7 +435,7 @@ _CHART_COMMAND = re.compile(r"^\s*fc\s+\$?([a-z][a-z0-9]{1,9}?)(?:usdt?(?:\.?p)?
 CHART_COMMAND_WINDOW = timedelta(hours=2)
 
 
-def read_calls(messages: Iterable[GoatHubMessage]) -> dict[str, list[TrackedCall]]:
+def read_calls(messages: Iterable[SignalgruppeMessage]) -> dict[str, list[TrackedCall]]:
     """Calls per profile, oldest first. Messages from other channels are ignored."""
     result: dict[str, list[TrackedCall]] = {key: [] for key in PROFILES}
     last_command: dict[tuple[str, str], tuple[datetime, str]] = {}
@@ -652,7 +652,7 @@ def _board_line(outcome: CallOutcome) -> str:
 
 def render_board(outcomes: dict[str, list[CallOutcome]], *, generated_at: datetime, open_limit: int = 4, limit_chars: int = BOARD_LIMIT_CHARS) -> str:
     """Board text for one Discord message: open calls and scorecard per channel. Preview only, never posted here."""
-    lines = [f"**TIM × GoatHub board** (paper only, not advice) · {generated_at.astimezone(BERLIN).strftime('%d.%m. %H:%M')} Berlin"]
+    lines = [f"**TIM × Signalgruppe board** (paper only, not advice) · {generated_at.astimezone(BERLIN).strftime('%d.%m. %H:%M')} Berlin"]
     for key, profile in PROFILES.items():
         items = outcomes.get(key, [])
         card = scorecard(items)

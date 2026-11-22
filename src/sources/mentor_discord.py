@@ -1,15 +1,15 @@
-"""Read-only Discord poller for the Broncx feed channel in the TIM owner's own server.
+"""Read-only Discord poller for the Mentor feed channel in the TIM owner's own server.
 
-The owner forwards Broncx messages (Discord "Forward") into one channel of
+The owner forwards Mentor messages (Discord "Forward") into one channel of
 their own server; a bot the owner created reads that channel over the Discord
-REST API and stores each post in ``BroncxFeedStore``. The bot never writes to
+REST API and stores each post in ``MentorFeedStore``. The bot never writes to
 Discord, never joins foreign servers and never automates a user account.
 
 Only messages from the configured forwarder ids are accepted, so other members
-of the owner's server cannot inject "Broncx" posts. Forwarded messages carry
+of the owner's server cannot inject "Mentor" posts. Forwarded messages carry
 the original text and timestamp in ``message_snapshots``; Discord does not
 include the original author there, so the attribution rests on the channel
-being used for Broncx forwards only.
+being used for Mentor forwards only.
 """
 
 from __future__ import annotations
@@ -28,8 +28,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from config.secrets import SecretValue
-from src.knowledge.broncx_chart_vision import IMAGE_SUFFIXES, MAX_IMAGE_BYTES, ChartImageStore
-from src.knowledge.broncx_feed import SOURCE_FORWARD, SOURCE_MANUAL, BroncxFeedStore, BroncxPost
+from src.knowledge.mentor_chart_vision import IMAGE_SUFFIXES, MAX_IMAGE_BYTES, ChartImageStore
+from src.knowledge.mentor_feed import SOURCE_FORWARD, SOURCE_MANUAL, MentorFeedStore, MentorPost
 
 __all__ = [
     "API_BASE",
@@ -66,11 +66,11 @@ def _support_dir() -> Path:
 
 
 def default_secret_path() -> Path:
-    return Path(os.environ.get("TIM_BRONCX_DISCORD_SECRET_FILE") or _support_dir() / "broncx-discord-bot").expanduser()
+    return Path(os.environ.get("TIM_MENTOR_DISCORD_SECRET_FILE") or _support_dir() / "mentor-discord-bot").expanduser()
 
 
 def default_config_path() -> Path:
-    return Path(os.environ.get("TIM_BRONCX_DISCORD_CONFIG") or _support_dir() / "broncx-discord.json").expanduser()
+    return Path(os.environ.get("TIM_MENTOR_DISCORD_CONFIG") or _support_dir() / "mentor-discord.json").expanduser()
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,7 +89,7 @@ class DiscordFeedConfig:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError as exc:
-            raise DiscordFeedError(f"config file missing: {path}; run 'broncx_discord_bot.py setup'") from exc
+            raise DiscordFeedError(f"config file missing: {path}; run 'mentor_discord_bot.py setup'") from exc
         except ValueError as exc:
             raise DiscordFeedError(f"config file is not valid JSON: {path}") from exc
         return cls(str(payload.get("channel_id", "")), frozenset(str(item) for item in payload.get("forwarder_ids", ())))
@@ -102,7 +102,7 @@ def load_bot_secret(path: Path) -> SecretValue:
     try:
         info = path.stat()
     except FileNotFoundError as exc:
-        raise DiscordFeedError(f"bot secret file missing: {path}; run 'broncx_discord_bot.py setup'") from exc
+        raise DiscordFeedError(f"bot secret file missing: {path}; run 'mentor_discord_bot.py setup'") from exc
     if info.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
         raise DiscordFeedError(f"bot secret file must be private (chmod 600): {path}")
     value = path.read_text(encoding="utf-8").strip()
@@ -123,7 +123,7 @@ class PollResult:
     image_errors: int = 0
 
 
-def message_to_post(message: dict[str, Any], received_at: datetime) -> BroncxPost | None:
+def message_to_post(message: dict[str, Any], received_at: datetime) -> MentorPost | None:
     """Map a Discord message (forward or typed/pasted text) to a feed post."""
     snapshots = message.get("message_snapshots") or []
     reference = message.get("message_reference") or {}
@@ -143,7 +143,7 @@ def message_to_post(message: dict[str, Any], received_at: datetime) -> BroncxPos
     names = tuple(str(item.get("filename") or item.get("url") or "attachment") for item in attachments)
     if not content.strip() and not names:
         return None
-    return BroncxPost(
+    return MentorPost(
         message_id=message_id,
         posted_at=_parse_time(posted_at),
         content=content,
@@ -214,7 +214,7 @@ class DiscordFeedPoller:
         self,
         secret: SecretValue,
         config: DiscordFeedConfig,
-        store: BroncxFeedStore,
+        store: MentorFeedStore,
         http_get: HttpGet | None = None,
         http_get_bytes: HttpGetBytes | None = None,
         clock: Callable[[], datetime] | None = None,

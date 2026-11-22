@@ -22,7 +22,7 @@
 | p90/p95/p99 trade size | MISSING | no implementation found | percentile statistics exist only in research insights, not raw feature engine |
 | Price change/range | PARTIAL | candles and validation horizons | not part of the orderflow metric contract |
 | Volatility | MISSING | no deterministic feature found | — |
-| Activity without price continuation | PARTIAL | Broncx candle rules and descriptive UI concepts | not a canonical orderflow feature contract |
+| Activity without price continuation | PARTIAL | Mentor candle rules and descriptive UI concepts | not a canonical orderflow feature contract |
 | Delta-price divergence | MISSING | no rule/feature implementation found | UI labels do not prove runtime computation |
 | CVD-price divergence | MISSING | no rule/feature implementation found | — |
 

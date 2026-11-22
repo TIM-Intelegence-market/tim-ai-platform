@@ -5,7 +5,7 @@ M1 Failed Auction / 80-%-Regel (Bootcamp p. 46/51, Dalton): price traded outside
    stop beyond the outside extreme, target the opposite value-area edge.
    Orderflow confirmation: the candle that made the outside extreme carried delta *against* the trade
    (aggressive sellers at the low who got trapped).
-M2 Akzeptanz + Retest (Bootcamp p. 46/53/103, Broncx' BTC intraday model): two consecutive 30-min closes
+M2 Akzeptanz + Retest (Bootcamp p. 46/53/103, Mentor' BTC intraday model): two consecutive 30-min closes
    beyond yesterday's VAH/VAL, limit entry at the retest of that edge within 8 candles, stop under the
    lowest low of the acceptance candles, target the nearest naked POC or one value-area width.
    Orderflow confirmation: positive delta over the acceptance candles and relative volume >= relvol_min.

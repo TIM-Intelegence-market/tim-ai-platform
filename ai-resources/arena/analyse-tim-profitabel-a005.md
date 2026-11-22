@@ -38,7 +38,7 @@ Stand: Repository `HEAD` 2eafe92 vom 2026-10-02 (B1). Jede Tatsache über TIM tr
 | **Neue Methode gegen Validierung (neu)** | Die Validierung (2023-01-01 bis 2024-12-31) bestätigt Kandidaten vor dem Holdout (B158). Kalibrierung an ihr macht sie abhängig, das Register zählt das nicht (B58). R4 nutzte sie für andere Regeln (B2: 6 `failed_validation`). | Alles nur bis 2022-12-31 (B149); Validierung erstmals in A6, ohne Korrektur danach. Uzis Vorwissen vermerkt er im Änderungsprotokoll; ein BESTANDEN gilt dann schwächer (wie B106). |
 | **Neue Methode gegen Rastersperre** | Nach Beginn von R4 sind Änderungen an Split, Kriterien, Raster nur strenger erlaubt (B85). Neue Varianten sind ein „neuer Registereintrag“, der m erhöht (B58); Obergrenze 60 (B47). Ob das die Sperre trifft, sagt das Protokoll nicht. | Frage 11 an Uzi. Meine Lesart: Neue Varianten erhöhen m, machen die Schwelle strenger und ändern Split, Kriterien, Raster der 48 nicht. Andere Lesart: Test erst nach neuem Holdout, Verschiebung um Monate. Eintrag vor dem ersten Lauf committen, und vor diesem Lauf keine Zählung. |
 | **V2/V3 gegen Gültigkeit der Tests** | Jede Änderung an Strategie-, Risiko- oder Kostencode entwertet frühere Tests. Agenten dürfen nicht selbst releasen (B46). Ohne freigegebene Rezeptur blockiert V2 schon (B38). | Selbstreparatur nur in einer Allowlist (Betrieb, Daten, Infrastruktur). Strategie-, Risiko-, Protokollcode per Hash gesperrt; Fix dort endet in BLOCKED. |
-| **V1 gegen Testbarkeit** | Strukturereignisse sind nur Kontext, bis Ort und Orderflow dazukommen (B64). R4 testete BOS, REJECTION, FAILED_CONTINUATION ohne Ort und Orderflow, alle sechs negativ (B65): das widerlegt die Methode nicht, stützt sie nicht. Broncx-Beiträge verschieben Scores um ±0,08 (B66). | Nur Regeln ohne Chart-Augenmaß und ohne fremde Meinung zählen als V1. Broncx-Feed im Test und im Betrieb aus. |
+| **V1 gegen Testbarkeit** | Strukturereignisse sind nur Kontext, bis Ort und Orderflow dazukommen (B64). R4 testete BOS, REJECTION, FAILED_CONTINUATION ohne Ort und Orderflow, alle sechs negativ (B65): das widerlegt die Methode nicht, stützt sie nicht. Mentor-Beiträge verschieben Scores um ±0,08 (B66). | Nur Regeln ohne Chart-Augenmaß und ohne fremde Meinung zählen als V1. Mentor-Feed im Test und im Betrieb aus. |
 | **Zielbild (nicht still aufgelöst)** | Band 1: „TIM ist kein Trading-Bot“ (B67). Band 10: „nicht der Bau eines Trading-Bots“ (B68), „Trading ist eine Anwendung“ (B69). `docs/VISION_2030.md`: keine API-Schlüssel, Konten, echten Orders (B70). Uzis Vision ist ein autonomer Bot: echter Widerspruch. Vereinbar nur als „Bot als eine Anwendung“. | Uzi entscheidet. Gilt die Vision, brauchen versionierte Änderung: Band 1, Band 10, `docs/VISION_2030.md`, `AUTONOMY_LEVELS.md` (L5 „PROHIBITED“: B71; L5 zu L6 „Not planned“: B72), Roadmap Phase 10 (B73). Die Verfassung erlaubt Weiterentwicklung, verlangt aber erhaltene Grundprinzipien (B74); ob „kein Bot“ eines ist, ist Uzis Auslegung. Die Agentenverfassung sieht Live-Handel mit Freigabe schon vor (B46). |
 
 ### Der Maßstab: was K1 plus K5 allein bedeuten
@@ -216,7 +216,7 @@ Fünf Pakete, jedes reiner Code mit Tests, offline prüfbar und einzeln an einen
 3. Zielbild: Bot als Anwendung (Dokumente ändern) oder Forschungssystem ohne Bot?
 4. V5 praktisch: Gerät, Erreichbarkeit, Frist, Vertretung, Höchstzahl je Tag, Verhalten bei Abwesenheit.
 5. V2/V3: Darf TIM in der Allowlist selbst mergen oder nur vorschlagen? Wer vergibt Registerplätze?
-6. Broncx-Feed im Betrieb nutzen (dann nicht testbar) oder weglassen?
+6. Mentor-Feed im Betrieb nutzen (dann nicht testbar) oder weglassen?
 7. Kapitalrahmen und Verlustgrenze für Micro-Live: keine Empfehlung hier.
 8. Zählt „profitabel“ auch, wenn Halten im selben Zeitraum mehr bringt?
 9. V2-Blocker V2-B03 bis V2-B08 abschließen, ablösen oder offen lassen?
@@ -312,7 +312,7 @@ Datei-Belege nennen `pfad:zeile`, Befehle sind aus dem Repository-Wurzelverzeich
 64. **B64** (Quelle nicht öffentlich)
 65. **B65** Befehl: `python3 -c "import json;V=json.load(open('docs/research_lab/reports/r4_2026-09-29T2219Z.json'))['variants'];print({k:(round(v['train']['summary']['expectancy_r'],2),round(v['validation']['summary']['expectancy_r'],2)) for k,v in V.items() if k[0]=='T'})"`  
    Ausgabe: `{'T1-bos-15m': (-0.44, -0.61), 'T2-rejection-15m': (-0.45, -0.67), 'T3-failedcont-15m': (-0.61, -0.84), 'T1-bos-1h': (-0.25, -0.28), 'T2-rejection-1h': (-0.25, -0.33), 'T3-failedcont-1h': (-0.37, -0.46)}`
-66. **B66** Datei `docs/knowledge/BRONCX_DISCORD_FEED.md:11`: „Scores gewichten: Szenarien in seiner Richtung +0,08, Gegenszenarien −0,08“
+66. **B66** Datei `docs/knowledge/MENTOR_DISCORD_FEED.md:11`: „Scores gewichten: Szenarien in seiner Richtung +0,08, Gegenszenarien −0,08“
 67. **B67** Datei `TIM_CONSTITUTION.md:13-14`: „TIM ist kein Trading-Bot, keine Ansammlung einzelner KI-Agenten und kein / Experiment. TIM ist eine deterministische, reproduzierbare und wissenschaftlich“
 68. **B68** Datei `TIM_LONG_TERM_EVOLUTION_VISION_CONSTITUTION.md:30-31`: „vertrauenswürdige KI-Forschungsplattform entwickelt. Das Ziel ist nicht der Bau / eines Trading-Bots, sondern eines intelligenten Forschungssystems, das“
 69. **B69** Datei `TIM_LONG_TERM_EVOLUTION_VISION_CONSTITUTION.md:34`: „Trading ist eine Anwendung, nicht die Identität von TIM.“

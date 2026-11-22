@@ -1,10 +1,10 @@
-"""External guidance context: Broncx's current view next to TIM's own analysis.
+"""External guidance context: Mentor's current view next to TIM's own analysis.
 
-Broncx posts (forwarded from Discord, see ``src/knowledge/broncx_feed.py``) are
+Mentor posts (forwarded from Discord, see ``src/knowledge/mentor_feed.py``) are
 used as guidance: they name a bias, levels to check and an invalidation to
 watch, and TIM reports whether its own evidence agrees.
 
-Broncx's current view also weights TIM's analysis (``active_view``): scenarios in
+Mentor's current view also weights TIM's analysis (``active_view``): scenarios in
 his direction gain ``EXTERNAL_WEIGHT`` score, opposing ones lose it, and his
 levels near price become scenarios of their own. It never counts as a
 confirmation: a trade plan still needs a scenario CONFIRMED by TIM's own
@@ -21,8 +21,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Sequence
 
-from src.knowledge.broncx_chart_vision import guidance_for_post
-from src.knowledge.broncx_feed import BroncxGuidance, BroncxPost, parse_guidance
+from src.knowledge.mentor_chart_vision import guidance_for_post
+from src.knowledge.mentor_feed import MentorGuidance, MentorPost, parse_guidance
 from src.models.market_data import Candle
 
 from .domain import ConfirmationState, Direction, Scenario
@@ -43,16 +43,16 @@ DEFAULT_MAX_AGE = timedelta(hours=24)
 THREAD_WINDOW = timedelta(minutes=30)
 # "This might play out again" only renews a directional view from the last seven days.
 RENEW_WINDOW = timedelta(days=7)
-# Score shift for scenarios with (+) or against (-) Broncx's current direction.
+# Score shift for scenarios with (+) or against (-) Mentor's current direction.
 EXTERNAL_WEIGHT = Decimal("0.08")
 EXTERNAL_CONTEXT_RULE = (
-    "Broncx guidance is external opinion: his current direction shifts scenario scores by at most "
+    "Mentor guidance is external opinion: his current direction shifts scenario scores by at most "
     "EXTERNAL_WEIGHT and his levels near price become scenarios, but it never counts as confirmation, "
     "a trade plan still needs TIM's own confirmed scenario, and it is no longer used once older than "
     "max_age or invalidated."
 )
 _THRESHOLD = re.compile(r"\b(above|below)\b", re.IGNORECASE)
-# #broncx-feed carries BTC posts: a post without a symbol only applies to a BTC analysis.
+# #mentor-feed carries BTC posts: a post without a symbol only applies to a BTC analysis.
 FEED_DEFAULT_SYMBOL = "BTC"
 # Posts that end his current position ("stopped out", "closed", "took profits").
 _CLOSED = re.compile(r"\b(?:stopped\s+out|closed|clos(?:ing|e)\s+(?:it|this|here)|exited|took\s+(?:some\s+)?profits?|cut\s+(?:it|this))\b", re.IGNORECASE)
@@ -61,8 +61,8 @@ _QUOTE_SUFFIX = re.compile(r"[-_/]?(?:USDT|USDC|BUSD|USD|PERP)$")
 
 @dataclass(slots=True)
 class _Entry:
-    post: BroncxPost
-    guidance: BroncxGuidance
+    post: MentorPost
+    guidance: MentorGuidance
     symbol: str | None
     timeframe: str | None
     symbol_inherited: bool = False
@@ -76,7 +76,7 @@ class _Entry:
 
 @dataclass(frozen=True, slots=True)
 class ExternalView:
-    """Broncx's view as it may weight one analysis."""
+    """Mentor's view as it may weight one analysis."""
 
     bias: str | None  # LONG | SHORT | None (no usable direction)
     source_message_id: str | None
@@ -88,7 +88,7 @@ class ExternalView:
 
 
 def active_view(
-    posts: Sequence[BroncxPost],
+    posts: Sequence[MentorPost],
     *,
     observed_at: datetime,
     symbol: str,
@@ -117,7 +117,7 @@ def active_view(
 
 
 def apply_external_weight(scenarios: Sequence[Scenario], view: ExternalView) -> tuple[tuple[Scenario, ...], list[dict[str, Any]]]:
-    """Shift scores toward Broncx's direction; states, confirmations and invalidations stay TIM's own."""
+    """Shift scores toward Mentor's direction; states, confirmations and invalidations stay TIM's own."""
     if view.bias is None:
         return tuple(scenarios), []
     weighted, adjustments = [], []
@@ -133,7 +133,7 @@ def apply_external_weight(scenarios: Sequence[Scenario], view: ExternalView) -> 
 
 
 def build_external_context(
-    posts: Sequence[BroncxPost],
+    posts: Sequence[MentorPost],
     *,
     observed_at: datetime,
     symbol: str,
@@ -147,13 +147,13 @@ def build_external_context(
     known = _known(posts, observed_at)
     reference = _reference(candles, price_now)
     entries = _thread(known, reference, max_age)
-    # TIM's own directions: Broncx-level scenarios (X*) would make every view look aligned.
+    # TIM's own directions: Mentor-level scenarios (X*) would make every view look aligned.
     tim_directions = {
         item.direction
         for item in scenarios
         if item.state not in {ConfirmationState.INVALIDATED, ConfirmationState.EXPIRED}
         and item.direction != Direction.NEUTRAL
-        and item.trade_template.get("level_source") != "broncx"
+        and item.trade_template.get("level_source") != "mentor"
     }
 
     def status_of(entry: _Entry) -> str:
@@ -191,7 +191,7 @@ def build_external_context(
         rendered.append(item)
 
     return {
-        "source": "broncx_discord",
+        "source": "mentor_discord",
         "rule": EXTERNAL_CONTEXT_RULE,
         "influences_scores": bool(influence and (influence["score_adjustments"] or influence["level_scenarios"])),
         "influence": influence,
@@ -203,7 +203,7 @@ def build_external_context(
     }
 
 
-def _known(posts: Sequence[BroncxPost], observed_at: datetime) -> list[BroncxPost]:
+def _known(posts: Sequence[MentorPost], observed_at: datetime) -> list[MentorPost]:
     return sorted((post for post in posts if post.known_at <= observed_at), key=lambda item: (item.posted_at, item.message_id))
 
 
@@ -229,7 +229,7 @@ def _status(entry: _Entry, symbol: str, observed_at: datetime, max_age: timedelt
     return "ACTIVE" if observed_at - entry.effective_at <= max_age else "STALE"
 
 
-def _thread(posts: Sequence[BroncxPost], reference: Decimal | None, max_age: timedelta = DEFAULT_MAX_AGE) -> list[_Entry]:
+def _thread(posts: Sequence[MentorPost], reference: Decimal | None, max_age: timedelta = DEFAULT_MAX_AGE) -> list[_Entry]:
     entries: list[_Entry] = []
     for post in posts:
         guidance = guidance_for_post(post, reference)

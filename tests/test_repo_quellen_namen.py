@@ -1,8 +1,8 @@
-"""Privacy guard: no person or channel name of the signal group may come back into the repository.
+"""Privacy guard: no name of the signal group, its people or its channels may come back into the repository.
 
 The names themselves must not stand here either, so the guard only knows their SHA-256 digests
 (lower case, words joined without separators). Real names live in a local file outside the
-repository, see ``src/knowledge/goathub_channels.py``.
+repository, see ``src/knowledge/signalgruppe_channels.py``.
 """
 
 from __future__ import annotations
@@ -14,6 +14,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FORBIDDEN = {
+    "4c91e4dfa45664b969fc99e8e270941373070a5249f56d922876e1b9d5ada1f6",
+    "ae15cd3265e97a36caaf240a319b33b4ee190d13fc0a87f775761fd001c37765",
     "e3d05cf7731b9d87fba37b33579821ff3f028c4ecb97427e570927012309b334",
     "4da2c7a3d5502f01098d2b0b1be1d99fcbedb1a7d14675fb0f49118ab2ac98f4",
     "93655726a2b64c1f74b1149bd5558e450a84adcf8564f1c563b6dcd2c628e6d5",

@@ -539,7 +539,7 @@ def check_naked(raw: Raw, ours: dict[str, dict[str, Any]], tpo: dict[str, dict[s
                f"Chart {'zeigt ' + fmt(d['price']) if d else 'zeigt keinen'} / eigen {fmt(low + p['step'] / 2) if not touched else 'berührt'}")
     if "2026-10-22" in ours:
         p = ours["2026-10-22"]
-        report("naked POC", "Fall Beirat 29.10.: vPOC 22.10. (Broncx 82 800)", None,
+        report("naked POC", "Fall Beirat 29.10.: vPOC 22.10. (Mentor 82 800)", None,
                f"eigen POC-Mitte {fmt(p['poc_mid'])}, im Chart {'ja' if '2026-10-22' in shown_v else 'nein'}" + ("" if "2026-10-22" in expected_v else " (inzwischen berührt)"))
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Broncx feed bot: read forwarded Broncx posts from your own Discord channel.
+"""Mentor feed bot: read forwarded Mentor posts from your own Discord channel.
 
 Subcommands:
   setup   ask for channel id, your Discord user id and the bot secret (hidden
@@ -12,7 +12,7 @@ Subcommands:
 
 'once' and 'run' also download chart images of new posts; 'run' then reads them.
 
-Setup guide: docs/knowledge/BRONCX_DISCORD_FEED.md
+Setup guide: docs/knowledge/MENTOR_DISCORD_FEED.md
 """
 
 from __future__ import annotations
@@ -31,9 +31,9 @@ from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.knowledge.broncx_chart_vision import ChartImageStore, OllamaVision, VisionError, guidance_for_post  # noqa: E402
-from src.knowledge.broncx_feed import BroncxFeedStore  # noqa: E402
-from src.sources.broncx_discord import (  # noqa: E402
+from src.knowledge.mentor_chart_vision import ChartImageStore, OllamaVision, VisionError, guidance_for_post  # noqa: E402
+from src.knowledge.mentor_feed import MentorFeedStore  # noqa: E402
+from src.sources.mentor_discord import (  # noqa: E402
     DiscordFeedConfig,
     DiscordFeedError,
     DiscordFeedPoller,
@@ -58,7 +58,7 @@ def write_private(path: Path, value: str) -> None:
 
 
 def setup(args: argparse.Namespace, ask: Callable[[str], str], ask_hidden: Callable[[str], str]) -> int:
-    channel = ask("Channel ID of your #broncx-feed channel: ").strip()
+    channel = ask("Channel ID of your #mentor-feed channel: ").strip()
     forwarders = [item.strip() for item in ask("Your Discord user ID (several: comma-separated): ").split(",") if item.strip()]
     config = DiscordFeedConfig(channel, frozenset(forwarders))
     secret = ask_hidden("Bot secret from the Developer Portal (input hidden): ").strip()
@@ -68,12 +68,12 @@ def setup(args: argparse.Namespace, ask: Callable[[str], str], ask_hidden: Calla
     write_private(args.config, json.dumps(config.to_dict(), indent=2) + "\n")
     write_private(args.secret_file, secret)
     print(f"STORED config={args.config} secret_file={args.secret_file} mode=0600 length={len(secret)}")
-    print("Next: python scripts/broncx_discord_bot.py once")
+    print("Next: python scripts/mentor_discord_bot.py once")
     return 0
 
 
 def _poller(args: argparse.Namespace) -> DiscordFeedPoller:
-    return DiscordFeedPoller(load_bot_secret(args.secret_file), DiscordFeedConfig.load(args.config), BroncxFeedStore(args.feed_dir))
+    return DiscordFeedPoller(load_bot_secret(args.secret_file), DiscordFeedConfig.load(args.config), MentorFeedStore(args.feed_dir))
 
 
 def _report(result: PollResult) -> None:
@@ -87,7 +87,7 @@ def _report(result: PollResult) -> None:
 
 def read_charts(args: argparse.Namespace, limit: int) -> int:
     """Read pending chart images; returns how many were read. Model errors are reported, not raised."""
-    store = BroncxFeedStore(args.feed_dir)
+    store = MentorFeedStore(args.feed_dir)
     try:
         readings = ChartImageStore(store.root).read_pending(store.load(), OllamaVision(args.vision_model), limit=limit)
     except VisionError as exc:
@@ -101,7 +101,7 @@ def read_charts(args: argparse.Namespace, limit: int) -> int:
 
 
 def show(args: argparse.Namespace) -> int:
-    store = BroncxFeedStore(args.feed_dir)
+    store = MentorFeedStore(args.feed_dir)
     posts = store.load()
     if not posts:
         print(f"no posts in {args.feed_dir}")
@@ -133,15 +133,15 @@ def main(argv: list[str] | None = None, ask: Callable[[str], str] = input, ask_h
     parser.add_argument("command", choices=["setup", "once", "run", "show", "fetch-images", "read-charts"])
     parser.add_argument("--config", type=Path, default=default_config_path())
     parser.add_argument("--secret-file", type=Path, default=default_secret_path())
-    parser.add_argument("--feed-dir", type=Path, default=None, help="default: data/broncx_feed or $TIM_BRONCX_FEED_DIR")
+    parser.add_argument("--feed-dir", type=Path, default=None, help="default: data/mentor_feed or $TIM_MENTOR_FEED_DIR")
     parser.add_argument("--interval", type=float, default=60.0, help="seconds between polls for 'run' (minimum 15)")
     parser.add_argument("--limit", type=int, default=20, help="posts shown by 'show'")
     parser.add_argument("--price", type=Decimal, default=None, help="current price for 'show' (scales shorthand like 82.6 and checks chart levels)")
-    parser.add_argument("--vision-model", default=None, help="Ollama vision model (default: $TIM_BRONCX_VISION_MODEL or qwen3.5:9b)")
+    parser.add_argument("--vision-model", default=None, help="Ollama vision model (default: $TIM_MENTOR_VISION_MODEL or qwen3.5:9b)")
     parser.add_argument("--no-charts", action="store_true", help="'run' without reading chart images")
     args = parser.parse_args(argv)
     if args.feed_dir is None:
-        args.feed_dir = BroncxFeedStore().root
+        args.feed_dir = MentorFeedStore().root
 
     try:
         if args.command == "setup":

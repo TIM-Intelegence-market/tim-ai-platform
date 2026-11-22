@@ -52,7 +52,7 @@ Holdout-Zugriff, gebrochene Hash-Kette) fällt TIM selbst auf Stufe 0 zurück un
 
 Ideen stehen in `data/research/IDEEN.jsonl` (seit F6 nur auf dem Mac in `~/TIM-live`, nicht versioniert; Anzeige folgt mit F9): eine Zeile je Idee oder Statuswechsel, Hash-Kette, nie
 überschreiben. Quellen: Uzi, Plan-Journal (`journal_review`), wöchentliche Reflexion, Lehren aus dem Logbuch,
-GoatHub/Broncx (nur als Frage), KI-Runde. Dieselbe Hypothese kommt nicht zweimal hinein; derselbe Lernvorschlag
+Signalgruppe/Mentor (nur als Frage), KI-Runde. Dieselbe Hypothese kommt nicht zweimal hinein; derselbe Lernvorschlag
 wird nur einmal importiert.
 
 Die Prüfung entscheidet in dieser Reihenfolge, ohne Daten zu laden:

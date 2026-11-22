@@ -1,6 +1,6 @@
-"""Broncx Discord feed: parsing, storage, external guidance context and the read-only poller.
+"""Mentor Discord feed: parsing, storage, external guidance context and the read-only poller.
 
-The fixture posts are the Broncx messages from the TIM owner's screenshot of
+The fixture posts are the Mentor messages from the TIM owner's screenshot of
 2026-09-29 (futures channel of the group).
 """
 
@@ -15,14 +15,14 @@ from pathlib import Path
 
 import pytest
 
-from src.knowledge.broncx_feed import BroncxFeedStore, BroncxPost, parse_guidance
+from src.knowledge.mentor_feed import MentorFeedStore, MentorPost, parse_guidance
 from src.models.market_data import Candle
 from src.orderflow_scenario.domain import MarketContext
 from src.orderflow_scenario.engines.pipeline import Pipeline, PipelineInputs
 from src.orderflow_scenario.external_context import EXTERNAL_WEIGHT, active_view, build_external_context
 from src.orderflow_scenario.report import report_is_safe
 from src.orderflow_scenario.schema_validation import validate_analysis
-from src.sources.broncx_discord import DiscordFeedConfig, DiscordFeedError, DiscordFeedPoller, load_bot_secret, message_to_post
+from src.sources.mentor_discord import DiscordFeedConfig, DiscordFeedError, DiscordFeedPoller, load_bot_secret, message_to_post
 from config.secrets import SecretValue
 
 NOW = datetime(2026, 9, 29, 12, 0, tzinfo=timezone.utc)
@@ -32,11 +32,11 @@ OWNER = "223456789012345678"
 STRANGER = "323456789012345678"
 
 
-def post(message_id: str, content: str, posted_at: datetime) -> BroncxPost:
-    return BroncxPost(message_id=message_id, posted_at=posted_at, content=content, received_at=NOW)
+def post(message_id: str, content: str, posted_at: datetime) -> MentorPost:
+    return MentorPost(message_id=message_id, posted_at=posted_at, content=content, received_at=NOW)
 
 
-def screenshot_posts() -> list[BroncxPost]:
+def screenshot_posts() -> list[MentorPost]:
     yesterday = datetime(2026, 9, 28, 19, 37, tzinfo=timezone.utc)
     return [
         post("1001", "Unless we flip poc for higher shorts are in on the rejection back to low and maybe leave a runner for break towards 80k", yesterday - timedelta(days=2)),
@@ -102,7 +102,7 @@ def test_reversed_wording_amounts_and_prices_are_not_misread() -> None:
 # --- storage -----------------------------------------------------------------------------------
 
 def test_store_is_idempotent_and_survives_a_torn_line(tmp_path: Path) -> None:
-    store = BroncxFeedStore(tmp_path)
+    store = MentorFeedStore(tmp_path)
     first, second = screenshot_posts()[:2]
     assert store.append(first) is True
     assert store.append(first) is False
@@ -116,7 +116,7 @@ def test_store_is_idempotent_and_survives_a_torn_line(tmp_path: Path) -> None:
 
 
 def test_state_tracks_last_message_id(tmp_path: Path) -> None:
-    store = BroncxFeedStore(tmp_path)
+    store = MentorFeedStore(tmp_path)
     assert store.last_message_id() is None
     store.set_last_message_id("999")
     assert store.last_message_id() == "999"
@@ -144,7 +144,7 @@ def test_posts_after_observation_time_are_never_used() -> None:
 
 
 def test_posts_received_after_observation_time_are_not_used_in_replays() -> None:
-    late = BroncxPost("1", NOW - timedelta(hours=1), "shorts are in", NOW + timedelta(hours=5))
+    late = MentorPost("1", NOW - timedelta(hours=1), "shorts are in", NOW + timedelta(hours=5))
     context = build_external_context([late], observed_at=NOW, symbol="BTCUSDT", candles=[], price_now=PRICE, scenarios=())
     assert context["posts_excluded_future"] == 1 and context["entries"] == []
 
@@ -201,7 +201,7 @@ def scores(analysis) -> dict[str, Decimal]:
     return {item.scenario_id: item.score for item in analysis.scenarios}
 
 
-def test_broncx_view_weights_scores_but_never_confirms_or_decides() -> None:
+def test_mentor_view_weights_scores_but_never_confirms_or_decides() -> None:
     baseline = Pipeline().run(pipeline_inputs())
     guided = Pipeline().run(pipeline_inputs(external_posts=tuple(screenshot_posts())))
     # His renewed SHORT view pushes TIM's LONG scenario down by exactly the external weight.
@@ -256,9 +256,9 @@ def test_triggered_invalidation_removes_the_view() -> None:
     assert view.bias == "LONG" and view.levels == ()  # 83,000 is his stop, not an entry level
 
 
-def test_broncx_level_near_price_becomes_a_scenario_needing_tim_confirmation() -> None:
+def test_mentor_level_near_price_becomes_a_scenario_needing_tim_confirmation() -> None:
     guided = Pipeline().run(pipeline_inputs(external_posts=(post("1", "btc short from 83,800", NOW - timedelta(hours=1)),)))
-    level_scenarios = [item for item in guided.scenarios if item.trade_template.get("level_source") == "broncx"]
+    level_scenarios = [item for item in guided.scenarios if item.trade_template.get("level_source") == "mentor"]
     assert [(item.scenario_id, item.direction.value, item.scenario_type.value, item.trigger_level) for item in level_scenarios] == [
         ("X-SHORT-83800", "SHORT", "REJECTION_FAILED_BREAKOUT", Decimal("83800"))
     ]
@@ -322,33 +322,33 @@ def test_no_scenarios_means_no_influence_is_claimed() -> None:
     assert engines["external_context"]["influences_scores"] is False
 
 
-def test_report_shows_broncx_as_external_guidance() -> None:
+def test_report_shows_mentor_as_external_guidance() -> None:
     analysis = Pipeline().run(pipeline_inputs(external_posts=tuple(screenshot_posts())))
     text = analysis.report_text
-    assert "BRONCX-LEITFADEN (extern, gewichtet, zählt nicht als Bestätigung):" in text
-    assert "Gewichtung nach Broncx-Richtung SHORT:" in text
+    assert "MENTOR-LEITFADEN (extern, gewichtet, zählt nicht als Bestätigung):" in text
+    assert "Gewichtung nach Mentor-Richtung SHORT:" in text
     assert "Szenario B (LONG): Score" in text
-    assert "Invalidierung laut Broncx: we flip poc for higher -> NOT_EVALUATED." in text
-    assert "Von Broncx erneut bestätigt." in text
+    assert "Invalidierung laut Mentor: we flip poc for higher -> NOT_EVALUATED." in text
+    assert "Von Mentor erneut bestätigt." in text
     assert report_is_safe(text)
-    assert text.index("BRONCX-LEITFADEN") < text.index("ENTSCHEIDUNG:")
+    assert text.index("MENTOR-LEITFADEN") < text.index("ENTSCHEIDUNG:")
 
 
 def test_cli_reads_the_feed_directory(tmp_path: Path, capsys, monkeypatch) -> None:
     from src.orderflow_scenario import cli
 
-    store = BroncxFeedStore(tmp_path / "feed")
+    store = MentorFeedStore(tmp_path / "feed")
     for item in screenshot_posts():
         store.append(item)
     source = tmp_path / "input.json"
     source.write_text("{}", encoding="utf-8")
     monkeypatch.setattr(cli, "_pipeline_inputs", lambda adapter, data: pipeline_inputs())
-    assert cli.main(["--input", str(source), "--broncx-feed", str(store.root)]) == 0
+    assert cli.main(["--input", str(source), "--mentor-feed", str(store.root)]) == 0
     output = json.loads(capsys.readouterr().out)
     context = next(item["result"] for item in output["audit"]["engines"] if item["engine"] == "external_context")
     assert context["posts_known"] == 4 and context["max_age_hours"] == 24.0
-    assert cli.main(["--input", str(source), "--broncx-feed", str(store.root), "--broncx-max-age-hours", "0"]) == 2
-    assert cli.main(["--input", str(source), "--broncx-feed", str(tmp_path / "typo")]) == 2
+    assert cli.main(["--input", str(source), "--mentor-feed", str(store.root), "--mentor-max-age-hours", "0"]) == 2
+    assert cli.main(["--input", str(source), "--mentor-feed", str(tmp_path / "typo")]) == 2
 
 
 # --- Discord poller ----------------------------------------------------------------------------
@@ -374,7 +374,7 @@ class FakeDiscord:
 
 
 def poller(tmp_path: Path, fake: FakeDiscord) -> DiscordFeedPoller:
-    return DiscordFeedPoller(SecretValue("bot-secret-value"), DiscordFeedConfig(CHANNEL, frozenset({OWNER})), BroncxFeedStore(tmp_path), http_get=fake, clock=lambda: NOW, sleep=lambda _: None)
+    return DiscordFeedPoller(SecretValue("bot-secret-value"), DiscordFeedConfig(CHANNEL, frozenset({OWNER})), MentorFeedStore(tmp_path), http_get=fake, clock=lambda: NOW, sleep=lambda _: None)
 
 
 def test_forward_keeps_original_text_time_and_id() -> None:
@@ -387,7 +387,7 @@ def test_forward_keeps_original_text_time_and_id() -> None:
 def test_poller_accepts_only_the_owner_and_advances_the_cursor(tmp_path: Path) -> None:
     messages = [
         forwarded("500000000000000003", OWNER, "shorts are in", "2026-09-29T09:04:00+00:00", "777"),
-        {"id": "500000000000000002", "timestamp": "2026-09-29T10:00:00+00:00", "content": "fake broncx: longs!", "author": {"id": STRANGER}},
+        {"id": "500000000000000002", "timestamp": "2026-09-29T10:00:00+00:00", "content": "fake mentor: longs!", "author": {"id": STRANGER}},
         {"id": "500000000000000004", "timestamp": "2026-09-29T10:01:00+00:00", "content": "bot noise", "author": {"id": OWNER, "bot": True}},
         forwarded("500000000000000005", OWNER, "shorts are in", "2026-09-29T09:04:00+00:00", "777"),
     ]
@@ -399,7 +399,7 @@ def test_poller_accepts_only_the_owner_and_advances_the_cursor(tmp_path: Path) -
     assert fake.headers[0]["Authorization"] == "Bot bot-secret-value"
     feed.poll_once()
     assert fake.urls[1].endswith("messages?after=500000000000000005&limit=100")
-    assert [item.content for item in BroncxFeedStore(tmp_path).load()] == ["shorts are in"]
+    assert [item.content for item in MentorFeedStore(tmp_path).load()] == ["shorts are in"]
 
 
 def test_malformed_message_is_skipped_and_the_cursor_still_advances(tmp_path: Path) -> None:
@@ -435,7 +435,7 @@ def test_config_and_secret_file_are_validated(tmp_path: Path) -> None:
 def test_setup_writes_private_files_and_never_prints_the_secret(tmp_path: Path, capsys) -> None:
     import importlib.util
 
-    spec = importlib.util.spec_from_file_location("broncx_discord_bot", Path(__file__).resolve().parents[1] / "scripts/broncx_discord_bot.py")
+    spec = importlib.util.spec_from_file_location("mentor_discord_bot", Path(__file__).resolve().parents[1] / "scripts/mentor_discord_bot.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     answers = iter([CHANNEL, OWNER])

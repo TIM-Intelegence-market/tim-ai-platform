@@ -1,13 +1,13 @@
-"""Broncx Discord feed: stored posts and a heuristic guidance parser.
+"""Mentor Discord feed: stored posts and a heuristic guidance parser.
 
-Posts arrive from the TIM owner's own Discord server, where Broncx messages are
+Posts arrive from the TIM owner's own Discord server, where Mentor messages are
 forwarded (one click on "Forward") into a dedicated channel and picked up by
-``src/sources/broncx_discord.py``. This module only stores and parses them.
+``src/sources/mentor_discord.py``. This module only stores and parses them.
 
 Status: external opinion, observation-only. A parsed post is guidance for TIM
 (a hypothesis, levels to check, an invalidation to watch); it is never market
 evidence, never a confirmation and never an instruction. The raw text is kept
-verbatim so every parsed field can be checked against what Broncx wrote.
+verbatim so every parsed field can be checked against what Mentor wrote.
 """
 
 from __future__ import annotations
@@ -22,10 +22,10 @@ from pathlib import Path
 from typing import Any, Iterable
 
 __all__ = [
-    "BroncxFeedStore",
-    "BroncxGuidance",
-    "BroncxLevel",
-    "BroncxPost",
+    "MentorFeedStore",
+    "MentorGuidance",
+    "MentorLevel",
+    "MentorPost",
     "default_feed_dir",
     "parse_guidance",
 ]
@@ -79,14 +79,14 @@ _REAFFIRM = re.compile(r"\b(play(?:s|ing)? out again|still valid|same (?:idea|pl
 
 def default_feed_dir() -> Path:
     """Local, untracked feed directory (``data/`` is git-ignored)."""
-    override = os.environ.get("TIM_BRONCX_FEED_DIR")
+    override = os.environ.get("TIM_MENTOR_FEED_DIR")
     if override:
         return Path(override).expanduser()
-    return Path(__file__).resolve().parents[2] / "data" / "broncx_feed"
+    return Path(__file__).resolve().parents[2] / "data" / "mentor_feed"
 
 
 @dataclass(frozen=True, slots=True)
-class BroncxPost:
+class MentorPost:
     message_id: str
     posted_at: datetime
     content: str
@@ -95,7 +95,7 @@ class BroncxPost:
     attachments: tuple[str, ...] = ()
     forwarded_by: str = ""
     note: str = ""
-    # Cached chart readings (``broncx_chart_vision.ChartReading``) attached by ``BroncxFeedStore.load``;
+    # Cached chart readings (``mentor_chart_vision.ChartReading``) attached by ``MentorFeedStore.load``;
     # never written to posts.jsonl.
     chart_readings: tuple[Any, ...] = field(default=(), compare=False)
 
@@ -121,7 +121,7 @@ class BroncxPost:
         return payload
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "BroncxPost":
+    def from_dict(cls, payload: dict[str, Any]) -> "MentorPost":
         return cls(
             message_id=str(payload["message_id"]),
             posted_at=datetime.fromisoformat(payload["posted_at"]),
@@ -134,7 +134,7 @@ class BroncxPost:
         )
 
 
-class BroncxFeedStore:
+class MentorFeedStore:
     """Append-only JSONL store, idempotent by Discord message id."""
 
     def __init__(self, root: Path | None = None) -> None:
@@ -142,22 +142,22 @@ class BroncxFeedStore:
         self.posts_path = self.root / "posts.jsonl"
         self.state_path = self.root / "state.json"
 
-    def load(self) -> list[BroncxPost]:
+    def load(self) -> list[MentorPost]:
         if not self.posts_path.exists():
             return []
-        posts: dict[str, BroncxPost] = {}
+        posts: dict[str, MentorPost] = {}
         for line in self.posts_path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             try:
-                post = BroncxPost.from_dict(json.loads(line))
+                post = MentorPost.from_dict(json.loads(line))
             except (ValueError, KeyError, TypeError):
                 continue  # a torn last line after a crash must not hide the other posts
             posts.setdefault(post.message_id, post)
         return sorted(self._with_chart_readings(posts.values()), key=lambda item: (item.posted_at, item.message_id))
 
-    def _with_chart_readings(self, posts: Iterable[BroncxPost]) -> list[BroncxPost]:
-        from .broncx_chart_vision import ChartImageStore  # local import: the vision module builds on this one
+    def _with_chart_readings(self, posts: Iterable[MentorPost]) -> list[MentorPost]:
+        from .mentor_chart_vision import ChartImageStore  # local import: the vision module builds on this one
 
         images = ChartImageStore(self.root)
         readings = images.readings()
@@ -165,7 +165,7 @@ class BroncxFeedStore:
             return list(posts)
         return [replace(post, chart_readings=tuple(images.readings_for(post.message_id, readings))) for post in posts]
 
-    def append(self, post: BroncxPost) -> bool:
+    def append(self, post: MentorPost) -> bool:
         if any(existing.message_id == post.message_id for existing in self.load()):
             return False
         self.root.mkdir(parents=True, exist_ok=True)
@@ -189,13 +189,13 @@ class BroncxFeedStore:
         temporary.write_text(json.dumps({"last_message_id": message_id}), encoding="utf-8")
         os.replace(temporary, self.state_path)
 
-    def posts_until(self, observed_at: datetime) -> list[BroncxPost]:
+    def posts_until(self, observed_at: datetime) -> list[MentorPost]:
         """Posts TIM already had at ``observed_at`` (no lookahead in replays)."""
         return [post for post in self.load() if post.known_at <= observed_at]
 
 
 @dataclass(frozen=True, slots=True)
-class BroncxLevel:
+class MentorLevel:
     raw: str
     value: Decimal
     role: str  # TARGET | STOP | LEVEL, and ENTRY for a position tool read from a chart
@@ -208,11 +208,11 @@ class BroncxLevel:
 
 
 @dataclass(frozen=True, slots=True)
-class BroncxGuidance:
+class MentorGuidance:
     bias: str  # SHORT | LONG | MIXED | NONE
     symbol: str | None
     timeframe: str | None
-    levels: tuple[BroncxLevel, ...]
+    levels: tuple[MentorLevel, ...]
     invalidation: tuple[str, ...]
     conditions: tuple[str, ...]
     references: tuple[str, ...]
@@ -241,8 +241,8 @@ class BroncxGuidance:
         }
 
 
-def parse_guidance(text: str, reference_price: Decimal | None = None) -> BroncxGuidance:
-    """Best-effort structure from a Broncx post. Unrecognised text stays raw, never guessed."""
+def parse_guidance(text: str, reference_price: Decimal | None = None) -> MentorGuidance:
+    """Best-effort structure from a Mentor post. Unrecognised text stays raw, never guessed."""
     notes: list[str] = []
     withdrawn = False
     directional = _REVERSED.sub(" ", text)
@@ -274,7 +274,7 @@ def parse_guidance(text: str, reference_price: Decimal | None = None) -> BroncxG
 
     invalidation_matches = [item for pattern in (_UNLESS, _INVALID) for item in pattern.finditer(text)]
     stop_spans = [item.span(1) for item in invalidation_matches]
-    levels: list[BroncxLevel] = []
+    levels: list[MentorLevel] = []
     for number in _NUMBER.finditer(text):
         if timeframe_span and number.span(1) == timeframe_span:
             continue
@@ -297,7 +297,7 @@ def parse_guidance(text: str, reference_price: Decimal | None = None) -> BroncxG
         quality = "PARTIAL"
     else:
         quality = "UNSTRUCTURED"
-    return BroncxGuidance(bias, symbol, timeframe, tuple(levels), invalidation, conditions, references, reaffirms, quality, tuple(notes),
+    return MentorGuidance(bias, symbol, timeframe, tuple(levels), invalidation, conditions, references, reaffirms, quality, tuple(notes),
                           direction_withdrawn=withdrawn)
 
 
@@ -306,7 +306,7 @@ def _is_small_decimal_price(number: re.Match[str], value: Decimal) -> bool:
     return value < 1 and "." in number.group(1)
 
 
-def _level(number: re.Match[str], text: str, reference_price: Decimal | None, *, stop: bool = False) -> BroncxLevel | None:
+def _level(number: re.Match[str], text: str, reference_price: Decimal | None, *, stop: bool = False) -> MentorLevel | None:
     raw = number.group(0).strip()
     try:
         value = Decimal(number.group(1).replace(",", ""))
@@ -335,8 +335,8 @@ def _level(number: re.Match[str], text: str, reference_price: Decimal | None, *,
         value = value.quantize(Decimal(1))
     before = text[: number.start()]
     role = "STOP" if stop or _STOP_CONTEXT.search(before) else "TARGET" if _TARGET_CONTEXT.search(before) else "LEVEL"
-    return BroncxLevel(raw, value, role, scaled, ambiguous)
+    return MentorLevel(raw, value, role, scaled, ambiguous)
 
 
-def iter_recent(posts: Iterable[BroncxPost], observed_at: datetime, max_age: timedelta) -> list[BroncxPost]:
+def iter_recent(posts: Iterable[MentorPost], observed_at: datetime, max_age: timedelta) -> list[MentorPost]:
     return [post for post in posts if timedelta(0) <= observed_at - post.posted_at <= max_age]

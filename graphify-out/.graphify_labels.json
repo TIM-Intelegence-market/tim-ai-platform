@@ -387,7 +387,7 @@
   "385": "expected_graph_hash",
   "386": "graph_path",
   "387": "request_timeout_seconds",
-  "388": "BroncxRules",
+  "388": "MentorRules",
   "389": "startup_timeout_seconds",
   "390": "working_directory",
   "391": "ResearchAuditEngine",

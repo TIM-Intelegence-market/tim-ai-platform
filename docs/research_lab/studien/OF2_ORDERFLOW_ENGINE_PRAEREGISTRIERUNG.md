@@ -1,11 +1,11 @@
-# OF2: Orderflow-Engine nach Broncx-Modellen, jede Session handelbar (Präregistrierung 1.0)
+# OF2: Orderflow-Engine nach Mentor-Modellen, jede Session handelbar (Präregistrierung 1.0)
 
 | Feld | Wert |
 |---|---|
 | Studie | OF2 |
 | Version | **1.0, eingefroren am 10.11.2026** nach der Kalibrierung auf dem Training (Abschnitt 5.3, nur Häufigkeiten), auf Uzis Wort „of2 backtest starten“; `Config` 1.0.0, Regelstand = Commit des Einfrierens. P0 auf mehr als 40 Tagen: Relativvolumen auf 1 096 Trainingstagen gemessen (unten); R29/R30 und IB-Bänder bleiben Entscheidungen ohne Daten. Davor 0.3 (10.11.2026: Bitunix-Kosten, Hebel-Bericht, Kalibrierregel; Uzi „s19 und of2 backtest starten“ 11:17 Uhr. 0.2 vom 08.11.2026; 0.1 vom 07.11., Uzi „go“ 18:24 Ortszeit für P0 und P1; P1b Footprint-Modelle auf Uzis Hinweis 08.11. 01:09). Freigabe 1.0 erst nach Abschluss der Kalibrierung P0 auf mehr als 40 Tagen, der Footprint-Kalibrierung auf dem Trainingsabschnitt und Uzis Wort; bis dahin kein Lauf auf Training oder Validierung |
 | Auftrag | Uzi 07.11.2026: „ich brauch für TIM eine neue und überarbeitete Orderflow-Engine, mir gefällt nicht wie er tradet, ein Orderflow-Trader kann theoretisch jede Session traden“ |
-| Grundlagen | Broncx-Bootcamp (193 S., vollständig gelesen 07.11.), MEGA-Bibliothek „Trading University“ (147 Dateien, Zusammenfassung `wissen/mega-orderflow-2026-11-07.md` im privaten Repo, 74 Regeln R01–R74), Orderflow-Kontrolle 06.11., S17 |
+| Grundlagen | Mentor-Bootcamp (193 S., vollständig gelesen 07.11.), MEGA-Bibliothek „Trading University“ (147 Dateien, Zusammenfassung `wissen/mega-orderflow-2026-11-07.md` im privaten Repo, 74 Regeln R01–R74), Orderflow-Kontrolle 06.11., S17 |
 | Code | `src/research_lab/of2/` (Config, Kerzen, Level, Footprint, Modelle, Tracker, Engine, Vergleiche, CLI); Tests `tests/test_research_lab_of2.py` |
 | Spezifikation | `Config().digest()` (SHA-256 über alle Parameter) steht in jeder Ergebnisdatei; Code-Stand wird vor dem ersten Datenzugriff als Commit festgehalten |
 | Protokoll | `../PROTOKOLL.md` Version 1.3 |
@@ -85,7 +85,7 @@ intakten Trend nicht faden). M3 und M4 ohne Regime-Sperre.
 
 ### 5.3 Modelle
 
-| | M1 Failed Auction (80-%-Regel) | M2 Akzeptanz + Retest (Broncx BTC-Modell) | M3 SFP / gefangene Trader am HTF-Ort |
+| | M1 Failed Auction (80-%-Regel) | M2 Akzeptanz + Retest (Mentor BTC-Modell) | M3 SFP / gefangene Trader am HTF-Ort |
 |---|---|---|---|
 | Ort | Vortages-VAL (long) / VAH (short) | Vortages-VAH (long) / VAL (short) | VAL, VAH, POC, Tag-Hoch/-Tief, vorige Session Hoch/Tief, nPOCs |
 | Auslöser | ein 30m-Schluss außerhalb der VA, danach **zwei** 30m-Schlüsse innen, der davor außen | **zwei** aufeinanderfolgende 30m-Schlüsse jenseits der Kante, der davor nicht (Akzeptanz-Kriterium d) | 15m-Kerze sticht durch das Level und schließt innen; Docht ≥ 50 % der Range, Körper ≤ 30 %; Vorkerze hatte das Level nicht berührt |

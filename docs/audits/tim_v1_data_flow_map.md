@@ -6,7 +6,7 @@
 2. `agg_trades` persistence occurs first. Exact replay duplicates return `False`; conflicting payloads for an existing ID raise.
 3. Only a newly persisted trade reaches candle aggregation.
 4. Closed UTC buckets are upserted into `candles`.
-5. Closed candle history drives deterministic BOS/Broncx observations.
+5. Closed candle history drives deterministic BOS/Mentor observations.
 6. Observation input hashes are checked against persisted, closed candles before atomic observation/case persistence.
 7. Consecutive 1-minute aggTrade windows produce Decimal-based orderflow metrics.
 8. Fixed two-clause rules produce orderflow observations and research cases atomically.

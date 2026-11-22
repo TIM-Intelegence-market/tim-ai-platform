@@ -1,4 +1,4 @@
-# Journal-Prüfung 1 – Score, Grade, GARCH, Funding/Broncx, Sichern, Kosten (12.11.2026)
+# Journal-Prüfung 1 – Score, Grade, GARCH, Funding/Mentor, Sichern, Kosten (12.11.2026)
 
 Ich habe nur gelesen. Daten: `~/TIM-live/data/journal/tim_plan_journal*.json`, Stand 12.11. gegen 12:15 UTC. Die Skripte liegen im Scratchpad (`journal_audit.py`). Die Ergebnisse sind **nur Hinweise**: 4 Kalenderwochen, Papier, wenige Fälle.
 
@@ -29,11 +29,11 @@ Ich habe nur gelesen. Daten: `~/TIM-live/data/journal/tim_plan_journal*.json`, S
 ## A Score gegen Ergebnis: nicht prüfbar
 - **Der Score streut nicht.** 60 Pläne haben 0,2363, 16 Pläne (15m) 0,2295, die 8 Level-Pläne haben keinen Score.
 - Alle Pläne liegen im untersten Bucket (< 0,4). Die Zuordnung „höherer Score = bessere Trefferquote“ (`SCORE_BUCKETS`) kann darum nie greifen.
-- **Funding-Zuschlag (±0,03) und Broncx-Zuschlag (±0,08):**
+- **Funding-Zuschlag (±0,03) und Mentor-Zuschlag (±0,08):**
   - Sie sind im Journal nicht als eigene Felder gespeichert.
   - Da der Score praktisch konstant ist, haben sie in diesen 76 Plänen offenbar **nie** gewirkt. Im Prüfzeitraum hatten sie also keinen Einfluss auf Plan-Ergebnisse.
   - Gegen das Ergebnis prüfen lassen sie sich so nicht.
-- **Vorschlag (braucht Uzis Wort, Codeänderung):** Die Bestandteile des Scores künftig je Plan mitschreiben (Basis, Marktzustand, Funding, Broncx, Belege).
+- **Vorschlag (braucht Uzis Wort, Codeänderung):** Die Bestandteile des Scores künftig je Plan mitschreiben (Basis, Marktzustand, Funding, Mentor, Belege).
 
 ## B Grade gegen Ergebnis: nicht prüfbar
 - **Alle 76 benoteten Pläne sind Grade C** (Mittel +0,110 R). In 151 von 160 Plänen lauten die grade_reasons nur „scenario_proposed“ und „no_conflicting_evidence“: Kein Szenario war je CONFIRMED.
@@ -88,7 +88,7 @@ Ich habe nur gelesen. Daten: `~/TIM-live/data/journal/tim_plan_journal*.json`, S
 - **Kosten gesamt:** 26,41 R Kosten bei +17,08 R brutto. Die Kosten fressen mehr als den gesamten Bruttogewinn.
 
 ## Was daraus folgt (Hinweise, keine Entscheidungen)
-1. **Score und Grade** sind im Live-Betrieb Konstanten. Jede Regel, die daran hängt (Buckets, Grade-Filter, Funding/Broncx-Zuschlag), ist praktisch wirkungslos. Testen lässt sie sich nur, wenn die Bestandteile mitgeschrieben werden oder Szenarien tatsächlich CONFIRMED werden.
+1. **Score und Grade** sind im Live-Betrieb Konstanten. Jede Regel, die daran hängt (Buckets, Grade-Filter, Funding/Mentor-Zuschlag), ist praktisch wirkungslos. Testen lässt sie sich nur, wenn die Bestandteile mitgeschrieben werden oder Szenarien tatsächlich CONFIRMED werden.
 2. **Kosten** sind der größte einzelne Posten: 26,4 R Kosten gegen 17,1 R brutto.
 3. **Level-Journal (level/1):** 8 Pläne, −17,7 R, alle über 0,25 R Kosten. Danach kamen keine Pläne mehr, vermutlich weil die Kostenprüfung sie seitdem ausfiltert.
 4. **Sichern:** Gegenrechnung auf den Kursverläufen als nächsten Lesetest vorschlagen.

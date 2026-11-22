@@ -1,4 +1,4 @@
-"""TIM's own look at a coin a GoatHub call names (paper only).
+"""TIM's own look at a coin a Signalgruppe call names (paper only).
 
 Many calls only name a coin and a direction ("Short ake"). The call is then the trigger, not the
 trade: TIM reads the coin's candles up to the moment it knew about the call and gives its own

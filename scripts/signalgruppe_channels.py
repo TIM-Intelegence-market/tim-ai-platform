@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Three GoatHub channels read separately: calls, outcome check, scorecards and a board preview.
+"""Three Signalgruppe channels read separately: calls, outcome check, scorecards and a board preview.
 
 Subcommands:
   read      list the calls each channel reader finds (futures, spot, gold; authors and channels are neutral labels)
   evaluate  check every call against price bars and write scorecards plus the board text
 
-Messages come from the bot's feed directory (``--feed-dir``, default data/goathub_feed) and/or
-from screen transcripts (``--transcript FILE``, e.g. goathub-verlauf/kanaele/.../11-futures-t-1.md).
+Messages come from the bot's feed directory (``--feed-dir``, default data/signalgruppe_feed) and/or
+from screen transcripts (``--transcript FILE``, e.g. signalgruppe-verlauf/kanaele/.../11-futures-t-1.md).
 Price bars come from CSV files with open_time, open, high, low, close (``--bars BTC=btc_1h.csv``).
 A symbol without bars is reported as "no price data", never guessed.
 
@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.knowledge.goathub_channels import (  # noqa: E402
+from src.knowledge.signalgruppe_channels import (  # noqa: E402
     PROFILES,
     source_names_hint,
     evaluate,
@@ -34,13 +34,13 @@ from src.knowledge.goathub_channels import (  # noqa: E402
     render_board,
     scorecard,
 )
-from src.knowledge.goathub_feed import GoatHubFeedStore  # noqa: E402
+from src.knowledge.signalgruppe_feed import SignalgruppeFeedStore  # noqa: E402
 
 
 def _messages(args: argparse.Namespace) -> list:
     messages = []
     if args.feed_dir is not None or not args.transcript:
-        messages.extend(GoatHubFeedStore(args.feed_dir).load())
+        messages.extend(SignalgruppeFeedStore(args.feed_dir).load())
     for path in args.transcript or ():
         messages.extend(parse_transcript(Path(path)))
     unique = {message.message_id: message for message in messages}
@@ -86,7 +86,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     if args.out:
         payload = {
             "observed_at": observed_at.isoformat(),
-            "rule": "GoatHub calls are hypotheses: outcomes and scorecards describe the past, they are no signal and no advice",
+            "rule": "Signalgruppe calls are hypotheses: outcomes and scorecards describe the past, they are no signal and no advice",
             "scorecards": cards,
             "outcomes": {key: [item.to_dict() for item in items] for key, items in outcomes.items()},
         }
@@ -101,7 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     for name, handler in (("read", cmd_read), ("evaluate", cmd_evaluate)):
         command = sub.add_parser(name)
-        command.add_argument("--feed-dir", type=Path, default=None, help="bot feed directory (default data/goathub_feed when no transcript is given)")
+        command.add_argument("--feed-dir", type=Path, default=None, help="bot feed directory (default data/signalgruppe_feed when no transcript is given)")
         command.add_argument("--transcript", action="append", help="screen transcript Markdown file; repeatable")
         command.add_argument("--out", help="write JSON here")
         command.set_defaults(handler=handler)

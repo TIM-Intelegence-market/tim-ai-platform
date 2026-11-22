@@ -8,7 +8,7 @@ Schlüsseldateien erfassen.
 ## Erster Lauf: FAIL (Exit 1)
 
 Nicht ignoriert waren: `Library/Application Support/TIM`, `TIM-live`, `TIM-worker`, `TIM-trading-team`, `TIM-bili-test`,
-`Documents/TIM`, `Downloads/broncx-library`, `tim-ci-runner`, `.ssh`, `.config/gh`, `.ollama`, `.cache`, `.venv`,
+`Documents/TIM`, `Downloads/mentor-library`, `tim-ci-runner`, `.ssh`, `.config/gh`, `.ollama`, `.cache`, `.venv`,
 `Library/Caches`, `Library/Logs`. Nicht vorhanden und übersprungen: `actions-runner`, `.gnupg`, `.aws`,
 `.docker/config.json`. Bereits erfasste verdächtige Dateien: keine.
 

@@ -84,7 +84,7 @@ flowchart LR
 ## 7. Tests
 
 - `tests/test_research_*.py`, `tests/test_research_operations.py`,
-  `tests/test_research_*_modu*.py`, `tests/test_goathub_knowledge.py`
+  `tests/test_research_*_modu*.py`, `tests/test_signalgruppe_knowledge.py`
   (vorhanden im Repo; genaue Liste in Kapitel 25).
 - Anknüpfung an die Orderflow-Beobachtung erfolgt über
   `OrderflowResearchCaseEngine` (IST).

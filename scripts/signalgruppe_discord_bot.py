@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""GoatHub bot: read GoatHub community channels and export them for Claude's memory and TIM.
+"""Signalgruppe bot: read Signalgruppe community channels and export them for Claude's memory and TIM.
 
 Subcommands:
   setup   ask for the channel ids, the mode (forward/direct) and your Discord user id;
-          reuses the Broncx bot secret unless --secret-file points elsewhere
+          reuses the Mentor bot secret unless --secret-file points elsewhere
   sync    read every channel up to the newest message (whole history on the first
           run), then write the memory export; launchd runs this three times a day
   export  write the memory export from the stored messages only (no Discord access)
   calls   print the good community calls (grade A/B)
   import-screen FILE  store messages Claude read off your Discord window (JSON list), then export
 
-The export goes to data/goathub_feed/memory/ and to every --memory-dir:
-GOATHUB_KANAL.md (whole channel, verbatim), GOATHUB_KURZ.md (under 4 KB, for a
-memory index) and goathub_calls.json (good calls, for TIM).
+The export goes to data/signalgruppe_feed/memory/ and to every --memory-dir:
+SIGNALGRUPPE_KANAL.md (whole channel, verbatim), SIGNALGRUPPE_KURZ.md (under 4 KB, for a
+memory index) and signalgruppe_calls.json (good calls, for TIM).
 
-Setup guide: docs/knowledge/GOATHUB_DISCORD_FEED.md
+Setup guide: docs/knowledge/SIGNALGRUPPE_DISCORD_FEED.md
 """
 
 from __future__ import annotations
@@ -31,12 +31,12 @@ from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.knowledge.goathub_feed import ROLE_KNOWLEDGE, GoatHubFeedStore, good_calls, import_screen_readings, write_memory_export  # noqa: E402
-from src.sources.broncx_discord import DiscordFeedError, load_bot_secret  # noqa: E402
-from src.sources.goathub_discord import (  # noqa: E402
-    GoatHubChannel,
-    GoatHubConfig,
-    GoatHubReader,
+from src.knowledge.signalgruppe_feed import ROLE_KNOWLEDGE, SignalgruppeFeedStore, good_calls, import_screen_readings, write_memory_export  # noqa: E402
+from src.sources.mentor_discord import DiscordFeedError, load_bot_secret  # noqa: E402
+from src.sources.signalgruppe_discord import (  # noqa: E402
+    SignalgruppeChannel,
+    SignalgruppeConfig,
+    SignalgruppeReader,
     default_config_path,
     default_secret_path,
 )
@@ -52,23 +52,23 @@ def write_private(path: Path, value: str) -> None:
 
 def setup(args: argparse.Namespace, ask: Callable[[str], str]) -> int:
     raw = [item.strip() for item in ask("Channel ID(s) to read, comma-separated (optionally id=name; empty if you only use categories): ").split(",") if item.strip()]
-    channels = tuple(GoatHubChannel(*(part.strip() for part in item.split("=", 1))) for item in raw)
+    channels = tuple(SignalgruppeChannel(*(part.strip() for part in item.split("=", 1))) for item in raw)
     raw_categories = [item.strip() for item in ask("Category ID(s): every text channel inside is read, also ones added later (optionally id=name; empty for none): ").split(",") if item.strip()]
-    channels += tuple(GoatHubChannel(*(part.strip() for part in item.split("=", 1)), kind="category") for item in raw_categories)
+    channels += tuple(SignalgruppeChannel(*(part.strip() for part in item.split("=", 1)), kind="category") for item in raw_categories)
     knowledge = {item.strip() for item in ask("Knowledge-only channel or category IDs (teaching material, never read as calls; comma-separated, empty for none): ").split(",") if item.strip()}
     unknown = knowledge - {channel.channel_id for channel in channels}
     if unknown:
         raise DiscordFeedError(f"knowledge-only ids are not in the channel or category list: {', '.join(sorted(unknown))}")
     channels = tuple(dataclasses.replace(channel, role=ROLE_KNOWLEDGE) if channel.channel_id in knowledge else channel for channel in channels)
-    mode = (ask("Mode: 'forward' (you forward posts into your own channel) or 'direct' (bot invited into GoatHub) [forward]: ").strip() or "forward").lower()
+    mode = (ask("Mode: 'forward' (you forward posts into your own channel) or 'direct' (bot invited into Signalgruppe) [forward]: ").strip() or "forward").lower()
     forwarders = [item.strip() for item in ask("Your Discord user ID (several: comma-separated; empty in direct mode): ").split(",") if item.strip()]
-    config = GoatHubConfig(channels, mode, frozenset(forwarders))
+    config = SignalgruppeConfig(channels, mode, frozenset(forwarders))
     write_private(args.config, json.dumps(config.to_dict(), indent=2) + "\n")
     print(f"STORED config={args.config} channels={len(channels) - len(raw_categories)} categories={len(raw_categories)} "
           f"knowledge_only={len(knowledge)} mode={mode}")
     if not args.secret_file.exists():
-        print(f"Bot secret not found at {args.secret_file}: run 'scripts/broncx_discord_bot.py setup' first (same bot).")
-    print("Next: python scripts/goathub_discord_bot.py sync")
+        print(f"Bot secret not found at {args.secret_file}: run 'scripts/mentor_discord_bot.py setup' first (same bot).")
+    print("Next: python scripts/signalgruppe_discord_bot.py sync")
     return 0
 
 
@@ -79,14 +79,14 @@ def _memory_dirs(args: argparse.Namespace) -> list[Path]:
 
 
 def export(args: argparse.Namespace) -> int:
-    written = write_memory_export(GoatHubFeedStore(args.feed_dir), _memory_dirs(args))
+    written = write_memory_export(SignalgruppeFeedStore(args.feed_dir), _memory_dirs(args))
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     print(f"{stamp} export files={len(written)} dirs={', '.join(str(path) for path in _memory_dirs(args))}", flush=True)
     return 0
 
 
 def sync(args: argparse.Namespace) -> int:
-    reader = GoatHubReader(load_bot_secret(args.secret_file), GoatHubConfig.load(args.config), GoatHubFeedStore(args.feed_dir))
+    reader = SignalgruppeReader(load_bot_secret(args.secret_file), SignalgruppeConfig.load(args.config), SignalgruppeFeedStore(args.feed_dir))
     failed = False
     try:
         channels = reader.resolve_channels()
@@ -116,7 +116,7 @@ def sync(args: argparse.Namespace) -> int:
 
 
 def calls(args: argparse.Namespace) -> int:
-    found = good_calls(GoatHubFeedStore(args.feed_dir).load(), reference_price=args.price)
+    found = good_calls(SignalgruppeFeedStore(args.feed_dir).load(), reference_price=args.price)
     if not found:
         print(f"no good calls in {args.feed_dir}")
         return 0
@@ -136,13 +136,13 @@ def main(argv: list[str] | None = None, ask: Callable[[str], str] = input) -> in
     parser.add_argument("file", nargs="?", type=Path, help="JSON file for 'import-screen'")
     parser.add_argument("--config", type=Path, default=default_config_path())
     parser.add_argument("--secret-file", type=Path, default=default_secret_path())
-    parser.add_argument("--feed-dir", type=Path, default=None, help="default: data/goathub_feed or $TIM_GOATHUB_FEED_DIR")
+    parser.add_argument("--feed-dir", type=Path, default=None, help="default: data/signalgruppe_feed or $TIM_SIGNALGRUPPE_FEED_DIR")
     parser.add_argument("--memory-dir", type=Path, action="append", default=[], help="extra directory for the memory export (repeatable)")
     parser.add_argument("--limit", type=int, default=20, help="calls shown by 'calls'")
     parser.add_argument("--price", type=Decimal, default=None, help="current price for 'calls' (scales shorthand like 82.6)")
     args = parser.parse_args(argv)
     if args.feed_dir is None:
-        args.feed_dir = GoatHubFeedStore().root
+        args.feed_dir = SignalgruppeFeedStore().root
 
     try:
         if args.command == "setup":
@@ -154,7 +154,7 @@ def main(argv: list[str] | None = None, ask: Callable[[str], str] = input) -> in
         if args.command == "import-screen":
             if args.file is None:
                 parser.error("import-screen needs a JSON file")
-            stored, duplicates = import_screen_readings(GoatHubFeedStore(args.feed_dir), json.loads(args.file.read_text(encoding="utf-8")))
+            stored, duplicates = import_screen_readings(SignalgruppeFeedStore(args.feed_dir), json.loads(args.file.read_text(encoding="utf-8")))
             print(f"import stored={stored} duplicates={duplicates}", flush=True)
             return export(args)
         return sync(args)

@@ -65,7 +65,7 @@ The fixture is explicitly TEST_ONLY and is not presented as market evidence.
 - Model output is prohibited from creating orders and is not persisted as scientific truth.
 - Module A is deterministic and local; external search reports `false`.
 - Module B accepts only explicitly supplied local evidence and preserves citations.
-- News and GoatHub ingestion require source authorization.
+- News and Signalgruppe ingestion require source authorization.
 - No embedding/vector retrieval pipeline was found; therefore embedding leakage and vector nondeterminism are not active concerns.
 
 ## Findings

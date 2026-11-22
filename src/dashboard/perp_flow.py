@@ -8,7 +8,7 @@ BTC keeps ``data/perp_flow/`` as before, every further symbol gets ``data/perp_f
 All symbols share one call budget (``CALLS_PER_MINUTE``), so a second symbol never raises the load
 on Binance above what BTC alone used while catching up.
 
-Broncx reads orderflow on the perp: its volume is 8-12x the spot volume and its delta can run
+Mentor reads orderflow on the perp: its volume is 8-12x the spot volume and its delta can run
 against the spot delta (Beirat 29.10.2026: +2534 BTC spot vs. -1844 BTC perp on 27.10.). TIM
 stores spot trades in PostgreSQL; this module adds the perp side without touching that path:
 
@@ -24,7 +24,7 @@ stores spot trades in PostgreSQL; this module adds the perp side without touchin
 - Once an hour the last full hours are compared with Binance's 1h perp candle (volume and taker
   buy volume). The result is shown on the chart, so a broken record cannot hide.
 - ``open_interest`` reads the hourly open interest history and adds the Z-score over 7.5 days
-  (180 hours), the window Broncx uses. Binance keeps only 30 days of it, so every new hour is
+  (180 hours), the window Mentor uses. Binance keeps only 30 days of it, so every new hour is
   appended to ``oi-<SYMBOL>-1h.jsonl`` in the symbol's folder and kept for good (``append_oi_archive``).
 - ``open_interest_bybit`` adds the Bybit linear perp as a second venue for BTC (Issue #162, 09.11.2026):
   same hourly grid, own archive ``oi-<SYMBOL>-bybit-1h.jsonl``, shown per venue next to Binance.
@@ -74,7 +74,7 @@ BUBBLE_MIN_USD = 100_000.0  # same floor as the spot bubbles (footprint_data.BUB
 BUBBLES_PER_DAY = 2000
 OI_PERIOD = "1h"
 OI_LIMIT = 500  # about 20 days of hourly open interest (Binance keeps 30 days)
-OI_WINDOW = 180  # 7.5 days of hours: the Z-score window Broncx uses
+OI_WINDOW = 180  # 7.5 days of hours: the Z-score window Mentor uses
 OI_STALE_AFTER = timedelta(hours=3)
 TIMEOUT_SECONDS = 15
 MAX_BYTES = 8_000_000

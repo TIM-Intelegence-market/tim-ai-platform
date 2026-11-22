@@ -117,22 +117,22 @@
   file atomically, so concurrent or interrupted saves keep earlier bundles.
 - No forecasts, signals, orders or production-database access.
 
-## Unreleased — Broncx Discord feed as external guidance
+## Unreleased — Mentor Discord feed as external guidance
 
-- Added `src/knowledge/broncx_feed.py` (post store and guidance parser) and
-  `src/sources/broncx_discord.py` (read-only poller for a forward channel in the
-  owner's own Discord server) with `scripts/broncx_discord_bot.py` and a
+- Added `src/knowledge/mentor_feed.py` (post store and guidance parser) and
+  `src/sources/mentor_discord.py` (read-only poller for a forward channel in the
+  owner's own Discord server) with `scripts/mentor_discord_bot.py` and a
   launchd agent.
 - The orderflow scenario pipeline accepts `external_posts`; the guidance is
   written to the audit (`external_context`) and the report
-  (`BRONCX-LEITFADEN`).
-- Broncx's newest active direction weights the analysis: scenarios in his
+  (`MENTOR-LEITFADEN`).
+- Mentor's newest active direction weights the analysis: scenarios in his
   direction +0.08 score, opposing ones -0.08; his LEVEL prices within 1 % of
   price become scenarios (`X-<bias>-<level>`, at most two) with TIM's own
   mandatory confirmations; stop and invalidation prices never do.
   It never confirms a scenario or creates a trade plan by itself; stale,
   invalidated, mixed or not-yet-known posts have no effect (tested).
-- `ofsc --broncx-feed DIR [--broncx-max-age-hours H]`.
+- `ofsc --mentor-feed DIR [--mentor-max-age-hours H]`.
 - Chart images: a position-tool direction also counts when his text names no
   direction ("Took this") and no earlier view of his is still open (the same
   now holds for image-only posts); never against
@@ -210,7 +210,7 @@
 - Reproducible Research Cases with evidence, missing evidence, outcomes and rule versions.
 - Local Human Assistant Dashboard V1 with HTML and JSON state endpoints.
 - Authorized-record News Intelligence with deterministic historical linking.
-- GoatHub Knowledge search with explicit authorization, line citations and content hashes.
+- Signalgruppe Knowledge search with explicit authorization, line citations and content hashes.
 - Descriptive Long-Term Intelligence for market, dominance, sector and macro context.
 - OBSERVE-only Short-Term Assistant that exposes evidence, conflicts and missing context.
 - Disabled-by-default, TEST_ONLY Paper Automation journal with nonzero costs and delayed evaluation.
@@ -225,7 +225,7 @@
 
 ### Passive continuation
 
-- Added manually invoked, read-only local connectors for News and GoatHub knowledge.
+- Added manually invoked, read-only local connectors for News and Signalgruppe knowledge.
 - Added explicit host/path allowlists, file-size bounds, atomic manifests, content hashes, snapshots and deduplication.
 - Retention remains dry-run only; no source or evidence deletion is performed.
 # 2026-07-20 — Operational validation and data quality
