@@ -103,7 +103,8 @@ class Tracker:
         for key in [k for k in self.walls if k not in seen]:
             del self.walls[key]
 
-    def standing(self) -> list[dict[str, Any]]:
+    def standing(self, limit: int | None = SHOWN) -> list[dict[str, Any]]:
+        """Standing walls per side, largest first; ``limit`` None = every standing wall (gamma zones need all of them)."""
         if self.last_scan_ms is None:
             return []
         out = []
@@ -112,7 +113,7 @@ class Tracker:
                     if w["side"] == side and self.last_scan_ms - w["since_ms"] >= STAND_SECONDS * 1000]
             rows.sort(key=lambda w: w["qty"], reverse=True)
             out += [{**w, "qty": round(w["qty"], 3), "ratio": round(w["ratio"], 2),
-                     "notional_usd": round(w["qty"] * (w["low"] + w["high"]) / 2)} for w in rows[:SHOWN]]
+                     "notional_usd": round(w["qty"] * (w["low"] + w["high"]) / 2)} for w in rows[:limit]]
         return out
 
 
@@ -244,4 +245,4 @@ class Tail:
         return {"ruleset": RULESET, "symbol": self.symbol, "source": "Binance USD-M Perp, eigenes Orderbuch-Archiv",
                 "caught_up": self.caught_up, "synced": self.book.synced, "last_event_ms": self.last_event_ms,
                 "mid": self.tracker.mid, "bucket_usd": self.tracker.width, "stand_seconds": STAND_SECONDS,
-                "walls": self.tracker.standing(), "candidates": len(self.tracker.walls)}
+                "walls": self.tracker.standing(), "walls_all": self.tracker.standing(None), "candidates": len(self.tracker.walls)}

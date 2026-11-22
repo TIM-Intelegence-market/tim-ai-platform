@@ -24,8 +24,9 @@ Orderflow paper journal on live trades (stage B, own folder OF_LIVE; recorder an
 
 R-ABS-2 absorption entry shadow (paper only, own folder ABS_ENTRY, reads the stage-B recorder):
 
-    python -m src.research_lab.forward abs-step   --trades DIR [--folder DIR] [--futures DIR] [--liq DIR]
+    python -m src.research_lab.forward abs-step   --trades DIR [--folder DIR] [--futures DIR] [--liq DIR] [--zones DIR] [--perp DIR]
     python -m src.research_lab.forward futures-record --futures DIR [--seconds N]   # perp volume/delta, OI, funding
+    python -m src.research_lab.forward chart-zones-record --zones DIR [--seconds N]   # TIM chart zones as seen
     python -m src.research_lab.forward abs-status [--folder DIR]
 """
 from __future__ import annotations
@@ -68,10 +69,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("command", choices=("step", "status", "verify", "of-start", "of-step", "of-status",
                                                 "of-m8-step", "of-m8-status", "of-record", "of-live-step",
                                                 "of-live-run", "of-live-status", "of-live-pull",
-                                                "abs-step", "abs-status", "futures-record"))
+                                                "abs-step", "abs-status", "futures-record",
+                                                "chart-zones-record"))
     parser.add_argument("--folder")
     parser.add_argument("--trades", help="recorder root (stage B)")
     parser.add_argument("--futures", help="futures recorder root (R-ABS-2 context)")
+    parser.add_argument("--zones", help="TIM chart zone snapshots (R-ABS-2 zones)")
+    parser.add_argument("--perp", help="perp collector folder (R-ABS-2 circles = big taker orders)")
     parser.add_argument("--liq", help="S12 liquidation data dir (R-ABS-2 context)")
     parser.add_argument("--seconds", type=float)
     parser.add_argument("--every", type=float)
@@ -85,6 +89,17 @@ def main(argv: list[str] | None = None) -> int:
             print("--futures fehlt", file=sys.stderr)
             return 2
         out = FuturesRecorder(args.futures).run(stop_after=args.seconds, stop_file=Path(args.futures) / "STOP")
+        print(json.dumps(out, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
+    if args.command == "chart-zones-record":
+        from pathlib import Path
+
+        from src.research_lab.forward.chart_zones import ChartZoneRecorder
+
+        if not args.zones:
+            print("--zones fehlt", file=sys.stderr)
+            return 2
+        out = ChartZoneRecorder(args.zones).run(stop_after=args.seconds, stop_file=Path(args.zones) / "STOP")
         print(json.dumps(out, ensure_ascii=False, indent=2, sort_keys=True))
         return 0
     if args.command.startswith("abs-"):
@@ -101,7 +116,9 @@ def main(argv: list[str] | None = None) -> int:
         else:
             load_day, partial = abs_entry.live_loaders(folder, args.trades)
             out = abs_entry.step(folder, load_day, datetime.now(timezone.utc).date(), partial=partial,
-                                 futures=abs_entry.futures_context(args.futures, args.liq))
+                                 futures=abs_entry.futures_context(args.futures, args.liq),
+                                 chart=abs_entry.chart_context(args.zones),
+                                 circles=abs_entry.circle_context(args.perp))
         print(json.dumps(out, ensure_ascii=False, indent=2, sort_keys=True))
         return 0
     if args.command == "of-live-pull":

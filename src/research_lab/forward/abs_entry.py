@@ -35,7 +35,7 @@ from src.research_lab.orderflow_ml.bars import (
     MinuteBar,
 )
 
-RULE = "R-ABS-2/0.4-entwurf"
+RULE = "R-ABS-2/0.6-entwurf"
 FOLDER = Path("data/research/forward/ABS_ENTRY")
 WARMUP_DAYS = 2
 
@@ -54,6 +54,7 @@ class Params:
     atr_len: int = 14
     breakeven_r: float = 1.0         # from +1 R (closed minute) the stop moves to the fill
     exit_needs_zone: bool = False    # the counter-absorption that ends a trade needs no zone
+    need_zone: bool = True           # False = comparison run "ohne Zone" (Uzi 22.11.), own journal folder
     swing_side: int = 3              # 1h swing pivot: 3 hours left and right
     swing_keep_h: int = 72
     value_area: float = 0.70
@@ -68,13 +69,26 @@ class Params:
     stop_slippage: float = 0.0005    # stop exit (of2 config)
     max_cost_r: float = 0.30         # above: trade is kept but counted as "kostenblockiert" (Uzi "go Stop")
     fix_r: float = 2.0               # reference variant only (not in the verdict)
+    target_r_1: float = 2.0          # Uzi 19.11. ("2-3R"): half of the position is taken at +2 R ...
+    target_r_2: float = 3.0          # ... the rest at +3 R (or earlier at stop, breakeven or counter-absorption)
+    target_share: float = 0.5
+    chart_min_weight: int = 3        # TIM chart zone counts from weight "mittel" (level_overview.MEDIUM)
+    chart_max_age_min: int = 30      # a chart snapshot older than this is not used (own zones instead)
+    follow_minutes: int = 240        # per event: how far price went beyond the extreme / in favour (stop statistics)
+    retest_gap_windows: int = 2      # a second test is looked for from the third window after the event
+    circle_min_btc: float = 200.0    # Uzi 22.11. ("Kreise"): a chart circle = one perp taker order of at least this size
+    circle_wait_min: int = 15        # the turn against the order must show within 15 minutes ...
+    turn_pct: float = 0.10           # ... as a 5m close at least 0.10 % beyond the price at the order
     min_trades: int = 30
     min_mean_r: float = 0.10
     bootstrap_draws: int = 10_000
     bootstrap_seed: int = 17
 
     def digest(self) -> str:
-        return hashlib.sha256(json.dumps(asdict(self), sort_keys=True).encode()).hexdigest()[:16]
+        values = asdict(self)
+        if values["need_zone"]:   # the default leaves the digest of the running 0.6 journal untouched
+            del values["need_zone"]
+        return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()[:16]
 
 
 PARAMS = Params()
@@ -238,7 +252,7 @@ def accumulation(hours: Sequence[Window], events: Sequence[dict[str, Any]], now_
     if not atr or width > p.accu_atr_mult * atr:
         return None
     since = span[0].start_ms
-    recent = [e for e in events if since <= e["at_ms"] <= now_ms]
+    recent = [e for e in events if since <= e["at_ms"] <= now_ms and "extreme" in e]   # not the unturned circles
     cvd = sum(w.delta for w in span)
     floor = sum(1 for e in recent if e["side"] == "VERKAUF" and e["extreme"] <= bottom + 0.25 * width)
     roof = sum(1 for e in recent if e["side"] == "KAUF" and e["extreme"] >= top - 0.25 * width)
@@ -270,8 +284,14 @@ Futures = Callable[[int, int], "dict[str, Any] | None"]
 
 
 def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]], started_ms: int,
-             p: Params = PARAMS, futures: Futures | None = None) -> dict[str, Any]:
-    """Run the rule over consecutive days (oldest first; the last may be today's closed minutes)."""
+             p: Params = PARAMS, futures: Futures | None = None, chart: Chart | None = None,
+             circles: Circles | None = None) -> dict[str, Any]:
+    """Run the rule over consecutive days (oldest first; the last may be today's closed minutes).
+
+    With ``circles`` (Uzi 22.11., "Kreise") an event is a big perp taker order the market turned against: a big
+    sell and a 5m close above the price at the order -> LONG, a big buy and a close below -> SHORT. Without it the
+    former detection (volume, delta share and close inside one window) is used.
+    """
     bars: list[MinuteBar] = []
     profiles: dict[int, DayProfile | None] = {}
     for day, day_bars, profile in days:
@@ -284,6 +304,8 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
     pending: dict[str, Any] | None = None
     pos: dict[str, Any] | None = None
     exit_next: str | None = None
+    follow: list[dict[str, Any]] = []
+    cands: list[dict[str, Any]] = []   # circles waiting for the turn
     current_day = None
     for idx, bar in enumerate(bars):
         day_start = bar.window_start_ms // DAY_MS * DAY_MS
@@ -298,11 +320,22 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
         if not bar.has_trades:
             continue
         o, h, l, c = (_px(bar.first_price_e8), _px(bar.high_price_e8), _px(bar.low_price_e8), _px(bar.last_price_e8))
+        for f in list(follow):   # stop statistics: what price did after an event (never part of a decision)
+            if bar.window_start_ms >= f["until"]:
+                f["out"]["fertig"] = True
+                follow.remove(f)
+                continue
+            against = (f["extreme"] - l) if f["long"] else (h - f["extreme"])
+            favour = (h - f["close"]) if f["long"] else (f["close"] - l)
+            f["out"]["ueber_extrem_pct"] = max(f["out"]["ueber_extrem_pct"], round(max(against, 0) / f["extreme"] * 100, 4))
+            f["out"]["guenstig_pct"] = max(f["out"]["guenstig_pct"], round(max(favour, 0) / f["close"] * 100, 4))
         # 1) a pending exit (decided on the last window close) or entry fills at this minute's open
         if pos is not None and exit_next:
             _close(pos, o * (1 - p.slippage if pos["direction"] == "LONG" else 1 + p.slippage), bar.window_start_ms, exit_next, p)
             trades.append(pos)
             pos, exit_next = None, None
+        for cand in cands:   # the extreme since the order (stop reference)
+            cand["extreme"] = min(cand["extreme"], l) if cand["side"] < 0 else max(cand["extreme"], h)
         if pending is not None and pending.get("fill_next") and pos is None:
             long = pending["direction"] == "LONG"
             if not p.entry_limit:
@@ -346,15 +379,35 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
         win = window_of(chunk)
         if win is None:
             continue
-        hit = detect(win, windows, p)
+        for f in follow:   # second test (Valtos L11 p.9): price is back at the extreme, with less volume?
+            if f["out"]["zweiter_test"] is None and win.start_ms >= f["from"]:
+                near = f["extreme"] * p.zone_pct / 100
+                if (f["long"] and win.low <= f["extreme"] + near) or (not f["long"] and win.high >= f["extreme"] - near):
+                    f["out"]["zweiter_test"] = {
+                        "at": _iso(end_ms), "vol_anteil": round(win.volume / f["vol"], 3) if f["vol"] else None,
+                        "weniger_volumen": win.volume < f["vol"],
+                        "gehalten": win.close > f["extreme"] if f["long"] else win.close < f["extreme"]}
+        if circles is None:
+            hit = detect(win, windows, p)
+        else:
+            hit = _circle_hit(circles(win.start_ms, end_ms), cands, chunk, win, windows, end_ms, events, started_ms, p)
         if hit is not None:
             hours = _hours([b for b in bars[max(0, idx - p.swing_keep_h * 60 - 60):idx + 1]])
             zones.swings = _swings(hours, p.swing_side)
-            zone = zones.near(hit["extreme"], end_ms, p)
+            drawn = chart(end_ms) if chart is not None else None   # TIM chart zones as seen at that moment
+            at_price = hit.get("kreis", {}).get("spot", hit["extreme"])   # a circle counts where the order hit
+            zone = (_chart_zone(drawn, at_price, p) or _chart_zone(drawn, hit["extreme"], p)) if drawn is not None else None
+            if drawn is None and (own := zones.near(at_price, end_ms, p) or zones.near(hit["extreme"], end_ms, p)):
+                zone = {"name": own[0], "price": round(own[1], 2), "quelle": "eigen"}
             event = {"at_ms": end_ms, "at": _iso(end_ms), **hit,
-                     "zone": {"name": zone[0], "price": round(zone[1], 2)} if zone else None,
+                     "zone": zone,
                      "footprint_extrem": extreme_imbalance(profiles.get(win.start_ms // DAY_MS * DAY_MS), win, hit["extreme"]),
                      "kontext": accumulation(hours, events, end_ms, p), "zaehlt": end_ms >= started_ms}
+            if event["zaehlt"]:
+                event["nachlauf"] = {"ueber_extrem_pct": 0.0, "guenstig_pct": 0.0, "zweiter_test": None, "fertig": False}
+                follow.append({"out": event["nachlauf"], "long": hit["direction"] == "LONG", "extreme": hit["extreme"],
+                               "close": hit["close"], "vol": win.volume, "until": end_ms + p.follow_minutes * MINUTE_MS,
+                               "from": end_ms + p.retest_gap_windows * p.window_min * MINUTE_MS})
             if futures is not None and event["zaehlt"]:
                 event["futures"] = futures(win.start_ms, end_ms)   # context only, never part of the rule
             atr = _atr(windows + [win], p.atr_len)
@@ -362,13 +415,15 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
             if pos is not None and hit["direction"] != pos["direction"] and (zone or not p.exit_needs_zone):
                 exit_next = "Gegen-Absorption"
                 event["ergebnis"] = f"Ausstieg Trade {pos['id']}"
-            elif zone and pos is None and pending is None and atr and event["zaehlt"]:
+            elif (zone or not p.need_zone) and pos is None and pending is None and atr and event["zaehlt"]:
                 pending = {"event": event, "direction": hit["direction"], "extreme": hit["extreme"], "close": hit["close"],
                            "atr": atr, "waited": 0, "zone": event["zone"], "kontext": event["kontext"],
-                           "levels": sorted({round(lv, 2) for _, lv in zones.all(end_ms, p.swing_keep_h)})}
-                event["ergebnis"] = "wartet auf Auslöser"
+                           **({"fill_next": True} if "kreis" in hit else {}),   # the turn is the trigger: limit at this close
+                           "levels": sorted({round(lv, 2) for _, lv in zones.all(end_ms, p.swing_keep_h)}
+                                            | {z["mid"] for z in drawn or [] if z["weight"] >= p.chart_min_weight})}
+                event["ergebnis"] = "ausgelöst, Limit am Schluss" if "kreis" in hit else "wartet auf Auslöser"
             else:
-                event["ergebnis"] = ("ohne Zone" if not zone else "Position offen" if pos is not None
+                event["ergebnis"] = ("ohne Zone" if not zone and p.need_zone else "Position offen" if pos is not None
                                      else "vor Start" if not event["zaehlt"] else "kein ATR")
             events.append(event)
         windows.append(win)
@@ -376,6 +431,76 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
         pending["event"]["ergebnis"] = "ausgelöst, Fill zur nächsten Minute"
     return {"events": [e for e in events if e["zaehlt"]], "trades": trades, "open": pos,
             "last_minute": _iso(bars[-1].window_start_ms + MINUTE_MS) if bars else None}
+
+
+def _stats(win: Window, history: Sequence[Window], p: Params) -> dict[str, Any]:
+    """The numbers of a window next to an event (context, no threshold)."""
+    recent = history[-p.median_windows:]
+    med = median(w.volume for w in recent) if recent else 0
+    med_trades = (median(w.trades for w in recent) if recent else 0) or 1
+    last_hour = list(history[-11:]) + [win]
+    cvd = sum(w.delta for w in last_hour)
+    move = last_hour[-1].close - last_hour[0].open
+    return {"vol_ratio": round(win.volume / med, 2) if med else None, "delta_btc": round(win.delta, 4),
+            "delta_share": round(win.delta / win.volume, 3) if win.volume else None, "large_trades": win.large,
+            "largest_btc": round(win.largest, 4), "tempo": round(win.trades / med_trades, 2),
+            "cvd_60m_btc": round(cvd, 4), "cvd_divergenz": bool(cvd and move and (cvd > 0) != (move > 0))}
+
+
+def _circle_hit(new: Sequence[dict[str, Any]], cands: list[dict[str, Any]], chunk: Sequence[MinuteBar], win: Window,
+                history: Sequence[Window], end_ms: int, events: list[dict[str, Any]], started_ms: int,
+                p: Params) -> dict[str, Any] | None:
+    """Circles (big perp taker orders) of this window join the waiting ones; a turn against one makes the event.
+
+    The price "at the order" is the spot close of the order's minute (the rule trades on spot bars; the perp price
+    is kept for the record). Circles that see no turn within ``circle_wait_min`` are written down as "nicht gedreht".
+    """
+    for order in sorted(new, key=lambda o: o["ms"]):
+        if order["btc"] < p.circle_min_btc:
+            continue
+        minute = order["ms"] // MINUTE_MS * MINUTE_MS
+        since = [b for b in chunk if b.has_trades and b.window_start_ms >= minute]
+        at = next((b for b in since if b.window_start_ms == minute), None)
+        spot = _px(at.last_price_e8) if at else win.close
+        side = int(order["side"])
+        extreme = (min([_px(b.low_price_e8) for b in since] + [spot]) if side < 0
+                   else max([_px(b.high_price_e8) for b in since] + [spot]))
+        cands.append({"ms": order["ms"], "side": side, "btc": round(order["btc"], 3), "perp": order["price"],
+                      "spot": spot, "extreme": extreme})
+    turned: dict[int, list[dict[str, Any]]] = {-1: [], 1: []}
+    for cand in list(cands):
+        if (cand["side"] < 0 and win.close >= cand["spot"] * (1 + p.turn_pct / 100)) or \
+                (cand["side"] > 0 and win.close <= cand["spot"] * (1 - p.turn_pct / 100)):
+            turned[cand["side"]].append(cand)
+            cands.remove(cand)
+        elif end_ms - cand["ms"] >= p.circle_wait_min * MINUTE_MS:
+            cands.remove(cand)
+            if end_ms >= started_ms:
+                events.append({"at_ms": end_ms, "at": _iso(end_ms), "side": "VERKAUF" if cand["side"] < 0 else "KAUF",
+                               "kreis": {"at": _iso(cand["ms"]), "btc": cand["btc"], "perp": cand["perp"], "spot": cand["spot"]},
+                               "zone": None, "zaehlt": True, "ergebnis": "nicht gedreht"})
+    side = -1 if len(turned[-1]) >= len(turned[1]) else 1
+    group = turned[side]
+    if not group or turned[-side]:   # nothing turned, or big orders of both sides in one window: no reading
+        return None
+    lead = max(group, key=lambda c: c["btc"])
+    extreme = min(c["extreme"] for c in group) if side < 0 else max(c["extreme"] for c in group)
+    return {"side": "VERKAUF" if side < 0 else "KAUF", "direction": "LONG" if side < 0 else "SHORT",
+            "extreme": extreme, "close": win.close,
+            "kreis": {"at": _iso(lead["ms"]), "btc": lead["btc"], "perp": lead["perp"], "spot": lead["spot"],
+                      "anzahl": len(group), "summe_btc": round(sum(c["btc"] for c in group), 3)},
+            **_stats(win, history, p)}
+
+
+def _chart_zone(drawn: Sequence[dict[str, Any]], extreme: float, p: Params) -> dict[str, Any] | None:
+    """The heaviest TIM chart zone (weight >= mittel) the absorbed extreme lies in, with the usual tolerance."""
+    near = extreme * p.zone_pct / 100
+    inside = [z for z in drawn if z["weight"] >= p.chart_min_weight and z["low"] - near <= extreme <= z["high"] + near]
+    if not inside:
+        return None
+    best = max(inside, key=lambda z: z["weight"])
+    return {"name": "TIM-Chart: " + ", ".join(best["labels"][:3]), "price": best["mid"], "quelle": "chart",
+            "gewicht": best["weight"], "von": best["low"], "bis": best["high"]}
 
 
 def _open(pending: dict[str, Any], fill: float, entry_fee: float, at_ms: int, p: Params) -> dict[str, Any] | None:
@@ -397,9 +522,12 @@ def _open(pending: dict[str, Any], fill: float, entry_fee: float, at_ms: int, p:
              "filled_at": _iso(at_ms), "fill": round(fill, 2), "entry_fee": entry_fee, "stop": round(stop, 2), "stop_start": round(stop, 2),
              "risk_pct": round(risk / fill * 100, 4), "cost_r": round(cost_r, 4),
              "kostenblockiert": cost_r > p.max_cost_r, "breakeven": False,
+             "kreis": event.get("kreis"),
              "event": {k: event[k] for k in ("vol_ratio", "delta_btc", "delta_share", "large_trades", "largest_btc",
                                              "tempo", "cvd_60m_btc", "cvd_divergenz", "footprint_extrem")},
              "futures": event.get("futures"),
+             "ziel_1": round(fill + p.target_r_1 * risk if long else fill - p.target_r_1 * risk, 2),
+             "ziel_2": round(fill + p.target_r_2 * risk if long else fill - p.target_r_2 * risk, 2), "ziel_1_erreicht": False,
              "ref_fix": {"target": round(fill + p.fix_r * risk if pending["direction"] == "LONG" else fill - p.fix_r * risk, 2)},
              "ref_level": _ref_level(long, fill, risk, pending.get("levels", []))}
     event["trade"] = trade["id"]
@@ -441,6 +569,13 @@ def _manage(pos: dict[str, Any], high: float, low: float, at_ms: int, p: Params)
         _close(pos, price, at_ms, "Einstand" if pos["breakeven"] else "Stop", p)
         return
     best = high if long else low
+    if "ziel_1" in pos:   # Uzi 19.11.: half at +2 R, the rest at +3 R (stop first when both lie in one minute)
+        if not pos["ziel_1_erreicht"] and ((best >= pos["ziel_1"]) if long else (best <= pos["ziel_1"])):
+            pos["ziel_1_erreicht"], pos["ziel_1_at"] = True, _iso(at_ms)
+        if pos["ziel_1_erreicht"] and ((best >= pos["ziel_2"]) if long else (best <= pos["ziel_2"])):
+            pos["breakeven"] = True
+            _close(pos, pos["ziel_2"], at_ms, f"Ziel {p.target_r_2:g}R", p)
+            return
     if not pos["breakeven"] and ((best - fill) if long else (fill - best)) >= p.breakeven_r * risk:
         pos["breakeven"] = True
         pos["stop"] = fill   # active from the next minute on
@@ -455,7 +590,10 @@ def _net(long: bool, fill: float, exit_price: float, risk: float, p: Params, ent
 def _close(pos: dict[str, Any], price: float, at_ms: int, reason: str, p: Params) -> None:
     long = pos["direction"] == "LONG"
     risk = (pos["fill"] - pos["stop_start"]) if long else (pos["stop_start"] - pos["fill"])
-    pos.update(closed_at=_iso(at_ms), exit=round(price, 2), exit_reason=reason, net_r=_net(long, pos["fill"], price, risk, p, pos.get("entry_fee")))
+    net = _net(long, pos["fill"], price, risk, p, pos.get("entry_fee"))
+    if pos.get("ziel_1_erreicht"):   # the first half was already taken at +2 R
+        net = round(p.target_share * _net(long, pos["fill"], pos["ziel_1"], risk, p, pos.get("entry_fee")) + (1 - p.target_share) * net, 4)
+    pos.update(closed_at=_iso(at_ms), exit=round(price, 2), exit_reason=reason, net_r=net)
     filled = datetime.fromisoformat(pos["filled_at"])
     closed = datetime.fromisoformat(pos["closed_at"])
     pos["funding_intervalle"] = sum(1 for k in range(int((closed - filled).total_seconds() // 3600) + 2)
@@ -489,6 +627,21 @@ def evaluate(trades: Iterable[dict[str, Any]], p: Params = PARAMS) -> dict[str, 
             "hinweis": "Papier, Spot-Daten, Funding nicht eingerechnet (nur Intervalle gezählt). Kein Filter aktiv."}
 
 
+def stop_messung(events: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """Uzi 19.11. ("SL am sichersten Punkt der Statistik"): how far price went beyond the extreme of zone events.
+
+    Only measured, the stop itself is unchanged; a wider or tighter stop needs Uzi's word and a new folder.
+    """
+    done = [e["nachlauf"] for e in events if e.get("zone") and (e.get("nachlauf") or {}).get("fertig")]
+    beyond = sorted(n["ueber_extrem_pct"] for n in done)
+    def q(share: float) -> float | None:
+        return beyond[min(len(beyond) - 1, int(share * len(beyond)))] if beyond else None
+    tests = [n["zweiter_test"] for n in done if n["zweiter_test"]]
+    return {"ereignisse": len(done), "ueber_extrem_pct": {"median": q(0.5), "q80": q(0.8), "q90": q(0.9)},
+            "zweiter_test": len(tests), "zweiter_test_weniger_volumen": sum(1 for t in tests if t["weniger_volumen"]),
+            "hinweis": "Nur Messung nach dem Ereignis (follow_minutes), ändert den Stop nicht."}
+
+
 # -- journal ------------------------------------------------------------------------------------------------------
 def _write(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -519,12 +672,15 @@ def chain(previous: Sequence[dict[str, Any]], fresh: Sequence[dict[str, Any]]) -
     return kept, deviations
 
 
+Chart = Callable[[int], "list[dict[str, Any]] | None"]
+Circles = Callable[[int, int], "list[dict[str, Any]]"]   # big perp taker orders with start <= ms < end
 Loader = Callable[[date], tuple[Sequence[MinuteBar], DayProfile | None] | None]
 
 
 def step(folder: Path | str, load_day: Loader, today: date, *, now: datetime | None = None,
          partial: Callable[[date], tuple[Sequence[MinuteBar], DayProfile | None] | None] | None = None,
-         p: Params = PARAMS, futures: Futures | None = None) -> dict[str, Any]:
+         p: Params = PARAMS, futures: Futures | None = None, chart: Chart | None = None,
+         circles: Circles | None = None) -> dict[str, Any]:
     """One run: load warm-up days, all days since the start and today's closed minutes; recompute; append."""
     folder = Path(folder)
     now = now or datetime.now(timezone.utc)
@@ -552,7 +708,11 @@ def step(folder: Path | str, load_day: Loader, today: date, *, now: datetime | N
         part = partial(today)
         if part is not None:
             days.append((today, part[0], part[1]))
-    result = simulate(days, int(started.timestamp() * 1000), p, futures)
+    covered = getattr(circles, "upto", None)
+    if covered is not None:   # never judge a window the perp collector has not delivered yet (it would change later)
+        edge = covered() // (p.window_min * MINUTE_MS) * (p.window_min * MINUTE_MS)
+        days = [(d, [m for m in day_bars if m.window_start_ms < edge], prof) for d, day_bars, prof in days]
+    result = simulate(days, int(started.timestamp() * 1000), p, futures, chart, circles)
     journal_path = folder / "journal.json"
     old = json.loads(journal_path.read_text(encoding="utf-8")) if journal_path.exists() else {}
     closed, deviations = chain(old.get("trades", []), result["trades"])
@@ -560,7 +720,7 @@ def step(folder: Path | str, load_day: Loader, today: date, *, now: datetime | N
                "letzte_minute": result["last_minute"], "fehlender_tag": missing, "trades": closed,
                "offen": result["open"], "ereignisse": result["events"][-500:],
                "abweichungen": sorted(set(old.get("abweichungen", [])) | set(deviations)),
-               "auswertung": evaluate(closed, p)}
+               "stop_messung": stop_messung(result["events"]), "auswertung": evaluate(closed, p)}
     _write(journal_path, journal)
     return {"checked_at": journal["checked_at"], "letzte_minute": journal["letzte_minute"],
             "fehlender_tag": missing, "trades": len(closed), "offen": bool(result["open"]),
@@ -589,6 +749,49 @@ def live_loaders(folder: Path | str, trades_root: Path | str):
         return (part[0], part[1]) if part else None
 
     return load_day, partial
+
+
+def circle_context(perp_root: Path | str | None, p: Params = PARAMS) -> Circles | None:
+    """Big taker orders from the perp collector's day files (:mod:`src.dashboard.perp_flow`, the chart's bubbles)."""
+    if perp_root is None:
+        return None
+    import gzip
+
+    root, cache = Path(perp_root), {}
+
+    def day_orders(key: str) -> list[list[float]]:
+        path = next((q for q in (root / f"perp-{key}.json.gz", root / "archive" / f"perp-{key}.json.gz") if q.exists()), None)
+        if path is None:
+            return []
+        stamp = path.stat().st_mtime_ns
+        if cache.get(key, (None,))[0] != stamp:
+            rows = json.loads(gzip.decompress(path.read_bytes())).get("bubbles") or []
+            cache[key] = (stamp, [r for r in rows if r[2] >= p.circle_min_btc])
+        return cache[key][1]
+
+    def between(start_ms: int, end_ms: int) -> list[dict[str, Any]]:
+        keys = {datetime.fromtimestamp(t / 1000, tz=timezone.utc).date().isoformat() for t in (start_ms, end_ms - 1)}
+        return [{"ms": int(ms), "price": price, "btc": btc, "side": int(side)}
+                for key in sorted(keys) for ms, price, btc, side in day_orders(key) if start_ms <= ms < end_ms]
+
+    def upto() -> int:
+        """End of the time the collector has covered (its state file); 0 without one."""
+        try:
+            segments = json.loads((root / "state.json").read_text(encoding="utf-8")).get("segments") or []
+        except (OSError, ValueError):
+            return 0
+        return max((int(seg[1]) for seg in segments), default=0)
+
+    between.upto = upto  # type: ignore[attr-defined]
+    return between
+
+
+def chart_context(zones_root: Path | str | None, p: Params = PARAMS) -> Chart | None:
+    if zones_root is None:
+        return None
+    from src.research_lab.forward.chart_zones import zones_at
+
+    return lambda at_ms: zones_at(zones_root, at_ms, p.chart_max_age_min * MINUTE_MS)
 
 
 def futures_context(futures_root: Path | str | None, liq_root: Path | str | None) -> Futures | None:

@@ -1,8 +1,45 @@
-# Absorption als Einstieg, Ausstieg an der nächsten Gegen-Absorption: Schattenregel R-ABS-2 (Präregistrierung 0.4, ENTWURF, nicht eingefroren)
+# Absorption als Einstieg, Ausstieg an der nächsten Gegen-Absorption: Schattenregel R-ABS-2 (Präregistrierung 0.6, ENTWURF, nicht eingefroren)
 
 Auftrag Uzi 17.11.2026 ("Die Absorption könnte doch getradet werden"). Anlass: BTCUSDT 1h, 17.11. (Handy-Screenshot). Bei ~65.200 (1D-VAH-Bereich) zeigt der Chart eine Kauf-Absorption (Kreis "500"), danach fällt der Preis bis ~63.300 nahe der Opt Put Wall 63.000; unten steht ein Kreis nahe 63.600. Uzi: Absorption als Einstieg ist "auf jeden Fall ein guter Ansatz"; **bei der nächsten Absorption werden je nach Long/Short die Gewinne realisiert**; wichtige Zonen und vor allem **Akkumulation** sollen erkennbar sein. **Nichts gerechnet, kein Ergebnis gesehen. Ob der Fall vom 17.11. von den unten definierten Schwellen überhaupt erfasst würde, ist ungeprüft.**
 
 Status: Entwurf. Einfrieren (1.0) erst auf Uzis "einfrieren", Zeitplan erst auf "Zeitplan an", Merge nur auf "merge". Nur Papier/Schatten, kein Echtgeld, Holdout 2025 tabu, kein Backtest (Orderflow nur vorwärts).
+
+## Änderung 0.6 (Uzi 22.11., "Kreise")
+Anlass: Uzi markierte am 21.11. vier Kreise im Chart (55.200, 57.300, 59.200, 60.800), die 0.5 nicht als Ereignis sah. Ursache: 0.5 erkennt Absorption an Volumen, Delta-Anteil und Schluss eines 5m-Fensters im Spot; die Chart-Kreise sind etwas anderes, nämlich einzelne große Taker-Orders am Perp. Neu, eigener Journal-Ordner, 0.5-Trades zählen nicht mit:
+
+- **Ereignis = Kreis, gegen den der Markt dreht.** Kreis = eine Taker-Order am Binance-Perp ab `circle_min_btc` = 200 BTC (Sammler `src/dashboard/perp_flow.py`, dieselbe Quelle wie die Kreise im Chart; dort zusätzlich Bybit, hier nur Binance). Dreh = innerhalb von `circle_wait_min` = 15 min schließt ein 5m-Spot-Fenster mindestens `turn_pct` = 0,10 % jenseits des Spot-Schlusses der Order-Minute.
+- **Richtung** ergibt sich aus der Order: großer Verkauf + Dreh nach oben = LONG, großer Kauf + Dreh nach unten = SHORT. Kreise beider Seiten im selben Fenster: kein Ereignis.
+- **Einstieg:** Limit am Schluss des Dreh-Fensters (Maker), sonst wie 0.5 (verfällt nach `trigger_minutes`). Zone, Stop (hinter dem Extrem seit der Order, min. 0,5 %), Einstand ab +1 R, Ziele +2 R/+3 R, Gegen-Ereignis, Kostentor und Urteil unverändert.
+- **Mitgeschrieben:** Kreise ohne Dreh als "nicht gedreht" (kein Trade, kein Akkumulations-Flag); je Ereignis Größe, Perp- und Spot-Preis, Anzahl und Summe der Kreise.
+- **Kein Vorgriff:** Der Lauf wertet nur Fenster aus, die der Perp-Sammler schon abgedeckt hat (`state.json`). Lücken des Sammlers bedeuten fehlende Kreise, nicht nachträgliche Trades.
+- **Herkunft der Schwelle (ehrlich):** 200 BTC ist an genau den vier Stellen vom 21.11. abgelesen (502, 207, 470, 203 BTC), also an einem einzigen Tag angepasst; kein Beleg für eine Wirkung. Nachspiel 21.11. (nur Plausibilität, zählt nicht): alle vier Stellen werden als gedrehter Kreis erkannt, drei davon liegen an keiner TIM-Chart-Zone (kein Trade), die vierte (Kauf-Kreis 59.400 → SHORT) wäre am Stop geendet.
+- Ohne Kreis-Quelle rechnet der Code weiter die 0.5-Erkennung (alte Tests unverändert).
+- **Vergleichslauf "ohne Zone" (Uzi 22.11. "kanns auch ohne zone testen"):** zweiter Papier-Lauf mit `need_zone = False`, eigener Journal-Ordner, sonst identisch. Er handelt jeden gedrehten Kreis, auch ohne TIM-Chart-Zone. Zwei Läufe auf denselben Tagen sind zwei Tests; ein Urteil gilt je Lauf einzeln und wird als Mehrfachtest berichtet.
+
+## Änderung 0.5 (Uzi 19.11., "Pass es an")
+
+Anlass: Abgleich mit den Valtos-Folien (L11, L12, L15 bis L18) und Uzis Wort: Zonen, die der TIM-Chart zeigt
+("geschätzt, aber belegt geschätzt"), die Reaktion dort für 2 bis 3 R nutzen, Stop "am sichersten Punkt der Statistik".
+
+- **Zonen aus dem TIM-Chart.** Ein Recorder (`forward/chart_zones.py`) schreibt alle 5 Minuten die Zonen der
+  Level-Übersicht (`src/dashboard/level_overview.py`, öffentliche Binance-Kerzen wie der Chart) mit Zeitstempel weg.
+  Ein Ereignis zählt, wenn sein Extrem in einer Chart-Zone ab Gewicht 3 ("mittel") liegt, Toleranz wie bisher 0,15 %.
+  Benutzt wird nur der jüngste Schnappschuss, der vor dem Ereignis geschrieben wurde und höchstens 30 Minuten alt ist.
+  Fehlt er (Recorder aus), gelten die bisherigen eigenen Zonen; die Quelle steht je Trade unter `zone.quelle`.
+  Damit sind auch Wochen- und Monatshoch/-tief und die Initial Balance dabei (Valtos L18 S.7).
+- **Ziel 2 bis 3 R.** Die halbe Position geht bei +2 R, der Rest bei +3 R raus. Stop, Einstand ab +1 R und die
+  Gegen-Absorption beenden den Trade weiterhin vorher. Der frühere Lauf ohne Ziel entfällt im Urteil.
+- **Stop.** Unverändert (hinter dem Docht, mindestens 0,5 %). Die Folien nennen keine Zahl ("tight stops", L15 S.4).
+  Neu wird je Ereignis 240 Minuten lang gemessen, wie weit der Preis über das Extrem hinausging (`nachlauf`,
+  Zusammenfassung `stop_messung` im Journal). Erst mit diesen Zahlen kann der Stop "am sichersten Punkt" gesetzt
+  werden; das braucht Uzis Wort und einen neuen Ordner. Die Messung fließt in keine Entscheidung.
+- **Zweiter Test.** Je Ereignis wird notiert, ob der Preis ab dem dritten Fenster danach wieder am Extrem war, mit
+  wie viel Volumen im Vergleich zum Ereignis und ob er gehalten hat (Valtos L11 S.9). Nur mitgeschrieben, kein Filter.
+- Regelname `R-ABS-2/0.5-entwurf`, neuer Parameter-Digest, daher neuer Journal-Ordner; 0.4 hatte 0 Trades.
+
+Offen: "Stochastik" ist als Statistik gelesen (wie im Thread zu S30). Ist der Stochastik-Indikator gemeint, ändert
+sich der Stop-Baustein. Die Level-Übersicht hat nach S22 bis S30 keinen belegten Vorteil; "belegt" heißt hier nur,
+dass die Zone vor dem Ereignis im Chart stand.
 
 ## Änderung 0.2 (Uzi 17.11., "Überprüf nochmal dein Angehen")
 Uzi: Im Orderflow ist es normal, solche Preisbewegungen **mitzunehmen**; dahinter stehen viele Zahlen. Geopolitik bleibt vorerst außen vor. Entwurf 0.1 hätte die Bewegung an drei Stellen abgeschnitten oder verpasst, das ist korrigiert:

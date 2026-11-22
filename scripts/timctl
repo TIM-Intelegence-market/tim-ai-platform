@@ -55,6 +55,7 @@ def atomic_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def run(command: list[str], *, timeout: float = 15, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    started = time.monotonic()
     try:
         return subprocess.run(
             command,
@@ -66,10 +67,18 @@ def run(command: list[str], *, timeout: float = 15, env: dict[str, str] | None =
             env=env,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise RuntimeControlError(f"required local command failed: {Path(command[0]).name}") from exc
+        # Say which operation could not run and why (never ran vs. ran too long); only the plain
+        # subcommand word is named, never paths or other arguments.
+        operation = command[1] if len(command) > 1 and re.fullmatch(r"[a-z][a-z-]{0,30}", command[1]) else ""
+        detail = f"{type(exc).__name__} after {time.monotonic() - started:.1f}s, limit {timeout:g}s"
+        name = " ".join(filter(None, (Path(command[0]).name, operation)))
+        raise RuntimeControlError(f"required local command failed: {name} ({detail})") from exc
 
 
 SYSTEMD_UNIT = "tim-runtime.service"
+# launchd waits ExitTimeOut (45 s in ops/launchd/com.tim.runtime.plist) before it kills the runtime and
+# only then does bootout return, so the wait here has to be longer than that.
+LAUNCHD_BOOTOUT_TIMEOUT = 60
 
 # Same file and env override as src/dashboard/security.py (read here directly so timctl does not
 # import the dashboard package). Present with a *.ts.net host = owner switched on phone access.
@@ -282,7 +291,7 @@ class RuntimeControl:
             if result.returncode != 0 and self.service_status()["loaded"]:
                 raise RuntimeControlError("systemd refused to stop the TIM runtime")
             return
-        result = self._launchctl("bootout", self.launch_domain, str(self.plist_path), timeout=30)
+        result = self._launchctl("bootout", self.launch_domain, str(self.plist_path), timeout=LAUNCHD_BOOTOUT_TIMEOUT)
         if result.returncode != 0 and self.service_status()["loaded"]:
             raise RuntimeControlError("launchd refused to boot out the TIM runtime")
 
