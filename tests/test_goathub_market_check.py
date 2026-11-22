@@ -166,29 +166,48 @@ def test_better_calls_without_a_stop_are_listed_not_dropped() -> None:
     calls = read_calls([replace(message, message_id="b0", content="Fc ake", posted_at=T0 - STEP, received_at=T0 - STEP), message])
     entries = build_diary(calls, snapshot(FLAT))
     assert len(entries) == 1 and entries[0].symbol == "AKE"
-    assert entries[0].verdict == "tradable" and entries[0].rule == "tim_standard"  # only a coin named: TIM's own stop and target
+    assert entries[0].rule == "tim_analyse" and entries[0].analysis  # only a coin named: TIM writes its own analysis
 
 
-def test_coin_call_without_levels_gets_tims_fixed_stop_and_target() -> None:
-    entry = build_diary({"x": [tracked("Short ake")]}, snapshot(FLAT + [(0.85, 0.95), (0.75, 0.85)]))[0]
-    assert entry.rule == "tim_standard" and entry.stop == Decimal("1.06") and entry.target == Decimal("0.88")  # 6 % stop, 12 % target
+def test_coin_call_without_levels_gets_tims_own_analysis_stop_and_target() -> None:
+    entry = build_diary({"x": [tracked("Short ake")]}, snapshot(FLAT + [(0.93, 0.99), (0.90, 0.95)]))[0]
+    # flat coin around 1.00, usual candle 2 %: stop one candle range above the 6 h high, target at twice the risk
+    assert entry.rule == "tim_analyse" and entry.verdict == "tradable"
+    assert entry.stop == Decimal("1.03") and entry.target == Decimal("0.94")
     assert entry.status == "target_hit" and Decimal("1.5") < entry.net_r < Decimal("2.0")
-    assert entry.drift is not None and entry.drift["1h"] and "72h" not in entry.drift  # only what already happened
-    lost = build_diary({"x": [tracked("Short ake")]}, snapshot(FLAT + [(1.05, 1.15)]))[0]
+    assert "Empfehlung: SHORT" in entry.analysis and "AKE" in entry.analysis
+    lost = build_diary({"x": [tracked("Short ake")]}, snapshot(FLAT + [(1.00, 1.05)]))[0]
     assert lost.status == "stopped" and lost.net_r < Decimal("-1")
 
 
-def test_author_levels_are_never_replaced_by_the_standard_rule() -> None:
+def test_tim_declines_a_coin_call_against_the_last_hours() -> None:
+    rising = snapshot([(0.99, 1.01)], history=96)
+    bars = list(rising.bars["AKEUSDT"])
+    lifted = [replace(bar, open=bar.open * Decimal("1.10"), high=bar.high * Decimal("1.10"), low=bar.low * Decimal("1.10"), close=bar.close * Decimal("1.10"))
+              for bar in bars[-12:]]  # the last 3 hours trade 10 % higher: a short would fight the move
+    market = replace(rising, bars={"AKEUSDT": bars[:-12] + lifted})
+    entry = build_diary({"x": [tracked("Short ake")]}, market)[0]
+    assert entry.verdict == "tim_no_trade" and entry.status == "not_entered" and "NICHT HANDELN" in entry.analysis
+
+
+def test_author_levels_are_never_replaced_by_tims_analysis() -> None:
     entry = build_diary({"x": [tracked("Short ake SL 1.1\nTarget 0.8")]}, snapshot(FLAT))[0]
-    assert entry.rule == "autor" and entry.stop == Decimal("1.1")
+    assert entry.rule == "autor" and entry.stop == Decimal("1.1") and entry.analysis == ""
 
 
-def test_standard_rule_skips_a_call_the_price_already_ran_away_from() -> None:
-    drop = [(0.99, 1.01)] + [(0.93, 0.95)] * 7  # fell about 6 % while TIM was reading
-    assert check_market(tracked("Short ake", known_after=3), snapshot(drop)).code == "ran_away"
+def test_analysis_reads_no_candle_after_the_entry() -> None:
+    from src.knowledge.goathub_coin_analysis import analyse_coin
+    market = snapshot(FLAT + [(0.50, 0.60)] * 4)
+    bars = market.bars["AKEUSDT"]
+    early = analyse_coin(bars, at=T0, side="SHORT", interval=STEP)
+    assert early == analyse_coin([bar for bar in bars if bar.open_time < T0], at=T0, side="SHORT", interval=STEP)
+    assert analyse_coin(bars[-10:], at=T0 + STEP * 12, side="SHORT", interval=STEP) is None  # too few candles: no opinion
 
 
-def test_report_keeps_author_levels_and_standard_rule_apart() -> None:
-    entries = build_diary({"x": [tracked("Short ake SL 1.1\nTarget 0.8"), tracked("Short ake")]}, snapshot(FLAT + [(0.75, 0.85)]))
+def test_direction_check_counts_every_call_with_prices_per_author() -> None:
+    entries = build_diary({"x": [tracked("Short ake SL 1.1\nTarget 0.8"), tracked("Short ake")]}, snapshot(FLAT[:2] + [(0.93, 0.95)] * 6))
     cards = author_scorecards(entries)
-    assert len(cards) == 2 and any("TIM-Standardregel" in card["author"] for card in cards.values())
+    assert len(cards) == 2 and any("TIM analysiert selbst" in card["author"] for card in cards.values())
+    assert all(card["direction"]["1h"] == {"calls": 1, "right": 1} for card in cards.values())
+    report = render_diary_report(entries, T0)
+    assert "in Richtung des Calls" in report and "## TIM-Analysen" in report

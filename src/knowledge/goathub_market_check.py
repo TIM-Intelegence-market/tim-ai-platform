@@ -28,6 +28,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from .goathub_coin_analysis import analyse_coin
 from .goathub_channels import (
     PROFILES,
     STATUS_NOT_CHECKABLE,
@@ -64,8 +65,6 @@ MIN_QUOTE_VOLUME_24H = Decimal("5000000")  # USDT turnover in the 24 h before th
 MAX_COST_SHARE_OF_RISK = Decimal("0.10")  # round-trip cost at most 10 % of the stop distance
 MIN_NET_REWARD_TO_RISK = Decimal("1")  # with a target: net reward at least the net risk
 RUNAWAY_SHARE = Decimal("0.5")  # price already covered half the way to the target
-STANDARD_STOP = Decimal("0.06")  # TIM's own rule for coin calls without a stop: 6 % against the entry, target 2R (12 %)
-STANDARD_TARGET_R = Decimal("2")
 DRIFT_HOURS = (1, 4, 24, 72)  # control: plain price change after the entry, whatever stop or target does
 MAX_STOP_DISTANCE = Decimal("0.30")  # a stop further than 30 % from the entry is a typo or another scale, not a trade
 MIN_VOLUME_COVERAGE = Decimal("0.8")  # share of the 24 h window that must be covered by bars
@@ -80,6 +79,7 @@ CODE_THIN = "thin_volume"
 CODE_NO_STOP = "no_stop"
 CODE_STOP_IN_IMAGE = "stop_maybe_in_image"
 CODE_STOP_TOO_FAR = "stop_too_far"
+CODE_TIM_NO_TRADE = "tim_no_trade"
 CODE_STOP_HIT = "stop_hit_before_entry"
 CODE_TARGET_REACHED = "target_reached_before_entry"
 CODE_RAN_AWAY = "ran_away"
@@ -95,6 +95,7 @@ _REASON_DE = {
     CODE_NO_PRICES: "keine Kursdaten",
     CODE_THIN: "zu wenig Handel",
     CODE_NO_STOP: "kein Stop genannt",
+    CODE_TIM_NO_TRADE: "TIM-Analyse: nicht handeln",
     CODE_STOP_TOO_FAR: "Stop unrealistisch weit weg",
     CODE_STOP_IN_IMAGE: "Stop evtl. nur im Chart-Bild, von Hand prüfen",
     CODE_STOP_HIT: "Stop schon vor unserem Einstieg erreicht",
@@ -172,7 +173,8 @@ class MarketVerdict:
     risk_pct: Decimal | None = None
     cost_pct: Decimal = COST_PER_SIDE * 2
     detail: str = ""
-    rule: str = "autor"  # "autor": levels as the author wrote them; "tim_standard": TIM's fixed stop and target (coin calls without levels)
+    rule: str = "autor"  # "autor": levels as the author wrote them; "tim_analyse": TIM's own analysis of a coin call without levels
+    analysis: str = ""
 
     @property
     def reason(self) -> str:
@@ -227,13 +229,21 @@ def check_market(tracked: TrackedCall, snapshot: MarketSnapshot) -> MarketVerdic
     long = tracked.bias == "LONG"
     entry = entry_bar.open
     rule = "autor"
+    analysis_text = ""
     if stop is None:
         if PROFILES[tracked.profile].coin_calls and target is None and not has_chart_image(message):
-            # A coin is only named ("Short ake"): measure it with TIM's own fixed rule, reported apart from the author's levels.
-            rule = "tim_standard"
-            sign = 1 if long else -1
-            stop = entry * (1 - sign * STANDARD_STOP)
-            target = entry * (1 + sign * STANDARD_STOP * STANDARD_TARGET_R)
+            # Only a coin is named ("Short ake"): the call is the trigger, TIM analyses the coin itself and recommends or declines.
+            analysis = analyse_coin(bars, at=entry_bar.open_time, side=tracked.bias, interval=snapshot.interval)
+            if analysis is None:
+                return MarketVerdict(False, CODE_NO_PRICES, detail=f"{pair}: zu wenig Kerzen für die Analyse")
+            analysis_text = analysis.text(tracked.symbol)
+            if not analysis.tradable:
+                return MarketVerdict(False, CODE_TIM_NO_TRADE, entry_bar.open_time, entry, quote_volume_24h=volume, detail=analysis.reason,
+                                     rule="tim_analyse", analysis=analysis_text)
+            rule, stop, target = "tim_analyse", analysis.stop, analysis.target
+            if (entry <= stop or entry >= target) if long else (entry >= stop or entry <= target):
+                return MarketVerdict(False, CODE_TIM_NO_TRADE, entry_bar.open_time, entry, quote_volume_24h=volume,
+                                     detail="Kurs sprang beim Einstieg über Stop oder Ziel", rule=rule, analysis=analysis_text)
         else:
             code = CODE_STOP_IN_IMAGE if has_chart_image(message) else CODE_NO_STOP
             return MarketVerdict(False, code, entry_time=entry_bar.open_time, entry=entry_bar.open, target=target, quote_volume_24h=volume)
@@ -245,10 +255,10 @@ def check_market(tracked: TrackedCall, snapshot: MarketSnapshot) -> MarketVerdic
         return MarketVerdict(False, CODE_TARGET_REACHED, entry_bar.open_time, entry, stop, target, volume)
     moved = (entry - posted_bar.open) if long else (posted_bar.open - entry)
     risk = abs(entry - stop)
-    if rule == "tim_standard":
+    if rule == "tim_analyse":
         if moved >= risk / 2:  # already half a stop distance in the call's favour since the post
             return MarketVerdict(False, CODE_RAN_AWAY, entry_bar.open_time, entry, stop, target, volume, rule=rule,
-                                 detail="schon die halbe Stop-Distanz gelaufen")
+                                 detail="schon die halbe Stop-Distanz gelaufen", analysis=analysis_text)
     elif target is not None:
         way = abs(target - posted_bar.open)
         if way > 0 and moved / way >= RUNAWAY_SHARE:
@@ -271,7 +281,7 @@ def check_market(tracked: TrackedCall, snapshot: MarketSnapshot) -> MarketVerdic
         if (reward_pct - cost_pct) / (risk_pct + cost_pct) < MIN_NET_REWARD_TO_RISK:
             return MarketVerdict(False, CODE_TOO_EXPENSIVE, entry_bar.open_time, entry, stop, target, volume, risk_pct,
                                  detail="Gewinn nach Kosten kleiner als Risiko")
-    return MarketVerdict(True, CODE_TRADABLE, entry_bar.open_time, entry, stop, target, volume, risk_pct, rule=rule)
+    return MarketVerdict(True, CODE_TRADABLE, entry_bar.open_time, entry, stop, target, volume, risk_pct, rule=rule, analysis=analysis_text)
 
 
 # --------------------------------------------------------------------------- paper diary
@@ -296,7 +306,8 @@ class DiaryEntry:
     exit_price: Decimal | None = None
     net_r: Decimal | None = None  # result in multiples of the risk, after costs
     text: str = ""
-    rule: str = "autor"  # "autor" or "tim_standard" (TIM's own fixed stop/target, reported apart)
+    rule: str = "autor"  # "autor" or "tim_analyse" (TIM's own analysis and levels, reported apart)
+    analysis: str = ""  # TIM's short coin analysis, when it wrote one
     drift: dict | None = None  # control: price change in % in the call's direction 1/4/24/72 h after entry
 
     def to_dict(self) -> dict[str, Any]:
@@ -347,10 +358,14 @@ def _settle(tracked: TrackedCall, verdict: MarketVerdict, snapshot: MarketSnapsh
     base = dict(message_id=message.message_id, profile=tracked.profile, author=message.author_label, channel=message.channel_name or message.channel_id,
                 symbol=tracked.symbol, side=tracked.bias, posted_at=message.posted_at, verdict=verdict.code, reason=verdict.reason,
                 text=message.content)
+    base.update(rule=verdict.rule, analysis=verdict.analysis)
+    long = tracked.bias == "LONG"
+    bars = snapshot.bars.get(_pair(tracked.symbol or ""), ())
+    if verdict.entry is not None and verdict.entry_time is not None and bars:
+        # control for every call with prices: did the coin move the author's way after TIM read it, whatever TIM decided?
+        base["drift"] = _drift(bars, verdict.entry, verdict.entry_time, long, snapshot.taken_at)
     if not verdict.tradable or verdict.entry is None or verdict.stop is None or verdict.entry_time is None:
         return DiaryEntry(**base)
-    bars = snapshot.bars[_pair(tracked.symbol or "")]
-    long = tracked.bias == "LONG"
     risk = abs(verdict.entry - verdict.stop)
     cost_r = (COST_PER_SIDE * 2 * verdict.entry) / risk
     deadline = verdict.entry_time + PROFILES[tracked.profile].horizon
@@ -380,8 +395,7 @@ def _settle(tracked: TrackedCall, verdict: MarketVerdict, snapshot: MarketSnapsh
     gross = ((exit_price - verdict.entry) if long else (verdict.entry - exit_price)) / risk if exit_price is not None else None
     net = None if gross is None else gross - cost_r
     return DiaryEntry(**base, entry_time=verdict.entry_time, entry=verdict.entry, stop=verdict.stop, target=verdict.target, status=status,
-                      exit_time=exit_time, exit_price=exit_price, net_r=None if net is None else net.quantize(Decimal("0.01")),
-                      rule=verdict.rule, drift=_drift(bars, verdict.entry, verdict.entry_time, long, snapshot.taken_at))
+                      exit_time=exit_time, exit_price=exit_price, net_r=None if net is None else net.quantize(Decimal("0.01")))
 
 
 def build_diary(calls: Mapping[str, Iterable[TrackedCall]], snapshot: MarketSnapshot, *, min_grade: Sequence[str] = ("A", "B")) -> list[DiaryEntry]:
@@ -418,11 +432,15 @@ def author_scorecards(entries: Sequence[DiaryEntry]) -> dict[str, dict[str, Any]
     """Per author: how many calls, how many were tradable and what the entered trades earned (in R, after costs)."""
     cards: dict[str, dict[str, Any]] = {}
     for entry in entries:
-        standard = entry.rule == "tim_standard"
-        card = cards.setdefault(f"{_author_key(entry.author)}{'|tim_standard' if standard else ''}", {
-            "author": entry.author + (" (TIM-Standardregel: Stop 6 %, Ziel 12 %, ohne Stop vom Autor)" if standard else ""), "calls": 0, "tradable": 0, "target_hit": 0, "stopped": 0, "open": 0, "expired": 0,
+        own = entry.rule == "tim_analyse"
+        card = cards.setdefault(f"{_author_key(entry.author)}{'|tim_analyse' if own else ''}", {
+            "author": entry.author + (" (nur Coin genannt, TIM analysiert selbst)" if own else ""), "direction": {}, "calls": 0, "tradable": 0, "target_hit": 0, "stopped": 0, "open": 0, "expired": 0,
             "net_r_closed": Decimal(0), "net_r_open": Decimal(0), "not_tradable_reasons": {}})
         card["calls"] += 1
+        for horizon, move in (entry.drift or {}).items():
+            seen = card["direction"].setdefault(horizon, {"calls": 0, "right": 0})
+            seen["calls"] += 1
+            seen["right"] += Decimal(move) > 0
         if entry.entered:
             card["tradable"] += 1
             card[entry.status] += 1
@@ -447,7 +465,7 @@ def render_diary_report(entries: Sequence[DiaryEntry], generated_at: datetime) -
         f"Stand: {generated_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC. Nur Papier, keine Orders. "
         "Annahmen: Gebühr 0,06 % je Seite (nicht bestätigt), Rutschen 0,05 % je Seite (Schätzung), mind. 5 Mio. USDT Handel in 24 h.",
         "Einstieg ist erst dann, wenn TIM den Beitrag gelesen hat, nicht beim Posten.",
-        "Calls mit Stop vom Autor und Calls, bei denen nur ein Coin genannt wird (TIM setzt dann selbst Stop und Ziel), stehen getrennt.",
+        "Calls mit Stop vom Autor und Calls, bei denen nur ein Coin genannt wird (TIM analysiert dann selbst, Regeln coin-analyse/1.0), stehen getrennt.",
     ]
     for card in cards.values():
         reasons = ", ".join(f"{_REASON_DE[code]} {count}x" for code, count in sorted(card["not_tradable_reasons"].items(), key=lambda item: -item[1])) or "-"
@@ -460,10 +478,16 @@ def render_diary_report(entries: Sequence[DiaryEntry], generated_at: datetime) -
 + ("Noch nichts abgeschlossen." if card["closed"] == 0 else f"Abgeschlossen im Schnitt {average} je Trade nach Kosten{small}."),
             f"- Nicht handelbar wegen: {reasons}.",
         ]
+        if card["direction"]:
+            lines.append("- Lief der Kurs danach in Richtung des Calls? " + ", ".join(
+                f"nach {horizon.replace('h', ' h')}: {seen['right']} von {seen['calls']}" for horizon, seen in card["direction"].items()) + ".")
     lines += ["", "## Einzelne Calls", "", "| Zeit (UTC) | Autor | Coin | Seite | Urteil | Einstieg | Stop | Ziel | Stand | Ergebnis (R) |", "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     for item in entries:
         def fmt(value: Decimal | None) -> str:
             return "-" if value is None else f"{value.normalize():f}"
         lines.append(f"| {item.posted_at.astimezone(timezone.utc).strftime('%m-%d %H:%M')} | {item.author} | {item.symbol or '?'} | {item.side} | "
                      f"{item.reason} | {fmt(item.entry)} | {fmt(item.stop)} | {fmt(item.target)} | {_STATUS_DE[item.status]} | {fmt(item.net_r)} |")
+    written = [item for item in entries if item.analysis]
+    if written:
+        lines += ["", "## TIM-Analysen", ""] + [f"- {item.posted_at.astimezone(timezone.utc).strftime('%m-%d %H:%M')} {item.author}: {item.analysis}" for item in written]
     return "\n".join(lines) + "\n"
