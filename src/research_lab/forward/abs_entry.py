@@ -54,6 +54,7 @@ class Params:
     atr_len: int = 14
     breakeven_r: float = 1.0         # from +1 R (closed minute) the stop moves to the fill
     exit_needs_zone: bool = False    # the counter-absorption that ends a trade needs no zone
+    need_zone: bool = True           # False = comparison run "ohne Zone" (Uzi 22.11.), own journal folder
     swing_side: int = 3              # 1h swing pivot: 3 hours left and right
     swing_keep_h: int = 72
     value_area: float = 0.70
@@ -84,7 +85,10 @@ class Params:
     bootstrap_seed: int = 17
 
     def digest(self) -> str:
-        return hashlib.sha256(json.dumps(asdict(self), sort_keys=True).encode()).hexdigest()[:16]
+        values = asdict(self)
+        if values["need_zone"]:   # the default leaves the digest of the running 0.6 journal untouched
+            del values["need_zone"]
+        return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()[:16]
 
 
 PARAMS = Params()
@@ -411,7 +415,7 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
             if pos is not None and hit["direction"] != pos["direction"] and (zone or not p.exit_needs_zone):
                 exit_next = "Gegen-Absorption"
                 event["ergebnis"] = f"Ausstieg Trade {pos['id']}"
-            elif zone and pos is None and pending is None and atr and event["zaehlt"]:
+            elif (zone or not p.need_zone) and pos is None and pending is None and atr and event["zaehlt"]:
                 pending = {"event": event, "direction": hit["direction"], "extreme": hit["extreme"], "close": hit["close"],
                            "atr": atr, "waited": 0, "zone": event["zone"], "kontext": event["kontext"],
                            **({"fill_next": True} if "kreis" in hit else {}),   # the turn is the trigger: limit at this close
@@ -419,7 +423,7 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
                                             | {z["mid"] for z in drawn or [] if z["weight"] >= p.chart_min_weight})}
                 event["ergebnis"] = "ausgelöst, Limit am Schluss" if "kreis" in hit else "wartet auf Auslöser"
             else:
-                event["ergebnis"] = ("ohne Zone" if not zone else "Position offen" if pos is not None
+                event["ergebnis"] = ("ohne Zone" if not zone and p.need_zone else "Position offen" if pos is not None
                                      else "vor Start" if not event["zaehlt"] else "kein ATR")
             events.append(event)
         windows.append(win)

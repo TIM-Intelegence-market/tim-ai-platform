@@ -14,6 +14,7 @@ Anlass: Uzi markierte am 21.11. vier Kreise im Chart (55.200, 57.300, 59.200, 60
 - **Kein Vorgriff:** Der Lauf wertet nur Fenster aus, die der Perp-Sammler schon abgedeckt hat (`state.json`). Lücken des Sammlers bedeuten fehlende Kreise, nicht nachträgliche Trades.
 - **Herkunft der Schwelle (ehrlich):** 200 BTC ist an genau den vier Stellen vom 21.11. abgelesen (502, 207, 470, 203 BTC), also an einem einzigen Tag angepasst; kein Beleg für eine Wirkung. Nachspiel 21.11. (nur Plausibilität, zählt nicht): alle vier Stellen werden als gedrehter Kreis erkannt, drei davon liegen an keiner TIM-Chart-Zone (kein Trade), die vierte (Kauf-Kreis 59.400 → SHORT) wäre am Stop geendet.
 - Ohne Kreis-Quelle rechnet der Code weiter die 0.5-Erkennung (alte Tests unverändert).
+- **Vergleichslauf "ohne Zone" (Uzi 22.11. "kanns auch ohne zone testen"):** zweiter Papier-Lauf mit `need_zone = False`, eigener Journal-Ordner, sonst identisch. Er handelt jeden gedrehten Kreis, auch ohne TIM-Chart-Zone. Zwei Läufe auf denselben Tagen sind zwei Tests; ein Urteil gilt je Lauf einzeln und wird als Mehrfachtest berichtet.
 
 ## Änderung 0.5 (Uzi 19.11., "Pass es an")
 

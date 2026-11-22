@@ -303,3 +303,15 @@ def test_step_waits_for_the_perp_collector(tmp_path):
     circles.upto = lambda: T600 + 20 * MINUTE_MS
     out = abs_entry.step(tmp_path, all_days.get, today, **kw)
     assert out["ereignisse"] == 1 and out["offen"] is True and out["abweichungen"] == 0
+
+
+def test_without_zone_run_trades_a_turned_circle_anywhere_and_keeps_the_old_digest():
+    from dataclasses import replace
+
+    far = [(d, flat_day(d) if i < 2 else b, pr) for i, (d, b, pr) in enumerate(days(scenario(exit_absorption=False)))]
+    circles = orders((T600 + 10_000, 64_015.0, 300.0, -1))
+    assert abs_entry.simulate(far, STARTED, circles=circles)["open"] is None
+    free = replace(abs_entry.PARAMS, need_zone=False)
+    trade = abs_entry.simulate(far, STARTED, free, circles=circles)["open"]
+    assert trade["direction"] == "LONG" and trade["zone"] is None
+    assert abs_entry.PARAMS.digest() == "230d890f9a3ddd02" and free.digest() != abs_entry.PARAMS.digest()
