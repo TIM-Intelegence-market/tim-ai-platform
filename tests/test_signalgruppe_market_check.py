@@ -207,7 +207,8 @@ def test_analysis_reads_no_candle_after_the_entry() -> None:
 
 
 def test_direction_check_counts_every_call_with_prices_per_author() -> None:
-    entries = build_diary({"x": [tracked("Short abc SL 1.1\nTarget 0.8"), tracked("Short abc")]}, snapshot(FLAT[:2] + [(0.93, 0.95)] * 6))
+    market = snapshot(FLAT[:2] + [(0.93, 0.95)] * 6)
+    entries = build_diary({"x": [tracked("Short abc SL 1.1\nTarget 0.8")]}, market) + build_diary({"x": [tracked("Short abc")]}, market)
     cards = author_scorecards(entries)
     assert len(cards) == 2 and any("TIM analysiert selbst" in card["author"] for card in cards.values())
     assert all(card["direction"]["1h"] == {"calls": 1, "right": 1} for card in cards.values())
@@ -228,3 +229,15 @@ def test_small_coins_get_their_own_book_with_higher_cost() -> None:
     cards = author_scorecards(entries)
     assert {key for key in cards} == {"autor b", "autor b|klein"}
     assert "kleine Coins" in render_diary_report(entries, T0)
+
+
+def test_late_read_opens_no_trade_and_a_repeated_tip_counts_once() -> None:
+    late = check_market(tracked(known_after=60), snapshot(FLAT * 10))  # read 15 h after the post
+    assert late.code == "read_too_late" and not late.tradable and "15 h" in late.reason
+    assert check_market(tracked(known_after=40), snapshot(FLAT * 10)).code != "read_too_late"  # 10 h: still read in time
+    first, again = tracked("Short abc"), tracked("Short abc ")
+    again = replace(again, call=replace(again.call, message=replace(again.call.message, message_id="again", posted_at=T0 + STEP)))
+    assert len(build_diary({"x": [first, again]}, snapshot(FLAT))) == 1
+    with_levels = tracked("Short abc SL 1.1\nTarget 0.8")
+    with_levels = replace(with_levels, call=replace(with_levels.call, message=replace(with_levels.call.message, message_id="lv", posted_at=T0 + STEP)))
+    assert len(build_diary({"x": [first, with_levels]}, snapshot(FLAT))) == 2  # new levels are a new call
