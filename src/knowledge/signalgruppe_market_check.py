@@ -71,6 +71,11 @@ SMALL_SLIPPAGE_PER_SIDE = Decimal("0.003")  # 0.3 % per fill
 SMALL_MAX_COST_SHARE_OF_RISK = Decimal("0.25")
 SMALL_STAKE_FACTOR = Decimal("0.25")
 BOOK_NORMAL, BOOK_SMALL = "normal", "klein"
+# A call read long after it was posted opens no paper trade: the entry would be at a price the author never meant.
+# 12 h covers the three screen readings a day; a setting, not a measurement.
+MAX_READ_DELAY = timedelta(hours=12)
+# The same author naming the same coin and side again within this time, without new levels, is one call, not two.
+REPEAT_WINDOW = timedelta(minutes=60)
 MIN_NET_REWARD_TO_RISK = Decimal("1")  # with a target: net reward at least the net risk
 RUNAWAY_SHARE = Decimal("0.5")  # price already covered half the way to the target
 DRIFT_HOURS = (1, 4, 24, 72)  # control: plain price change after the entry, whatever stop or target does
@@ -84,6 +89,7 @@ CODE_NOT_LISTED = "not_listed"
 CODE_NOT_OPEN = "not_open"
 CODE_NO_PRICES = "no_prices"
 CODE_THIN = "thin_volume"
+CODE_READ_LATE = "read_too_late"
 CODE_NO_STOP = "no_stop"
 CODE_STOP_IN_IMAGE = "stop_maybe_in_image"
 CODE_STOP_TOO_FAR = "stop_too_far"
@@ -102,6 +108,7 @@ _REASON_DE = {
     CODE_NOT_OPEN: "Bitunix-Vertrag nicht offen",
     CODE_NO_PRICES: "keine Kursdaten",
     CODE_THIN: "zu wenig Handel",
+    CODE_READ_LATE: "zu spät gelesen",
     CODE_NO_STOP: "kein Stop genannt",
     CODE_TIM_NO_TRADE: "TIM-Analyse: nicht handeln",
     CODE_STOP_TOO_FAR: "Stop unrealistisch weit weg",
@@ -238,6 +245,11 @@ def _check_market(tracked: TrackedCall, snapshot: MarketSnapshot) -> MarketVerdi
     small = volume < MIN_QUOTE_VOLUME_24H
     if volume < SMALL_MIN_QUOTE_VOLUME_24H:
         return MarketVerdict(False, CODE_THIN, quote_volume_24h=volume, detail=f"{volume / 1_000_000:.1f} Mio. USDT in 24 h")
+
+    delay = known - message.posted_at
+    if delay > MAX_READ_DELAY:
+        return MarketVerdict(False, CODE_READ_LATE, entry_bar.open_time, entry_bar.open, quote_volume_24h=volume,
+                             detail=f"{delay / timedelta(hours=1):.0f} h nach dem Post")
 
     # Levels are read against the price at the posting (that is what the author saw), prices from the bars.
     outcome = check_outcome(tracked, [bar.price_bar() for bar in bars], observed_at=snapshot.taken_at)
@@ -421,10 +433,17 @@ def build_diary(calls: Mapping[str, Iterable[TrackedCall]], snapshot: MarketSnap
     Channels whose calls come without levels (chart calls) list every directional call with a coin."""
     entries = []
     for tracked_calls in calls.values():
-        for tracked in tracked_calls:
+        last_seen: dict[tuple[str, str | None, str], datetime] = {}
+        for tracked in sorted(tracked_calls, key=lambda item: item.call.message.posted_at):
             listed = PROFILES[tracked.profile].coin_calls and tracked.symbol and tracked.bias in ("LONG", "SHORT")
             if (tracked.call.grade not in min_grade and not listed) or tracked.call.message.known_at > snapshot.taken_at:
                 continue
+            message = tracked.call.message
+            key = (_author_key(message.author_name), tracked.symbol, tracked.bias)
+            earlier = last_seen.get(key)
+            last_seen[key] = message.posted_at
+            if tracked.symbol and earlier is not None and message.posted_at - earlier <= REPEAT_WINDOW and not tracked.call.guidance.levels:
+                continue  # the same tip said again
             entries.append(_settle(tracked, check_market(tracked, snapshot), snapshot))
     return sorted(entries, key=lambda item: (item.posted_at, item.message_id))
 
