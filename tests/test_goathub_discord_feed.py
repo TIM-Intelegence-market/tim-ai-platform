@@ -237,7 +237,7 @@ def test_bot_export_command_writes_files(tmp_path: Path) -> None:
 
 def test_followed_announcement_channel_posts_are_accepted(tmp_path: Path) -> None:
     crosspost = {"id": "400000000000000001", "timestamp": "2026-10-12T11:00:00+00:00", "content": "btc short 83800 invalid above 84500",
-                 "author": {"id": "400000000000000009", "username": "The Goat Hub #calls", "bot": True},
+                 "author": {"id": "400000000000000009", "username": "Gruppe #calls", "bot": True},
                  "webhook_id": "400000000000000009", "flags": 2,
                  "message_reference": {"channel_id": "500000000000000000", "guild_id": "600000000000000000", "message_id": "700000000000000000"}}
     plain_bot = {**discord_message(400000000000000002, "400000000000000008", "bot noise", bot=True)}
@@ -246,19 +246,19 @@ def test_followed_announcement_channel_posts_are_accepted(tmp_path: Path) -> Non
     assert (result.stored, result.rejected_author) == (1, 1)
     stored = GoatHubFeedStore(tmp_path).load()[0]
     assert stored.source == "discord_follow" and stored.message_id == "700000000000000000"
-    assert stored.author_label == "The Goat Hub #calls"
+    assert stored.author_label == "Gruppe #calls"
 
 
 def test_screen_readings_import_once(tmp_path: Path) -> None:
     from src.knowledge.goathub_feed import import_screen_readings
 
     store = GoatHubFeedStore(tmp_path)
-    payload = [{"channel_id": "goatfather", "channel_name": "goatfather-channel", "author": "goatfather",
+    payload = [{"channel_id": "kanal-3", "channel_name": "kanal-3", "author": "Autor B",
                 "posted_at": "2026-10-12T14:47:00+00:00", "content": "btc long 83000 invalid below 82000"}]
     assert import_screen_readings(store, payload, NOW) == (1, 0)
     assert import_screen_readings(store, payload, NOW) == (0, 1)
     stored = GoatHubFeedStore(tmp_path).load()[0]
-    assert stored.source == "discord_screen" and stored.author_label == "goatfather"
+    assert stored.source == "discord_screen" and stored.author_label == "Autor B"
     with pytest.raises(ValueError):
         import_screen_readings(store, [{**payload[0], "posted_at": "2026-10-12T14:47:00"}], NOW)
 

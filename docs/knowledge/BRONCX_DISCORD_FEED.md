@@ -67,7 +67,7 @@ auf einmal. Läuft Ollama nicht, bleiben die Bilder ungelesen und werden später
 
 ## Ablauf
 
-1. Broncx postet in The Goat Hub.
+1. Broncx postet in der Gruppe.
 2. Du klickst auf **Weiterleiten** (↪) und wählst deinen Kanal `#broncx-feed` im TIM-Server.
 3. Der Bot `scripts/broncx_discord_bot.py` liest den Kanal jede Minute und speichert neue
    Beiträge in `data/broncx_feed/posts.jsonl`. Das Verzeichnis ist lokal und wird nicht committet.

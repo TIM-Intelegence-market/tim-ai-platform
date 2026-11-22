@@ -2,7 +2,7 @@
 
 Status: Community-Meinung, nur Beobachtung. TIM führt GoatHub als Quellenklasse
 `HUMAN_COMMUNITY_TRADING_RESEARCH`: menschliche Trading-Forschung, gelesen als Hypothese mit Autor, Zeit und Beleg. Ergänzt den [Broncx-Feed](BRONCX_DISCORD_FEED.md),
-der Broncx' Beiträge aus The Goat Hub gewichtet. Dieser Feed nimmt den ganzen Kanal mit allen Autoren.
+der Broncx' Beiträge aus der Gruppe gewichtet. Dieser Feed nimmt den ganzen Kanal mit allen Autoren.
 
 ## Was passiert
 
@@ -54,7 +54,7 @@ erst nach einer Auswertung sinnvoll, welche Autoren mit ihren Calls richtig lage
 
 | Modus | Wie | Vollständig? |
 | --- | --- | --- |
-| `direct` | Ein Admin von The Goat Hub lädt den TIM-Bot in den Server ein (Rechte *View Channels* und *Read Message History*, nur für die gewünschten Kanäle). Der Bot liest dann alle Nachrichten mit Autor und Reaktionen. | ja |
+| `direct` | Ein Admin der Gruppe lädt den TIM-Bot in den Server ein (Rechte *View Channels* und *Read Message History*, nur für die gewünschten Kanäle). Der Bot liest dann alle Nachrichten mit Autor und Reaktionen. | ja |
 | Folgen (im Modus `forward`) | Ist der GoatHub-Kanal ein Ankündigungskanal (Megafon-Symbol), zeigt Discord oben **Folgen**. Du wählst als Ziel deinen Kanal im TIM-Server, dafür brauchst du dort „Webhooks verwalten“, keinen GoatHub-Admin. Discord postet jede neue Nachricht automatisch in deinen Kanal, der Bot übernimmt sie (Quelle `discord_follow`). | alle neuen Nachrichten ab dem Folgen, ohne Autor des Einzelbeitrags |
 | `forward` (Standard) | Du leitest Beiträge per **Weiterleiten** in einen eigenen Kanal im TIM-Server, wie beim Broncx-Feed. Nur deine Nutzer-ID wird angenommen, der ursprüngliche Autor fehlt. | nur was du weiterleitest |
 
@@ -85,7 +85,7 @@ Einstellbar per Umgebungsvariable: `TIM_GOATHUB_FEED_DIR`, `TIM_GOATHUB_DISCORD_
 (Standard `~/Library/Application Support/TIM/goathub-discord.json`) und
 `TIM_GOATHUB_DISCORD_SECRET_FILE` (Standard: das Broncx-Bot-Geheimnis).
 
-## Gemeinsame Einrichtung mit Treta (Modus `direct`)
+## Gemeinsame Einrichtung mit dem Gruppen-Admin (Modus `direct`)
 
 Entwurf zur Abstimmung. Nichts davon ist umgesetzt oder vom GoatHub-Team freigegeben.
 
@@ -110,7 +110,7 @@ Vorrang. Foren, Threads und Sprachkanäle werden nicht gelesen. Der Bot braucht 
 Kanäle *View Channels* und *Read Message History*; am einfachsten gibt der Admin die Rechte auf
 Kategorie-Ebene und lässt die Kanäle synchronisiert.
 
-**Schritte für Treta (Admin von The Goat Hub)**
+**Schritte für den Gruppen-Admin**
 
 1. Dem TIM-Bot nur diese Kategorien freigeben, mit den Rechten *View Channels* und *Read Message History*.
    Keine Schreibrechte, keine privaten Kanäle, keine Direktnachrichten.

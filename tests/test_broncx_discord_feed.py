@@ -1,7 +1,7 @@
 """Broncx Discord feed: parsing, storage, external guidance context and the read-only poller.
 
 The fixture posts are the Broncx messages from the TIM owner's screenshot of
-2026-09-29 (FUTURES-TRADING-EXPLANATIONS, The Goat Hub).
+2026-09-29 (futures channel of the group).
 """
 
 from __future__ import annotations
