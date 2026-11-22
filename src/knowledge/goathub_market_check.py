@@ -63,6 +63,14 @@ SLIPPAGE_PER_SIDE = Decimal("0.0005")  # 0.05 % per fill, a flat guess; real spr
 COST_PER_SIDE = FEE_TAKER + SLIPPAGE_PER_SIDE
 MIN_QUOTE_VOLUME_24H = Decimal("5000000")  # USDT turnover in the 24 h before the call
 MAX_COST_SHARE_OF_RISK = Decimal("0.10")  # round-trip cost at most 10 % of the stop distance
+# Small coins (Uzi 22.11.2026, "kleine Coins"): the group mostly calls coins far below the 5 Mio. line. They go into their
+# own paper book: lower turnover floor, much higher assumed slippage, a quarter of the usual stake. All three numbers are
+# settings, not measurements; real spread and depth of these coins are not recorded yet.
+SMALL_MIN_QUOTE_VOLUME_24H = Decimal("100000")
+SMALL_SLIPPAGE_PER_SIDE = Decimal("0.003")  # 0.3 % per fill
+SMALL_MAX_COST_SHARE_OF_RISK = Decimal("0.25")
+SMALL_STAKE_FACTOR = Decimal("0.25")
+BOOK_NORMAL, BOOK_SMALL = "normal", "klein"
 MIN_NET_REWARD_TO_RISK = Decimal("1")  # with a target: net reward at least the net risk
 RUNAWAY_SHARE = Decimal("0.5")  # price already covered half the way to the target
 DRIFT_HOURS = (1, 4, 24, 72)  # control: plain price change after the entry, whatever stop or target does
@@ -175,6 +183,7 @@ class MarketVerdict:
     detail: str = ""
     rule: str = "autor"  # "autor": levels as the author wrote them; "tim_analyse": TIM's own analysis of a coin call without levels
     analysis: str = ""
+    book: str = BOOK_NORMAL  # BOOK_SMALL: turnover between the small floor and the normal line, higher cost, quarter stake
 
     @property
     def reason(self) -> str:
@@ -197,6 +206,12 @@ def _entry_time(tracked: TrackedCall) -> datetime:
 
 def check_market(tracked: TrackedCall, snapshot: MarketSnapshot) -> MarketVerdict:
     """Tradable or not, with the first reason that stops the call. Checks run in a fixed order."""
+    verdict = _check_market(tracked, snapshot)
+    small = verdict.quote_volume_24h is not None and SMALL_MIN_QUOTE_VOLUME_24H <= verdict.quote_volume_24h < MIN_QUOTE_VOLUME_24H
+    return replace(verdict, book=BOOK_SMALL) if small else verdict
+
+
+def _check_market(tracked: TrackedCall, snapshot: MarketSnapshot) -> MarketVerdict:
     if tracked.bias not in ("LONG", "SHORT"):
         return MarketVerdict(False, CODE_NO_DIRECTION)
     if not tracked.symbol:
@@ -220,7 +235,8 @@ def check_market(tracked: TrackedCall, snapshot: MarketSnapshot) -> MarketVerdic
     if Decimal(len(window)) < needed:
         return MarketVerdict(False, CODE_NO_PRICES, detail=f"{pair}: Kurse der 24 h vor dem Call fehlen")
     volume = sum((bar.quote_volume for bar in window), Decimal(0))
-    if volume < MIN_QUOTE_VOLUME_24H:
+    small = volume < MIN_QUOTE_VOLUME_24H
+    if volume < SMALL_MIN_QUOTE_VOLUME_24H:
         return MarketVerdict(False, CODE_THIN, quote_volume_24h=volume, detail=f"{volume / 1_000_000:.1f} Mio. USDT in 24 h")
 
     # Levels are read against the price at the posting (that is what the author saw), prices from the bars.
@@ -272,8 +288,8 @@ def check_market(tracked: TrackedCall, snapshot: MarketSnapshot) -> MarketVerdic
     if risk_pct > MAX_STOP_DISTANCE:
         return MarketVerdict(False, CODE_STOP_TOO_FAR, entry_bar.open_time, entry, stop, target, volume, risk_pct,
                              detail=f"Stop {risk_pct * 100:.0f} % vom Einstieg entfernt")
-    cost_pct = COST_PER_SIDE * 2
-    if cost_pct > risk_pct * MAX_COST_SHARE_OF_RISK:
+    cost_pct = (FEE_TAKER + (SMALL_SLIPPAGE_PER_SIDE if small else SLIPPAGE_PER_SIDE)) * 2
+    if cost_pct > risk_pct * (SMALL_MAX_COST_SHARE_OF_RISK if small else MAX_COST_SHARE_OF_RISK):
         return MarketVerdict(False, CODE_TOO_EXPENSIVE, entry_bar.open_time, entry, stop, target, volume, risk_pct,
                              detail=f"Kosten {cost_pct * 100:.2f} % bei Stop-Abstand {risk_pct * 100:.2f} %")
     if target is not None:
@@ -281,7 +297,7 @@ def check_market(tracked: TrackedCall, snapshot: MarketSnapshot) -> MarketVerdic
         if (reward_pct - cost_pct) / (risk_pct + cost_pct) < MIN_NET_REWARD_TO_RISK:
             return MarketVerdict(False, CODE_TOO_EXPENSIVE, entry_bar.open_time, entry, stop, target, volume, risk_pct,
                                  detail="Gewinn nach Kosten kleiner als Risiko")
-    return MarketVerdict(True, CODE_TRADABLE, entry_bar.open_time, entry, stop, target, volume, risk_pct, rule=rule, analysis=analysis_text)
+    return MarketVerdict(True, CODE_TRADABLE, entry_bar.open_time, entry, stop, target, volume, risk_pct, cost_pct, rule=rule, analysis=analysis_text)
 
 
 # --------------------------------------------------------------------------- paper diary
@@ -308,6 +324,7 @@ class DiaryEntry:
     text: str = ""
     rule: str = "autor"  # "autor" or "tim_analyse" (TIM's own analysis and levels, reported apart)
     analysis: str = ""  # TIM's short coin analysis, when it wrote one
+    book: str = BOOK_NORMAL  # "klein": small-coin book (higher assumed cost, quarter stake), reported apart
     drift: dict | None = None  # control: price change in % in the call's direction 1/4/24/72 h after entry
 
     def to_dict(self) -> dict[str, Any]:
@@ -358,7 +375,7 @@ def _settle(tracked: TrackedCall, verdict: MarketVerdict, snapshot: MarketSnapsh
     base = dict(message_id=message.message_id, profile=tracked.profile, author=message.author_label, channel=message.channel_name or message.channel_id,
                 symbol=tracked.symbol, side=tracked.bias, posted_at=message.posted_at, verdict=verdict.code, reason=verdict.reason,
                 text=message.content)
-    base.update(rule=verdict.rule, analysis=verdict.analysis)
+    base.update(rule=verdict.rule, analysis=verdict.analysis, book=verdict.book)
     long = tracked.bias == "LONG"
     bars = snapshot.bars.get(_pair(tracked.symbol or ""), ())
     if verdict.entry is not None and verdict.entry_time is not None and bars:
@@ -367,7 +384,7 @@ def _settle(tracked: TrackedCall, verdict: MarketVerdict, snapshot: MarketSnapsh
     if not verdict.tradable or verdict.entry is None or verdict.stop is None or verdict.entry_time is None:
         return DiaryEntry(**base)
     risk = abs(verdict.entry - verdict.stop)
-    cost_r = (COST_PER_SIDE * 2 * verdict.entry) / risk
+    cost_r = (verdict.cost_pct * verdict.entry) / risk
     deadline = verdict.entry_time + PROFILES[tracked.profile].horizon
     status, exit_time, exit_price = STATUS_OPEN, None, None
     for bar in (b for b in bars if verdict.entry_time <= b.open_time <= snapshot.taken_at):
@@ -433,8 +450,9 @@ def author_scorecards(entries: Sequence[DiaryEntry]) -> dict[str, dict[str, Any]
     cards: dict[str, dict[str, Any]] = {}
     for entry in entries:
         own = entry.rule == "tim_analyse"
-        card = cards.setdefault(f"{_author_key(entry.author)}{'|tim_analyse' if own else ''}", {
-            "author": entry.author + (" (nur Coin genannt, TIM analysiert selbst)" if own else ""), "direction": {}, "calls": 0, "tradable": 0, "target_hit": 0, "stopped": 0, "open": 0, "expired": 0,
+        small = entry.book == BOOK_SMALL and entry.entered
+        card = cards.setdefault(f"{_author_key(entry.author)}{'|tim_analyse' if own else ''}{'|klein' if small else ''}", {
+            "author": entry.author + (" (nur Coin genannt, TIM analysiert selbst)" if own else "") + (", kleine Coins" if small else ""), "direction": {}, "calls": 0, "tradable": 0, "target_hit": 0, "stopped": 0, "open": 0, "expired": 0,
             "net_r_closed": Decimal(0), "net_r_open": Decimal(0), "not_tradable_reasons": {}})
         card["calls"] += 1
         for horizon, move in (entry.drift or {}).items():
@@ -464,6 +482,7 @@ def render_diary_report(entries: Sequence[DiaryEntry], generated_at: datetime) -
         "",
         f"Stand: {generated_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC. Nur Papier, keine Orders. "
         "Annahmen: Gebühr 0,06 % je Seite (nicht bestätigt), Rutschen 0,05 % je Seite (Schätzung), mind. 5 Mio. USDT Handel in 24 h.",
+        "Kleine Coins (0,1 bis 5 Mio. USDT Handel) laufen in einem eigenen Buch: Rutschen 0,3 % je Seite (Annahme), Viertel-Einsatz.",
         "Einstieg ist erst dann, wenn TIM den Beitrag gelesen hat, nicht beim Posten.",
         "Calls mit Stop vom Autor und Calls, bei denen nur ein Coin genannt wird (TIM analysiert dann selbst, Regeln coin-analyse/1.0), stehen getrennt.",
     ]
