@@ -435,3 +435,19 @@ def test_run_returns_a_normal_launchctl_error_code_unchanged(monkeypatch: pytest
     module = load_timctl()
     _failing_run(monkeypatch, module, completed(["/bin/launchctl", "print"], returncode=113))
     assert module.run(["/bin/launchctl", "print", "gui/501/com.tim.runtime"]).returncode == 113
+
+
+def test_bootout_wait_outlasts_the_launchd_exit_timeout(control, monkeypatch: pytest.MonkeyPatch) -> None:
+    module, instance = control
+    plist = plistlib.loads((Path(__file__).resolve().parents[1] / "ops/launchd/com.tim.runtime.plist").read_bytes())
+    assert module.LAUNCHD_BOOTOUT_TIMEOUT >= plist["ExitTimeOut"] + 10
+    seen: dict[str, object] = {}
+
+    def launchctl(*args, timeout=20):
+        seen.update(operation=args[0], timeout=timeout)
+        return completed(list(args))
+
+    monkeypatch.setattr(instance, "service_manager", "launchd")
+    monkeypatch.setattr(instance, "_launchctl", launchctl)
+    instance._stop_service()
+    assert seen == {"operation": "bootout", "timeout": module.LAUNCHD_BOOTOUT_TIMEOUT}
