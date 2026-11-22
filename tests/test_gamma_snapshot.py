@@ -338,3 +338,11 @@ def test_level_starts_survive_a_restart_through_the_level_log(tmp_path) -> None:
     late = gamma_data.refresh(DashboardState(gamma_log_path=path), "BTCUSDT", fetch=_fake_deribit(), now=AS_OF + timedelta(hours=2))
     assert late["level_since"]["call_wall"]["since"] == late["as_of"]
     assert gamma_data.since_from_log(snap, "BTCUSDT", tmp_path / "missing.jsonl") == {}
+
+
+def test_chart_note_names_gamma_state():
+    snap = _snapshot()
+    note = gamma_data.state_note(snap)
+    assert note and note.startswith("Gamma-Zustand: ") and "Schätzung" in note
+    assert any(n == note for n in gamma_data.chart_drawings(snap, AS_OF)[1])
+    assert gamma_data.level_record(snap, "BTCUSDT")["price_vs_flip"] == snap["all_expiries"]["price_vs_flip"]

@@ -49,7 +49,7 @@
   const status = document.getElementById('tc-live-status' + PANE);
   const layers = document.getElementById('tc-live-layers' + PANE);
   const STORE = 'tim-chart-layers-v1' + PANE;
-  const SHORT_BARS = 12;
+  const NAME_SHIFT = 20;  // candles a level's name sits inside its line (not centred on the line start)
   const STYLE = { solid: LWC.LineStyle.Solid, dotted: LWC.LineStyle.Dotted, dashed: LWC.LineStyle.Dashed };
   let symbol = (PANE ? root : host).dataset.symbol, timeframe = (PANE ? root : host).dataset.tf;
   let timer = null, model = null, first = true, request = 0, running = true;
@@ -1008,6 +1008,47 @@
   };
   candles.attachPrimitive(vwapFill);
 
+  // Gamma level with a standing order book wall (layer "gamma_ob", gamma_zones.py): a band from the moment the
+  // wall appeared to the right edge. The line and its name come from the normal level drawing.
+  const zoneFill = {
+    chart: null, series: null, requestUpdate: null, visible: false,
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.view]; },
+    view: {
+      zOrder() { return 'bottom'; },
+      renderer() {
+        return {
+          draw(target) {
+            if (!zoneFill.visible || !zoneFill.chart || !model || !model.drawings || !model.candles.length) return;
+            const zones = model.drawings.filter(d => d.group === 'gamma_ob' && Array.isArray(d.band));
+            if (!zones.length) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const scale = zoneFill.chart.timeScale();
+              const first = model.candles[0].time;
+              for (const zone of zones) {
+                const from = Math.max(first, zone.t1 || Math.floor(Date.parse(zone.start) / 1000));  // t1: start snapped to a candle
+                let x0 = scale.timeToCoordinate(local(from));
+                if (x0 === null) x0 = scale.timeToCoordinate(local(first));
+                const y0 = zoneFill.series.priceToCoordinate(zone.band[1]), y1 = zoneFill.series.priceToCoordinate(zone.band[0]);
+                if (x0 === null || y0 === null || y1 === null) continue;
+                const left = Math.max(0, x0), height = Math.max(4, y1 - y0);
+                ctx.fillStyle = 'rgba(255,210,74,0.26)';
+                ctx.fillRect(left, y0, mediaSize.width - left, height);
+                ctx.strokeStyle = 'rgba(255,210,74,0.55)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(left + 0.5, y0 + 0.5, mediaSize.width - left - 1, height - 1);
+              }
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(zoneFill);
+
   // Volume profile of the last N candles (EXO.vp: lookback 240, rows 130, value area 70 %, width 40, offset 13, right)
   // with node detection: high-volume nodes (local peaks) brighter, low-volume nodes (troughs) as dotted lines.
   // Built from the footprint rows of the shown candles, so it needs TIM's trades (5m and above) like the footprint.
@@ -1443,13 +1484,13 @@
         fpDelta: 'Footprint: delta bars', fpCells: 'Footprint: bid × ask', fpProfile: 'Footprint: profile', other: 'Other', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume profile',
         standard: 'TIM standard (all default layers)', read: 'Read (few layers, start)', pro: 'Orderflow Pro (BTC 15m perp)', orderflow: 'Orderflow', profile: 'Profiles (VP, TPO)', levels: 'Levels',
         vwap: 'VWAP', structure: 'Structure', positioning: 'Positioning', macro: 'Macro', trades: "TIM's trades",
-        exo: 'Exo workspace: VWAP, bubbles, OI, CVD', exoVp: 'Exo profile: VP range, VPOC', exoTpo: 'Exo TPO: sessions and profiles', usdtd: 'USDT.D (dominance)' }
+        exo: 'Exo workspace: VWAP, bubbles, OI, CVD', exoVp: 'Exo profile: VP range, VPOC', exoTpo: 'Exo TPO: sessions and profiles', usdtd: 'USDT.D (dominance)', gammaZones: 'Gamma zones (BTC 30m): zones, reaction, no signal' }
     : { label: 'Layout', tim: 'TIM-Layouts (immer mit Level und Struktur)', own: 'Eigene Layouts', changed: 'geändert, nicht gespeichert', save: 'Speichern unter…', rename: 'Umbenennen', remove: 'Löschen',
         ask: 'Name des Layouts:', taken: 'Dieser Name gehört zu einem TIM-Layout.', confirm: name => `Layout "${name}" löschen?`,
         fpDelta: 'Footprint: Delta-Balken', fpCells: 'Footprint: Bid × Ask', fpProfile: 'Footprint: Profil', other: 'Sonstiges', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume Profile',
         standard: 'TIM Standard (alle Standard-Ebenen)', read: 'Lesen (wenige Ebenen, Start)', pro: 'Orderflow Pro (BTC 15m Perp)', orderflow: 'Orderflow', profile: 'Profile (VP, TPO)', levels: 'Level',
         vwap: 'VWAP', structure: 'Struktur', positioning: 'Positionierung', macro: 'Makro', trades: 'TIMs Trades',
-        exo: 'Exo-Workspace: VWAP, Bubbles, OI, CVD', exoVp: 'Exo-Profil: VP-Range, VPOC', exoTpo: 'Exo-TPO: Sessions und Profile', usdtd: 'USDT.D (Dominanz)' };
+        exo: 'Exo-Workspace: VWAP, Bubbles, OI, CVD', exoVp: 'Exo-Profil: VP-Range, VPOC', exoTpo: 'Exo-TPO: Sessions und Profile', usdtd: 'USDT.D (Dominanz)', gammaZones: 'Gamma-Zonen (BTC 30m): Zonen, Reaktion, kein Signal' };
   // Every layer belongs to exactly one category (Uzi 09.11.2026: each layout a category); a category is a
   // layout of its own, and the ticks under "edit layout" are sorted the same way.
   const CATEGORIES = [
@@ -1458,7 +1499,7 @@
     { name: L.levels, groups: ['day', 'week', 'month', 'quarter', 'year', 'session', 'ib'] },
     { name: L.vwap, groups: ['vwap', 'vwap_bands'] },
     { name: L.structure, groups: ['structure', 'trend', 'fib'] },
-    { name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma'] },
+    { name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma', 'gamma_ob'] },
     { name: L.macro, groups: ['dominance', 'macro'] },
     { name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long', 'plans_old'] },
     { name: L.usdtd, groups: ['usdtd_swing', 'usdtd_sr', 'usdtd_ema'] },
@@ -1477,7 +1518,7 @@
     { id: 'tim:footprint', name: L.footprint, market: 'perp', fp: 'delta', groups: ['fp', 'bubbles', 'delta', 'oi'] },
     { id: 'tim:tpo', name: L.tpo, groups: ['tpo', 'running', 'session', 'ib'] },
     { id: 'tim:vp', name: L.vp, groups: ['vp', 'running', 'vwap', 'vwap_bands'] },
-    { id: 'tim:positioning', name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma'] },
+    { id: 'tim:positioning', name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma', 'gamma_ob'] },
     { id: 'tim:macro', name: L.macro, groups: ['dominance', 'macro', 'quarter', 'year'] },
     { id: 'tim:trades', name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long'] },
     { id: 'tim:pro', name: L.pro, symbol: 'BTCUSDT', tf: '15m', market: 'perp', fp: 'profile', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi'] },
@@ -1487,6 +1528,10 @@
     { id: 'tim:exotpo', name: L.exoTpo, symbol: 'BTCUSDT', tf: '30m', market: 'perp', clean: true, groups: ['tpo', 'session', 'running', 'naked', 'vp'] },
     // USDT.D (Uzi 18.11.2026): own tab, 1h candles, swing marks with values, EMA 20/50, last support/resistance; structure and trend lines from BASE.
     { id: 'tim:usdtd', name: L.usdtd, symbol: 'USDTD', tf: '1h', clean: true, groups: ['structure', 'trend', 'usdtd_swing', 'usdtd_sr', 'usdtd_ema'] },
+    // Gamma zones (Uzi 21.11.2026): only what the trade at a gamma zone needs. The yellow bands (confirmed by a standing
+    // order book wall) and the thin gamma lines, the day levels as the next targets and delta per candle for the reaction.
+    // No bubbles, footprint, structure, week levels or plans: a phone screen stays readable. Display, no signal.
+    { id: 'tim:gammazones', name: L.gammaZones, symbol: 'BTCUSDT', tf: '30m', market: 'perp', clean: true, groups: ['gamma_ob', 'gamma', 'day', 'delta'] },
     { id: 'tim:standard', name: L.standard, groups: null },
   ];
   function ownLayouts() {
@@ -1755,12 +1800,13 @@
     bubbles.visible = groups.has('bubbles') || groups.has('bubbles_exo');
     bubbles.exo = groups.has('bubbles_exo') && !groups.has('bubbles');
     vwapFill.visible = groups.has('vwap_bands');
+    zoneFill.visible = groups.has('gamma_ob');
     const rangeOn = groups.has('vp_range');
     const openRange = rangeOn && !vpr.visible && model && model.candles.length;  // newly switched on: make room right of the candles
     vpr.visible = rangeOn;
     if (openRange) chart.timeScale().setVisibleLogicalRange(viewRange(168));
     vpoc.visible = groups.has('vpoc');
-    for (const layer of [bubbles, vwapFill, vpr, vpoc]) if (layer.requestUpdate) layer.requestUpdate();
+    for (const layer of [bubbles, vwapFill, zoneFill, vpr, vpoc]) if (layer.requestUpdate) layer.requestUpdate();
   }
   function applyVisibility(groups) {
     planMarkers(groups);
@@ -1787,8 +1833,8 @@
       const series = chart.addLineSeries({
         color: d.color, lineWidth: ['trend', 'week', 'month', 'quarter', 'year', 'vwap'].includes(d.group) ? 2 : 1,
         // Finished segments (BOS/MSS, broken trend lines) get no label on the price axis: they are history, not a live level.
-        lineStyle: STYLE[d.style] ?? LWC.LineStyle.Solid, lastValueVisible: !d.finished, priceLineVisible: false,
-        crosshairMarkerVisible: false, title: d.finished ? '' : d.label, visible: groups.has(d.group),
+        lineStyle: STYLE[d.style] ?? LWC.LineStyle.Solid, lastValueVisible: false, priceLineVisible: false,
+        crosshairMarkerVisible: false, title: '', visible: groups.has(d.group),
         autoscaleInfoProvider: () => null,  // levels never squeeze the candles
       });
       // A running line (VWAP) brings its own points; levels and segments have two.
@@ -1796,6 +1842,14 @@
         : [{ time: local(d.t1), value: d.p1 }, { time: local(d.t2), value: d.p2 }];
       const mid = d.tm != null && d.tm > d.t1 && d.tm < d.t2;
       if (mid) points.splice(1, 0, { time: local(d.tm), value: d.p1 });  // BOS/MSS: horizontal, label in the middle
+      // Uzi 21.11.2026 "schreib die einfach auf den Chart": a name centred on the line start stood half outside the
+      // chart when the line began at the left edge. Flat levels carry their name a few candles into the line instead.
+      d.tl = null;
+      const step = model.interval_seconds || 0;
+      if (!mid && !d.curve && step && d.p1 === d.p2 && d.t2 - d.t1 >= 2 * NAME_SHIFT * step) {
+        d.tl = d.t1 + NAME_SHIFT * step;
+        points.splice(1, 0, { time: local(d.tl), value: d.p1 });
+      }
       series.setData(points);
       lines.push({ series, group: d.group, drawing: d });
     }
@@ -1809,9 +1863,7 @@
   // (Uzi 11.11.2026: "1h Trend lows" and "1h BOS target" started at the same swing low and their
   // names lay on top of each other; "1D Low" and "1h BOS target" had two boxes with the same price).
   // Names at the line start: closer than 0.05 % counts as the same spot (the texts would cover each other).
-  // Price-axis boxes: only the same price (a merged box shows one number, it must be right for every name).
   const near = (a, b) => Math.abs(a - b) <= Math.abs(b) * 0.0005;
-  const samePrice = (a, b) => Math.abs(a - b) <= Math.max(1e-9, Math.abs(b) * 1e-6);
   function labelLines(groups) {
     const shown = lines.filter(item => item.drawing && groups.has(item.group));
     for (const item of lines) {
@@ -1826,37 +1878,29 @@
       const mid = d.tm != null && d.tm > d.t1 && d.tm < d.t2;
       const structure = d.group === 'structure';
       const position = structure ? (d.direction === 'UP' ? 'aboveBar' : 'belowBar') : (d.p2 >= model.last ? 'aboveBar' : 'belowBar');
-      const text = d.bars >= SHORT_BARS || d.finished ? d.label + (d.clipped ? ' ←' : '') : '';
+      // Uzi 21.11.2026: the names stand on the chart only; the price axis keeps the number without a name.
+      const text = d.label + (d.clipped ? ' ←' : '');
       const marker = {
-        time: local(mid ? d.tm : d.t1), position,
+        time: local(mid ? d.tm : d.tl || d.t1), position,
         color: d.color, shape: structure ? (d.direction === 'UP' ? 'arrowUp' : 'arrowDown') : 'circle', size: structure ? 0.6 : 0.4,
         text,
       };
-      const twin = text && markers.find(m => m.text && m.marker.time === marker.time && m.marker.position === position && near(d.p1, m.price));
+      // Uzi 21.11.2026 "Namen": on a phone "1D VAH" and "1D High" (0,02 % apart, one candle apart) lay on top of each other.
+      // Names within 0,3 % of an earlier one (same side) share its text, wherever on the time axis they start:
+      // their texts sit at about the same height and cover each other once the names move into the lines.
+      const twin = text && markers.find(m => m.text && m.marker.position === position && Math.abs(d.p1 - m.price) <= Math.abs(m.price) * 0.003);
       if (twin) {
-        twin.marker.text += ' · ' + text;
+        // At most two names in one text (a phone has no room for more): the rest as "+N".
+        twin.names.push(text);
+        twin.marker.text = twin.names.slice(0, 2).join(' · ') + (twin.names.length > 2 ? ` +${twin.names.length - 2}` : '');
         twin.series.setMarkers([twin.marker]);
         marker.text = '';
       }
       item.series.setMarkers([marker]);
-      markers.push({ marker, series: item.series, price: d.p1, text: marker.text });
+      markers.push({ marker, series: item.series, price: d.p1, text: marker.text, names: marker.text ? [marker.text] : [] });
     }
-    // One box on the price axis per spot: the first line takes all names, the others hide theirs.
-    const boxes = [];
-    for (const item of shown) {
-      const d = item.drawing;
-      if (d.finished) continue;
-      const value = d.curve && d.curve.length ? d.curve[d.curve.length - 1][1] : d.p2;
-      const twin = boxes.find(b => samePrice(value, b.value));
-      if (twin) {
-        twin.names.push(d.label);
-        twin.series.applyOptions({ title: twin.names.join(' · ') });
-        item.series.applyOptions({ lastValueVisible: false, title: '' });
-      } else {
-        item.series.applyOptions({ lastValueVisible: true, title: d.label });
-        boxes.push({ value, series: item.series, names: [d.label] });
-      }
-    }
+    // Uzi 21.11.2026: no level boxes on the price axis at all (no name, no number); the names stand on the chart.
+    for (const item of shown) item.series.applyOptions({ lastValueVisible: false, title: '' });
   }
 
 

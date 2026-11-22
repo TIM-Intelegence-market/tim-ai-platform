@@ -23,6 +23,8 @@ ISSUE_REFERENCE = re.compile(r"#(\d+)")
 RUN_MARKER = "TIM_CODEX_CLAUDE_RUN_V1"
 ANALYSIS_MARKER = "TIM_CODEX_ANALYSIS_V1"
 DEFAULT_CODEX_MODEL = "gpt-5.6-luna"
+DEFAULT_CLAUDE_MODEL = "sonnet"
+CLAUDE_MAX_TURNS = "15"
 WORKFLOW_LABELS = {
     "agent:pilot": "Explicit test issue for the local Codex-to-Claude pipeline",
     "agent:escalate": "Local AI failed; hand off its evidence to the bounded Claude worker",
@@ -224,12 +226,15 @@ class DirectoryLock:
 class Pipeline:
     def __init__(self, repository: Path, state_dir: Path, runner: CommandRunner | None = None,
                  worker: WorkerIdentity | None = None, sleep: Any = time.sleep,
-                 codex_model: str = DEFAULT_CODEX_MODEL) -> None:
+                 codex_model: str = DEFAULT_CODEX_MODEL, claude_model: str = DEFAULT_CLAUDE_MODEL) -> None:
         self.repository, self.state_dir, self.runner = repository.resolve(), state_dir.expanduser(), runner or CommandRunner()
         self.worker, self.sleep = worker, sleep
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", codex_model):
             raise PipelineError("TIM_CODEX_MODEL is invalid.")
         self.codex_model = codex_model
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", claude_model):
+            raise PipelineError("TIM_CLAUDE_MODEL is invalid.")
+        self.claude_model = claude_model
 
     def _with_worker(self, env: Mapping[str, str] | None) -> dict[str, str]:
         """gh and git act as the worker only: its token, an empty gh config and its git credential helper."""
@@ -643,7 +648,8 @@ class Pipeline:
             worktree, branch = self.make_worktree(candidate, run_id, base_ref)
             stage = "worktree"
             gitdir = Path(self.command("git", "rev-parse", "--absolute-git-dir", cwd=worktree))
-            self.command("claude", "-p", "--output-format", "json", "--max-turns", "30",
+            self.command("claude", "-p", "--model", self.claude_model, "--output-format", "json",
+                         "--max-turns", CLAUDE_MAX_TURNS,
                          "--restricted", "--strict-mcp-config", "--tools", "Read,Edit,Write,Glob,Grep",
                          "--permission-mode", "acceptEdits", claude_prompt(candidate, analysis, branch),
                          cwd=worktree, timeout=3600)
@@ -716,7 +722,8 @@ def main() -> int:
         with DirectoryLock(args.state_dir.expanduser() / "run.lock"):
             worker = load_worker_identity(os.environ, args.state_dir)
             pipeline = Pipeline(args.repository, args.state_dir, worker=worker,
-                                codex_model=os.environ.get("TIM_CODEX_MODEL", DEFAULT_CODEX_MODEL))
+                                codex_model=os.environ.get("TIM_CODEX_MODEL", DEFAULT_CODEX_MODEL),
+                                claude_model=os.environ.get("TIM_CLAUDE_MODEL", DEFAULT_CLAUDE_MODEL))
             if args.maintain:
                 pipeline.ensure_prerequisites(require_agents=False)
                 return pipeline.maintain_prs()

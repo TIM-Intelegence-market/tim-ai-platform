@@ -365,9 +365,9 @@ def test_lines_on_the_same_spot_share_one_name_and_one_axis_box():
     bubble numbers covered each other. Names merge, the axis box merges only at the same price."""
     script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
     block = script[script.index("function labelLines(groups) {"):script.index("function setLegend(bar)")]
-    assert "twin.marker.text += ' · ' + text;" in block
-    assert "boxes.find(b => samePrice(value, b.value))" in block  # a merged box shows one number: same price only
-    assert "lastValueVisible: false, title: ''" in block
+    assert "twin.marker.text = twin.names.slice(0, 2).join(' · ')" in block
+    # Uzi 21.11.2026: names only on the chart, no level boxes on the price axis (neither name nor number).
+    assert "item.series.applyOptions({ lastValueVisible: false, title: '' })" in block
     assert script.count("labelLines(groups);") == 2  # after drawing and after a layer tick changes
     bubbles = script[script.index("const bubbles = {"):script.index("candles.attachPrimitive(bubbles);")]
     assert "if (!texts.some(b =>" in bubbles
@@ -394,7 +394,7 @@ def test_layers_are_sorted_in_named_layouts():
     assert "layout.groups ? (layout.clean ? layout.groups : BASE.concat(layout.groups)) : model.default_groups" in script
     layouts = script[script.index("const TIM_LAYOUTS = ["):script.index("function ownLayouts()")]
     assert re.findall(r"id: '(tim:[a-z]+)'", layouts) == ["tim:read", "tim:orderflow", "tim:footprint", "tim:tpo", "tim:vp", "tim:positioning",
-                                                          "tim:macro", "tim:trades", "tim:pro", "tim:exo", "tim:exovp", "tim:exotpo", "tim:usdtd", "tim:standard"]
+                                                          "tim:macro", "tim:trades", "tim:pro", "tim:exo", "tim:exovp", "tim:exotpo", "tim:usdtd", "tim:gammazones", "tim:standard"]
     used = set(re.findall(r"'([a-z_]+)'", "".join(re.findall(r"groups: \[([^\]]*)\]", layouts))))
     assert used <= set(chart_live.GROUP_NAMES)
     # The footprint layout follows Uzi's reference (MMT "Footprint Delta"): delta bars per price row, delta per candle, open interest.

@@ -29,7 +29,7 @@ from typing import Any, Iterable, Sequence
 from zoneinfo import ZoneInfo
 
 from .broncx_feed import BroncxGuidance, BroncxLevel
-from .goathub_feed import ROLE_CALLS, SOURCE_SCREEN, CommunityCall, GoatHubMessage, extract_call
+from .goathub_feed import ROLE_CALLS, ROLE_KNOWLEDGE, SOURCE_SCREEN, CommunityCall, GoatHubMessage, extract_call
 
 __all__ = [
     "BOARD_LIMIT_CHARS",
@@ -41,6 +41,7 @@ __all__ = [
     "chart_reading",
     "check_outcome",
     "evaluate",
+    "has_chart_image",
     "load_bars_csv",
     "parse_transcript",
     "profile_for",
@@ -70,6 +71,10 @@ class ChannelProfile:
     authors: tuple[str, ...]  # only these authors' posts are calls (bots and guests are skipped)
     horizon: timedelta  # how long a call stays open before it counts as expired
     default_symbol: str | None = None
+    # Mixed chat channels (jokes, chart-bot commands, trade calls): the channel stays "knowledge" for everyone else, but
+    # these authors' posts are read as calls, and only when they name a coin and a level or stop (grade A/B).
+    read_knowledge_channel: bool = False
+    min_grade: str = "C"
 
 
 PROFILES: dict[str, ChannelProfile] = {
@@ -80,6 +85,9 @@ PROFILES: dict[str, ChannelProfile] = {
         "spot_goatfather", "goatfather spot", ("goatfather-channel",), ("goatfather",), timedelta(days=30)),
     "gold_eydu": ChannelProfile(
         "gold_eydu", "EyDu gold", ("xau-xag",), ("eydu",), timedelta(hours=72), default_symbol="XAU"),
+    "chat_altcoins": ChannelProfile(
+        "chat_altcoins", "Crypto chat altcoins", ("crypto-chat",), ("goatfather", "broncx"), timedelta(days=7),
+        read_knowledge_channel=True, min_grade="B"),
 }
 
 _SILVER = re.compile(r"\b(silver|xag)\b", re.IGNORECASE)
@@ -234,6 +242,28 @@ def _german_number(raw: str) -> Decimal:
     return Decimal(raw.replace(".", "").replace(",", "."))
 
 
+# "Short-Positionsbox; Preislabels 65,112.5 / 64,965.8 / 63,484.9": the three labels of a position box without names.
+_PRICE_LABELS = re.compile(r"Preislabels?\s+([^\[;]+)", re.IGNORECASE)
+_LABEL_NUMBER = re.compile(r"\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?")
+
+
+def _box_labels(attachment: str, bias: str) -> list[BroncxLevel]:
+    """Roles of three unnamed box labels from the box geometry (English number format, as the transcriber writes them).
+
+    Long box: target on top, entry in the middle, stop below. Short box: stop on top, entry in the middle, target below.
+    Fewer or more than three labels name no role and give no level.
+    """
+    match = _PRICE_LABELS.search(attachment)
+    if not match:
+        return []
+    values = sorted({Decimal(item.replace(",", "")) for item in _LABEL_NUMBER.findall(match.group(1))}, reverse=True)
+    if len(values) != 3:
+        return []
+    top, middle, bottom = values
+    roles = (("TARGET", top), ("ENTRY", middle), ("STOP", bottom)) if bias == "LONG" else (("STOP", top), ("ENTRY", middle), ("TARGET", bottom))
+    return [BroncxLevel(f"{role.lower()} {value}", value, role, source="chart") for role, value in roles]
+
+
 def chart_reading(attachments: Sequence[str]) -> tuple[str | None, tuple[BroncxLevel, ...]]:
     """Direction and levels of a position box described in a transcript attachment (estimated, source "chart")."""
     for attachment in attachments:
@@ -244,8 +274,23 @@ def chart_reading(attachments: Sequence[str]) -> tuple[str | None, tuple[BroncxL
         for role, pattern in _CHART_LEVELS.items():
             if match := pattern.search(attachment):
                 levels.append(BroncxLevel(match.group(0), _german_number(match.group(1)), role, source="chart"))
-        return box.group(1).upper(), tuple(levels)
+        bias = box.group(1).upper()
+        return bias, tuple(levels) or tuple(_box_labels(attachment, bias))
     return None, ()
+
+
+_ATTACHMENT_PAIR = re.compile(r"\b([A-Z][A-Z0-9]{1,9})\s*/?\s*(?:USDT|Tether)\b")
+
+
+def _attachment_symbol(attachments: Sequence[str]) -> str | None:
+    """Coin named in a chart description ("Bild: AKE/USDT-Chart"); only when exactly one coin appears."""
+    found = {match.group(1) for text in attachments for match in _ATTACHMENT_PAIR.finditer(text)}
+    return found.pop() if len(found) == 1 else None
+
+
+def has_chart_image(message: GoatHubMessage) -> bool:
+    """The post carries a chart picture, so a stop or target may sit in the image and not in the text."""
+    return any(re.search(r"\b(?:chart|tradingview|bild)\b", text, re.IGNORECASE) for text in message.attachments)
 
 
 def _with_chart(message: GoatHubMessage, call: CommunityCall | None, profile: ChannelProfile) -> CommunityCall | None:
@@ -285,30 +330,59 @@ def read_call(message: GoatHubMessage, profile: ChannelProfile, reference_price:
     """
     if _author_key(message.author_name) not in profile.authors or _RESULT_POST.search(message.content):
         return None
+    if profile.read_knowledge_channel and message.channel_role == ROLE_KNOWLEDGE:
+        message = replace(message, channel_role=ROLE_CALLS)
     call = extract_call(message, reference_price=reference_price)
+    if call is not None and profile.min_grade == "B" and call.grade not in ("A", "B"):
+        return None
     if profile.key == "spot_goatfather" and call is not None:
         tags = {tag.upper() for tag in _CASHTAG.findall(message.content)}
         if len(tags) == 1 and call.guidance.symbol not in tags:
             call = _regrade(replace(call, guidance=replace(call.guidance, symbol=tags.pop())))
-    if profile.key == "futures_broncx":
-        if call is not None and call.guidance.symbol not in _MAJORS:
-            call = _regrade(replace(call, guidance=replace(call.guidance, symbol=profile.default_symbol)))
-        call = _with_chart(message, call, profile)
-    elif profile.key == "gold_eydu" and call is not None:
+    if profile.key == "futures_broncx" and call is not None and call.guidance.symbol not in _MAJORS:
+        call = _regrade(replace(call, guidance=replace(call.guidance, symbol=profile.default_symbol)))
+    if profile.key == "gold_eydu" and call is not None:
         silver, gold = bool(_SILVER.search(message.content)), bool(_GOLD.search(message.content))
         symbol = "XAG" if silver and not gold else "XAU"
         if symbol != call.guidance.symbol:
             call = _regrade(replace(call, guidance=replace(call.guidance, symbol=symbol)))
+    call = _with_chart(message, call, profile)  # position boxes in chart images count for every channel
+    if call is not None and call.guidance.symbol is None and (pair := _attachment_symbol(message.attachments)):
+        call = _regrade(replace(call, guidance=replace(call.guidance, symbol=pair)))
+    if call is not None and profile.min_grade == "B" and call.grade not in ("A", "B"):
+        return None
     if call is None:
         return None
     extras = _spot_extras(message.content) if profile.key == "spot_goatfather" else {}
     return TrackedCall(profile.key, call, extras)
 
 
+FOLLOW_UP_WINDOW = timedelta(minutes=3)
+# "Target 77$", "SL 0.012", "TP 85": a short post that only adds a level to the call just before it.
+_LEVEL_ONLY = re.compile(r"^\s*(?:tps?|targets?|sl|stop(?:\s?loss)?|entry)\b[^\n]{0,30}$", re.IGNORECASE)
+
+
+def _join_follow_ups(messages: Sequence[GoatHubMessage]) -> list[GoatHubMessage]:
+    """Merge a level-only post ("Target 77$") into the same author's call posted up to 3 minutes before it.
+
+    The merged message keeps the first message's id and time, so the call is dated when it was first posted.
+    """
+    joined: list[GoatHubMessage] = []
+    for message in messages:
+        previous = joined[-1] if joined else None
+        if (previous is not None and _LEVEL_ONLY.match(message.content) and previous.channel_id == message.channel_id
+                and _author_key(previous.author_name) == _author_key(message.author_name)
+                and timedelta(0) <= message.posted_at - previous.posted_at <= FOLLOW_UP_WINDOW):
+            joined[-1] = replace(previous, content=f"{previous.content}\n{message.content}")
+            continue
+        joined.append(message)
+    return joined
+
+
 def read_calls(messages: Iterable[GoatHubMessage]) -> dict[str, list[TrackedCall]]:
     """Calls per profile, oldest first. Messages from other channels are ignored."""
     result: dict[str, list[TrackedCall]] = {key: [] for key in PROFILES}
-    for message in sorted(messages, key=lambda item: item.posted_at):
+    for message in _join_follow_ups(sorted(messages, key=lambda item: (item.posted_at, bool(_LEVEL_ONLY.match(item.content))))):
         profile = profile_for(message)
         if profile is None:
             continue

@@ -240,3 +240,89 @@ def test_cli_read_and_evaluate(tmp_path: Path, capsys) -> None:
     payload = json.loads(out.read_text(encoding="utf-8"))
     assert payload["scorecards"]["futures_broncx"]["target_hit"] == 1
     assert board.read_text(encoding="utf-8").startswith("**TIM × GoatHub board**")
+
+
+# --- reader repairs of 21.11.2026: words taken for coins, status posts, jokes, follow-up levels -----------------
+
+def test_chart_words_are_no_coins() -> None:
+    gold = PROFILES["gold_eydu"]
+    futures = PROFILES["futures_broncx"]
+    for text in ("Broke lower, backtesting rn!u can try short under 3865", "Took short sl @3755", "ETF flows are high tho and banks keep buying physicall"):
+        tracked = read_call(msg(text, channel="xau-xag", author="EyDu"), gold)
+        assert tracked is None or tracked.symbol == "XAU"
+    for text in ("Probably going for sell imbal at 62.1", "(Antwort an Broncx) this is first level for swing long reaction for me",
+                 "Well longing will have to see the right bottom"):
+        tracked = read_call(msg(text), futures)
+        assert tracked is None or tracked.symbol == "BTC"
+
+
+def test_status_posts_and_jokes_are_no_calls() -> None:
+    spot = PROFILES["spot_goatfather"]
+    for text in ("I closed 75% of ake short and moved SL to breakeven @everyone", "Taking profits on swing shorts here!",
+                 "Pull SL little lower to 0.48", "Yoo imagine now we long ake and it runs back to 0.001", "61k we short??"):
+        assert read_call(msg(text, channel="goatfather-channel", author="goatfather"), spot) is None
+
+
+def test_round_number_and_clock_time_are_no_levels() -> None:
+    spot = PROFILES["spot_goatfather"]
+    tracked = read_call(msg("Short ake round 2\n\n2% capital max SL 0.012", channel="goatfather-channel", author="goatfather"), spot)
+    assert tracked is not None and tracked.symbol == "AKE"
+    assert [(level.role, level.value) for level in tracked.call.guidance.levels] == [("STOP", Decimal("0.012"))]
+    clock = read_call(msg("Respect 9:30 level bearish for continuation lower again"), PROFILES["futures_broncx"])
+    assert clock is None or not clock.call.guidance.levels
+
+
+def test_target_follow_up_joins_the_call_before_it() -> None:
+    first = msg("Short strc", channel="goatfather-channel", author="goatfather", minutes=0)
+    second = msg("Target 77$", channel="goatfather-channel", author="goatfather", minutes=0)
+    later = msg("Target 99$", channel="goatfather-channel", author="goatfather", minutes=10)
+    for order in ([first, second, later], [second, later, first]):  # same-minute posts may arrive in any order
+        calls = read_calls(order)["spot_goatfather"]
+        assert len(calls) == 1 and calls[0].symbol == "STRC"
+        assert any(level.role == "TARGET" for level in calls[0].call.guidance.levels)
+        assert "99" not in calls[0].call.message.content
+
+
+def test_crypto_chat_reads_only_the_named_authors_and_only_full_calls() -> None:
+    from dataclasses import replace
+    from src.knowledge.goathub_feed import ROLE_KNOWLEDGE
+    chat = PROFILES["chat_altcoins"]
+    def chat_msg(text: str, author: str = "goatfather") -> GoatHubMessage:
+        return replace(msg(text, channel="crypto-chat", author=author), channel_role=ROLE_KNOWLEDGE)
+    call = read_call(chat_msg("Short ake round 2\n\n2% capital max SL 0.012"), chat)
+    assert call is not None and call.symbol == "AKE" and call.call.grade == "B"
+    assert read_call(chat_msg("Short ake round 2\n\n2% capital max SL 0.012", author="jenser111"), chat) is None
+    assert read_call(chat_msg("Fc ake 15min"), chat) is None
+    assert read_call(chat_msg("Dropped small short tp listing price", author="Broncx"), chat) is None  # no coin, no level
+    assert read_calls([chat_msg("Short ake SL 0.012")])["chat_altcoins"]  # still a knowledge channel for everyone else
+
+
+def test_far_stop_on_a_cheap_coin_is_kept_when_a_price_is_known() -> None:
+    from src.knowledge.goathub_feed import extract_call
+    call = extract_call(msg("Short ake\nSL 0.012", channel="goatfather-channel", author="goatfather"), reference_price=Decimal("0.0082"))
+    assert call is not None and [(l.role, l.value, l.ambiguous) for l in call.guidance.levels] == [("STOP", Decimal("0.012"), False)]
+    btc = extract_call(msg("Short btc\nSL 0.5"), reference_price=Decimal("60000"))
+    assert btc is None or not btc.guidance.levels  # a size, not a BTC price
+
+
+# --- chart images: box labels without names, charts in every channel --------------------------------------------
+
+def test_three_unnamed_box_labels_get_roles_from_the_box_shape() -> None:
+    short = chart_reading(["Bild: TradingView BTC/Tether 15m, Short-Positionsbox; Preislabels 65,112.5 / 64,965.8 / 63,484.9 [unsicher: kleine Labels]"])
+    assert short[0] == "SHORT"
+    assert {(l.role, l.value) for l in short[1]} == {("STOP", Decimal("65112.5")), ("ENTRY", Decimal("64965.8")), ("TARGET", Decimal("63484.9"))}
+    long = chart_reading(["Long-Positionsbox; Preislabels 0.30 / 0.25 / 0.22"])
+    assert {(l.role, l.value) for l in long[1]} == {("TARGET", Decimal("0.30")), ("ENTRY", Decimal("0.25")), ("STOP", Decimal("0.22"))}
+    assert chart_reading(["Short-Positionsbox; Preislabels 65,112.5 / 63,484.9"])[1] == ()  # two labels name no role
+
+
+def test_chart_box_counts_in_the_gold_and_chat_channels_too() -> None:
+    from dataclasses import replace
+    from src.knowledge.goathub_feed import ROLE_KNOWLEDGE
+    gold = read_call(msg("(Bild)", channel="xau-xag", author="EyDu",
+                         attachments=("Gold-Chart, Long-Positionsbox; Kurs ca. 3.800,0, Ziel ca. 3.900,0, Stop ca. 3.760,0 [?]",)), PROFILES["gold_eydu"])
+    assert gold is not None and gold.symbol == "XAU" and gold.call.grade == "A"
+    chat_message = replace(msg("(Bild)", channel="crypto-chat", author="goatfather",
+                               attachments=("Bild: AKE/USDT-Chart, Short-Positionsbox; Stop ca. 0,0100, Ziel ca. 0,0050",)), channel_role=ROLE_KNOWLEDGE)
+    chat = read_call(chat_message, PROFILES["chat_altcoins"])
+    assert chat is not None and chat.symbol == "AKE" and chat.bias == "SHORT" and chat.call.grade == "A"
