@@ -17,16 +17,19 @@ Kosten bessere Papier-Entscheidungen als die festen Kreis-Regeln R-ABS-2 0.6 (mi
    Strong/Weak High/Low 1,5; laufender POC, Session, IB, VWAP je 1; meistgehandelter Preis der letzten
    48 Footprint-Kerzen 2. Marken innerhalb 0,4 % bilden eine Zone. Früheres Abprallen (Docht in die Zone,
    Schluss zurück; letzte 96 Kerzen) +0,5 je Mal, höchstens +1,5. **Stark ab 6.**
-2. **Auslöser**: die neueste geschlossene 15m-Perp-Kerze berührt eine starke Zone; kein Papier-Trade offen;
-   dieselbe Zone (auf 100 USD gerundet) nicht in den letzten 6 Stunden gefragt; jede Kerze höchstens einmal.
+2. **Auslöser**: die neueste geschlossene 15m-Perp-Kerze berührt eine starke Zone; gefragt wird nur bis
+   7 Minuten nach Kerzenschluss; kein Papier-Trade offen; keine überlappende Zone in den letzten 6 Stunden
+   gefragt; jede Kerze höchstens einmal. Laufende Kerze und laufende Footprint-Kerze zählen nie.
 3. **KI-Entscheidung**: die KI sieht Zone (Marken, Stärke, Annäherung von oben/unten, frühere Abpraller),
    die nächsten Zonen darüber/darunter, die letzten 12 Kerzen mit Delta und Volumen, große Orders ≥50 BTC
    der letzten 3 Stunden, Trend (4 h, 24 h, 3 Tage, letzter Strukturbruch), Funding, OI-Änderung 24 h.
    Antwort LONG/SHORT/NICHTS mit Einstieg, Stop, Ziel, Vertrauen, Grund.
 4. **Prüfung**: Einstieg ≤0,5 % vom Preis, Stop 0,15–3 %, Stop und Ziel auf der richtigen Seite, Ziel ≥1,5× Stop.
    Sonst UNGUELTIG (wird geschrieben, nie gehandelt).
-5. **Papier**: Limit-Einstieg binnen 4 Kerzen (1 h), sonst "nicht gefüllt". Berührt eine Kerze Stop und Ziel,
-   zählt der Stop; in der Füll-Kerze zählt nur der Stop. Spätestens nach 24 h Schluss zum Kerzenschluss.
+5. **Papier**: Die Kerze, in der die KI antwortet, wird übersprungen. Limit-Einstieg in den 4 Kerzen danach (1 h),
+   sonst "nicht gefüllt". Risiko = geplanter Abstand Einstieg–Stop. Berührt eine Kerze Stop und Ziel, zählt der
+   Stop; in der Füll-Kerze zählt nur der Stop; öffnet eine Kerze jenseits des Stops, Ausstieg zum Eröffnungskurs.
+   Spätestens nach 24 h Schluss zum Kerzenschluss. Fehlen die Kerzen dafür dauerhaft: "Daten fehlen", nicht gezählt.
    Kosten 0,10 % vom Einstieg (Bitunix, Maker rein, Taker raus, Spread/Schlupf), in R abgezogen.
 6. **Protokoll**: append-only mit Hash-Kette und Kopf-Datei (wie KI1). Entscheidung wird geschrieben, bevor das
    Ergebnis bekannt ist; das Ergebnis kommt als eigener Eintrag. Ein Fehler der KI schreibt nichts.

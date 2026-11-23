@@ -65,7 +65,9 @@ def busiest_price(model: Mapping[str, Any]) -> float | None:
     """Price row with the most traded volume over the last ``BUSY_BARS`` footprint bars (where buyers and sellers
     met most often)."""
     rows: dict[float, float] = {}
-    for bar in list((model.get("footprint") or {}).get("bars") or [])[-BUSY_BARS:]:
+    closed = {c["time"] for c in model.get("candles") or [] if c.get("closed") is True}
+    bars = [b for b in (model.get("footprint") or {}).get("bars") or [] if b.get("time") in closed]   # running bar left out
+    for bar in bars[-BUSY_BARS:]:
         for level in bar.get("levels") or []:
             price, bid, ask = level[0], level[1], level[2]
             rows[float(price)] = rows.get(float(price), 0.0) + float(bid) + float(ask)

@@ -28,14 +28,15 @@ from src.research_lab.ki_filter.decide import append_log, read_log
 UTC = timezone.utc
 LOCAL = ZoneInfo("Europe/Berlin")
 BAR_S = 900               # 15m candles
-STALE_S = 20 * 60         # the newest closed candle must have closed at most this long ago
-COOLDOWN_S = 6 * 3600     # one question per zone (center rounded to ZONE_KEY_USD) in this time
+STALE_S = 7 * 60          # ask only this soon after the candle closed (runs every 5 min, the AI needs ~40 s)
+COOLDOWN_S = 6 * 3600     # no new question at a zone overlapping one asked about in this time
 ZONE_KEY_USD = 100
 ENTRY_MAX_PCT = 0.5       # entry at most this far from the price
 STOP_MIN_PCT, STOP_MAX_PCT = 0.15, 3.0
 MIN_RR = 1.5              # target at least this many times the stop distance
 FILL_BARS = 4             # the limit entry has one hour to fill
 HOLD_BARS = 96            # a paper trade ends after 24 hours at the close
+GIVE_UP_S = (FILL_BARS + HOLD_BARS + 8) * BAR_S   # no candles to finish it by then: closed as "Daten fehlen"
 COST_PCT = 0.10           # fees, spread and slippage, both ways, in % of the entry price (Bitunix, maker in, taker out)
 BIG_BTC = 50.0            # big orders shown to the AI
 REASON_MAX = 400
@@ -80,8 +81,15 @@ def _epoch(value: Any) -> float | None:
         return None
 
 
+def _side(value: Any) -> int:
+    try:
+        return 1 if float(value) > 0 else -1
+    except (TypeError, ValueError):
+        return 1 if str(value).lower() in ("buy", "kauf") else -1
+
+
 def closed_candles(model: Mapping[str, Any]) -> list[dict[str, Any]]:
-    return [c for c in model.get("candles") or [] if c.get("closed", True)]
+    return [c for c in model.get("candles") or [] if c.get("closed") is True]
 
 
 def _delta(model: Mapping[str, Any]) -> dict[int, float]:
@@ -90,6 +98,10 @@ def _delta(model: Mapping[str, Any]) -> dict[int, float]:
 
 def zone_key(zone: Mapping[str, Any]) -> int:
     return int(round(float(zone["center"]) / ZONE_KEY_USD) * ZONE_KEY_USD)
+
+
+def _overlaps(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
+    return float(a["low"]) <= float(b["high"]) and float(a["high"]) >= float(b["low"])
 
 
 def open_trade(records: Sequence[Mapping[str, Any]]) -> Mapping[str, Any] | None:
@@ -119,7 +131,8 @@ def trigger(model: Mapping[str, Any], records: Sequence[Mapping[str, Any]], now:
         return {"why": "keine starke Zone berührt"}
     zone = found[0]
     for r in records:
-        if r.get("kind") == "decision" and r.get("zone_key") == zone_key(zone) and now - float(r.get("candle_epoch", 0)) < COOLDOWN_S:
+        if (r.get("kind") == "decision" and isinstance(r.get("zone"), Mapping) and _overlaps(r["zone"], zone)
+                and now - float(r.get("candle_epoch", 0)) < COOLDOWN_S):
             return {"why": "Zone kürzlich gefragt"}
     return {"zone": zone, "candle": last}
 
@@ -148,13 +161,13 @@ def build_context(model: Mapping[str, Any], zone: Mapping[str, Any], now: float)
 
     end = float(last["time"]) + BAR_S
     big = [{"zeit": _local(float(b["time"])), "preis": round(float(b["price"]), 1), "btc": round(float(b["quantity"]), 1),
-            "seite": "Kauf" if b.get("side", 0) > 0 else "Verkauf", "boerse": b.get("venue")}
+            "seite": "Kauf" if _side(b.get("side")) > 0 else "Verkauf", "boerse": b.get("venue")}
            for b in (model.get("bubbles") or {}).get("items") or []
            if float(b.get("quantity") or 0) >= BIG_BTC and end - 3 * 3600 <= float(b["time"]) < end]
     structure = [d for d in model.get("drawings") or [] if d.get("group") == "structure" and ("BOS" in str(d.get("label")) or "MSS" in str(d.get("label")))
-                 and "Ziel" not in str(d.get("label")) and _epoch(d.get("start")) is not None and _epoch(d.get("start")) < end]
-    last_break = max(structure, key=lambda d: _epoch(d.get("start")), default=None)
-    funding = ((model.get("funding") or {}).get("points") or [])
+                 and "Ziel" not in str(d.get("label")) and _epoch(d.get("end")) is not None and _epoch(d.get("end")) < end]
+    last_break = max(structure, key=lambda d: _epoch(d.get("end")), default=None)   # "end" = time of the break
+    funding = [p for p in (model.get("funding") or {}).get("points") or [] if float(p[0]) < end]
     oi = [p for p in (model.get("oi") or {}).get("points") or [] if float(p[0]) < end]
     oi_change = round((oi[-1][1] - oi[-25][1]) / oi[-25][1] * 100, 2) if len(oi) >= 25 and oi[-25][1] else None
     return {
@@ -205,31 +218,48 @@ def check_answer(answer: Any, price: float) -> tuple[str, dict[str, float], floa
 
 
 def play(decision: Mapping[str, Any], candles: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
-    """Paper result on the closed candles after the decision candle, or None while still running."""
-    after = [c for c in candles if float(c["time"]) > float(decision["candle"])]
+    """Paper result, or None while still running.
+
+    The candle in which the AI was asked (the one after the decision candle) is skipped: the answer came during
+    it. The limit may fill in the ``FILL_BARS`` candles after that. Risk is the planned entry-to-stop distance
+    (checked >= ``STOP_MIN_PCT``, never 0). A candle that opens beyond the stop exits at its open (gap), so a
+    gap is never booked better than the stop.
+    """
     plan = decision["plan"]
-    entry, stop, target = plan["entry"], plan["stop"], plan["target"]
+    entry, stop, target = float(plan["entry"]), float(plan["stop"]), float(plan["target"])
     long = decision["action"] == "LONG"
+    first = float(decision["candle"]) + 2 * BAR_S
+    after = [c for c in candles if float(c["time"]) >= first]
+    window = [c for c in after if float(c["time"]) < first + FILL_BARS * BAR_S]
     fill_at = fill = None
-    for i, c in enumerate(after[:FILL_BARS]):
+    for i, c in enumerate(window):
         if (float(c["low"]) <= entry) if long else (float(c["high"]) >= entry):
             fill_at, fill = i, (min(entry, float(c["open"])) if long else max(entry, float(c["open"])))
             break
     if fill_at is None:
-        return {"outcome": "nicht gefüllt", "r": 0.0} if len(after) >= FILL_BARS else None
-    risk = abs(fill - stop)
+        return {"outcome": "nicht gefüllt", "r": 0.0} if any(float(c["time"]) >= first + (FILL_BARS - 1) * BAR_S for c in after) else None
+    risk = abs(entry - stop)
     cost_r = fill * COST_PCT / 100 / risk
-    for j, c in enumerate(after[fill_at:fill_at + HOLD_BARS]):
-        high, low = float(c["high"]), float(c["low"])
-        hit_stop = low <= stop if long else high >= stop
-        hit_target = (high >= target if long else low <= target) and j > 0   # in the fill candle only the stop counts
-        exit_price, outcome = (stop, "Stop") if hit_stop else ((target, "Ziel") if hit_target else (None, None))
-        if outcome:
+    fill_time = float(after[fill_at]["time"])
+    exit_price = outcome = None
+    for j, c in enumerate(after[fill_at:]):
+        if float(c["time"]) >= fill_time + HOLD_BARS * BAR_S:
             break
-    else:
-        if len(after) < fill_at + HOLD_BARS:
+        high, low, opened = float(c["high"]), float(c["low"]), float(c["open"])
+        hit_stop = (low <= stop or fill <= stop) if long else (high >= stop or fill >= stop)
+        hit_target = (high >= target if long else low <= target) and j > 0   # in the fill candle only the stop counts
+        if hit_stop:
+            base = fill if j == 0 else opened
+            exit_price, outcome = (min(stop, base) if long else max(stop, base)), "Stop"
+            break
+        if hit_target:
+            exit_price, outcome = target, "Ziel"
+            break
+    if outcome is None:
+        held = [c for c in after[fill_at:] if float(c["time"]) < fill_time + HOLD_BARS * BAR_S]
+        if not any(float(c["time"]) >= fill_time + (HOLD_BARS - 1) * BAR_S for c in held):
             return None
-        exit_price, outcome = float(after[fill_at + HOLD_BARS - 1]["close"]), "Zeit"
+        exit_price, outcome = float(held[-1]["close"]), "Zeit"
     gross = (exit_price - fill) / risk * (1 if long else -1)
     return {"outcome": outcome, "fill": round(fill, 1), "exit": round(exit_price, 1), "r_gross": round(gross, 3),
             "r": round(gross - cost_r, 3), "cost_r": round(cost_r, 3)}
@@ -243,7 +273,9 @@ def settle(records: list[dict[str, Any]], candles: Sequence[Mapping[str, Any]], 
             continue
         result = play(r, candles)
         if result is None:
-            continue
+            if now - float(r["candle_epoch"]) < GIVE_UP_S:
+                continue
+            result = {"outcome": "Daten fehlen", "r": None}   # never finished on the candles we have: not counted
         out.append(append_log(log_path, {"schema": SCHEMA, "kind": "result", "decision_id": r["id"], "action": r["action"],
                                          **result, "written_at": _iso(now)}, records))
     return out
@@ -262,11 +294,11 @@ def run(model: Mapping[str, Any], log_path: Path, ask: Callable[[str], Any], mod
         summary["waiting"] = (hit or {}).get("why")
     else:
         zone, candle = hit["zone"], hit["candle"]
-        context = build_context(model, zone, now)
-        prompt = build_prompt(context)
         try:
+            context = build_context(model, zone, now)
+            prompt = build_prompt(context)
             action, plan, confidence, reason, problem = check_answer(ask(prompt), float(candle["close"]))
-        except Exception as error:  # noqa: BLE001 - AI down or answer unusable: nothing written, next run retries
+        except Exception as error:  # noqa: BLE001 - data, AI or answer unusable: nothing written, next run retries
             summary["failed"] = type(error).__name__
         else:
             stamp = _iso(float(candle["time"]) + BAR_S)
@@ -288,12 +320,13 @@ def run(model: Mapping[str, Any], log_path: Path, ask: Callable[[str], Any], mod
 def report(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     decisions = [r for r in records if r.get("kind") == "decision"]
     results = {r["decision_id"]: r for r in records if r.get("kind") == "result"}
-    filled = [results[d["id"]] for d in decisions if d["id"] in results and results[d["id"]]["outcome"] != "nicht gefüllt"]
+    filled = [results[d["id"]] for d in decisions if d["id"] in results and results[d["id"]]["outcome"] not in ("nicht gefüllt", "Daten fehlen")]
     rs = [float(r["r"]) for r in filled]
     count = {a: sum(1 for d in decisions if d["action"] == a) for a in (*ACTIONS, "UNGUELTIG")}
     return {"rule": RULE, "decisions": len(decisions), "by_action": count, "trades": len(rs),
             "open": sum(1 for d in decisions if d["action"] in ("LONG", "SHORT") and d["id"] not in results),
             "not_filled": sum(1 for r in results.values() if r["outcome"] == "nicht gefüllt"),
+            "no_data": sum(1 for r in results.values() if r["outcome"] == "Daten fehlen"),
             "sum_r": round(sum(rs), 3), "mean_r": round(sum(rs) / len(rs), 3) if rs else None,
             "wins": sum(1 for r in rs if r > 0),
             "last": [{"zeit": _local(float(d["candle_epoch"])), "aktion": d["action"], "preis": d["price"], "plan": d.get("plan"),

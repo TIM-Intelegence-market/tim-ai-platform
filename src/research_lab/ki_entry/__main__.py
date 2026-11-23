@@ -17,6 +17,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 from urllib.request import urlopen
 
 from src.research_lab.ki_entry import decide
@@ -46,7 +47,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "report":
         print(json.dumps(decide.report(read_log(args.log)), indent=2, ensure_ascii=False))
         return 0
-    with urlopen(args.api, timeout=60) as response:  # local dashboard only (default 127.0.0.1)
+    if urlparse(args.api).hostname not in ("127.0.0.1", "localhost"):
+        parser.error("--api must point to the local dashboard (127.0.0.1)")
+    with urlopen(args.api, timeout=60) as response:  # local dashboard only
         model = json.load(response)
     if args.dry_run:
         hit = decide.trigger(model, read_log(args.log), time.time())

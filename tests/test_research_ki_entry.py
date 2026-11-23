@@ -24,7 +24,7 @@ def model(candles: list[dict], extra: list[dict] | None = None) -> dict:
         {"group": "day", "label": "1D VAH", "price": 61500.0},
         {"group": "trend", "label": "30m Trend", "price": 60500.0},
         {"group": "day", "label": "alt", "price": 60400.0, "finished": True},
-        {"group": "structure", "label": "30m BOS ↓", "price": 60700.0, "finished": True, "start": "2026-11-20T18:15:00+00:00"},
+        {"group": "structure", "label": "30m BOS ↓", "price": 60700.0, "finished": True, "start": "2026-11-20T18:15:00+00:00", "end": "2026-11-20T19:00:00+00:00"},
     ] + (extra or [])
     bars = [{"time": c["time"], "delta": -20.0, "levels": [[60600.0, 5.0, 5.0], [60700.0, 1.0, 1.0]]} for c in candles]
     return {"candles": candles, "drawings": drawings, "footprint": {"step": 10.0, "bars": bars},
@@ -65,7 +65,9 @@ def test_trigger_needs_touch_fresh_candle_and_no_open_trade():
     c = falling_into_zone()
     hit = decide.trigger(model(c), [], now_after(c))
     assert hit["zone"]["strength"] >= zones.STRONG
-    assert decide.trigger(model(c), [], now_after(c) + 3600)["why"] == "Kerzen veraltet"
+    assert decide.trigger(model(c), [], now_after(c) + 600)["why"] == "Kerzen veraltet"
+    running = c[:-1] + [dict(c[-1], closed=False)]
+    assert decide.trigger(model(running), [], now_after(c))["why"] != "Kerze schon gefragt"   # running candle never used
     away = c[:-1] + [candle(29, 60300, 60320, 60250, 60280)]
     assert decide.trigger(model(away), [], now_after(away))["why"] == "keine starke Zone berührt"
     busy = [{"kind": "decision", "id": "x", "action": "LONG", "candle": 1}]
@@ -86,19 +88,60 @@ def test_check_answer_rejects_impossible_plans():
 
 def test_play_limit_fill_stop_first_target_and_costs():
     d = {"action": "LONG", "candle": T0, "plan": {"entry": 60000.0, "stop": 59800.0, "target": 60400.0}}
-    assert decide.play(d, [candle(1, 60100, 60150, 60050, 60100)]) is None                  # not filled yet, window open
-    unfilled = [candle(i, 60100, 60150, 60050, 60100) for i in range(1, 5)]
+    asked = candle(1, 60100, 60150, 59000, 60100)          # the AI answered during this candle: never used
+    assert decide.play(d, [asked, candle(2, 60100, 60150, 60050, 60100)]) is None          # window still open
+    unfilled = [asked] + [candle(i, 60100, 60150, 60050, 60100) for i in range(2, 6)]
     assert decide.play(d, unfilled)["outcome"] == "nicht gefüllt"
-    both = [candle(1, 60100, 60150, 59990, 60050), candle(2, 60050, 60450, 59750, 60100)]
+    both = [asked, candle(2, 60100, 60150, 59990, 60050), candle(3, 60050, 60450, 59750, 60100)]
     assert decide.play(d, both)["outcome"] == "Stop"                                         # both in one candle: stop
-    win = [candle(1, 60100, 60150, 59990, 60050), candle(2, 60050, 60450, 59950, 60400)]
+    win = [asked, candle(2, 60100, 60150, 59990, 60050), candle(3, 60050, 60450, 59950, 60400)]
     result = decide.play(d, win)
     assert result["outcome"] == "Ziel" and result["r_gross"] == pytest.approx(2.0)
     assert result["r"] == pytest.approx(2.0 - 60000 * decide.COST_PCT / 100 / 200, abs=1e-3)
-    gap = [candle(1, 59900, 59950, 59850, 59900), candle(2, 59900, 60450, 59850, 60400)]
+    gap = [asked, candle(2, 59900, 59950, 59850, 59900), candle(3, 59900, 60450, 59850, 60400)]
     assert decide.play(d, gap)["fill"] == 59900.0                                          # opened below the limit
     short = {"action": "SHORT", "candle": T0, "plan": {"entry": 60000.0, "stop": 60200.0, "target": 59600.0}}
-    assert decide.play(short, [candle(1, 59950, 60010, 59900, 59950), candle(2, 59950, 60000, 59550, 59600)])["outcome"] == "Ziel"
+    assert decide.play(short, [asked, candle(2, 59950, 60010, 59900, 59950), candle(3, 59950, 60000, 59550, 59600)])["outcome"] == "Ziel"
+
+
+def test_gap_beyond_stop_is_a_loss_never_a_gain():
+    d = {"action": "LONG", "candle": T0, "plan": {"entry": 60000.0, "stop": 59800.0, "target": 60400.0}}
+    asked = candle(1, 60100, 60150, 60050, 60100)
+    opened_below_stop = decide.play(d, [asked, candle(2, 59700, 59750, 59600, 59650)])
+    assert opened_below_stop["outcome"] == "Stop" and opened_below_stop["r"] < 0
+    later_gap = decide.play(d, [asked, candle(2, 60050, 60100, 59990, 60000), candle(3, 59600, 59650, 59500, 59550)])
+    assert later_gap["outcome"] == "Stop" and later_gap["exit"] == 59600.0 and later_gap["r_gross"] == pytest.approx(-2.0)
+    at_stop = decide.play(d, [asked, candle(2, 59800, 59850, 59790, 59800)])                 # fill exactly at the stop
+    assert at_stop["outcome"] == "Stop"
+    s = {"action": "SHORT", "candle": T0, "plan": {"entry": 60000.0, "stop": 60200.0, "target": 59600.0}}
+    up = decide.play(s, [asked, candle(2, 60050, 60100, 59990, 60000), candle(3, 60400, 60450, 60350, 60400)])
+    assert up["outcome"] == "Stop" and up["fill"] == 60050.0 and up["r_gross"] == pytest.approx(-1.75)
+
+
+def test_time_exit_after_hold_bars():
+    d = {"action": "LONG", "candle": T0, "plan": {"entry": 60000.0, "stop": 59800.0, "target": 60400.0}}
+    bars = [candle(1, 60100, 60150, 60050, 60100), candle(2, 60050, 60100, 59990, 60000)]
+    bars += [candle(i, 60050, 60100, 60000, 60050) for i in range(3, 2 + decide.HOLD_BARS)]
+    assert decide.play(d, bars[:-1]) is None
+    result = decide.play(d, bars)
+    assert result["outcome"] == "Zeit" and result["exit"] == 60050.0
+
+
+def test_open_trade_without_candles_is_given_up(tmp_path: Path):
+    log = tmp_path / "ki.jsonl"
+    c = falling_into_zone()
+    decide.run(model(c), log, lambda p: {"aktion": "LONG", "einstieg": 60100, "stop": 59880, "ziel": 60560,
+                                          "vertrauen": 0.6, "grund": "x"}, "test", now=now_after(c))
+    later = now_after(c) + decide.GIVE_UP_S + 60
+    out = decide.run(model(c), log, lambda p: None, "test", now=later)
+    assert out["results"][0]["outcome"] == "Daten fehlen"
+    assert decide.open_trade(read_log(log)) is None and decide.report(read_log(log))["trades"] == 0
+
+
+def test_only_local_dashboard():
+    from src.research_lab.ki_entry.__main__ import main
+    with pytest.raises(SystemExit):
+        main(["run", "--api", "http://example.com/api/chart/live"])
 
 
 def test_run_writes_decision_before_result_and_never_twice(tmp_path: Path):
@@ -115,7 +158,7 @@ def test_run_writes_decision_before_result_and_never_twice(tmp_path: Path):
     assert "Opt Put Wall" in prompts[0] and "210.0" in prompts[0] and "von oben" in prompts[0] and "BOS" in prompts[0]
     again = decide.run(model(c), log, ask, "test", now=now_after(c) + 60)
     assert again["decision"] is None and len(prompts) == 1
-    later = c + [candle(30, 60100, 60120, 60080, 60100), candle(31, 60100, 60600, 60090, 60550)]
+    later = c + [candle(30, 60100, 60120, 60080, 60100), candle(31, 60100, 60200, 60090, 60150), candle(32, 60150, 60600, 60140, 60550)]
     done = decide.run(model(later), log, ask, "test", now=now_after(later))
     assert done["results"][0]["outcome"] == "Ziel"
     records = read_log(log)
