@@ -507,7 +507,11 @@ def test_chart_reading_needs_login_and_comes_in_two_languages(server):
     assert _get(base + "/reading", headers={"Authorization": ""})[0] == 401
     status, headers, body = _get(base + "/reading?tf=1h&lang=de", headers=_login())
     assert status == 200 and headers["Cache-Control"] == "no-store"
-    assert "TIM Chart-Deutung" in body and "Keine Anlageberatung" in body and "<script" not in body
+    assert "TIM Chart-Deutung" in body and "Keine Anlageberatung" in body and "<svg" not in body
+    # Uzi 23.11.2026 ("wie ein Chart-Layout"): the live chart opened on the AI overlay layout, with its own browser memory.
+    assert "data-layout='tim:ai'" in body and "data-space='reading'" in body and "data-lang='de'" in body
+    assert "tim_chart.js" in body and "script-src 'self'" in headers["Content-Security-Policy"]
+    assert "class='rd-list'" in body
     assert "aria-current='page'>BTC 1h" in body and "aria-current='page'>Deutsch" in body
     style = re.search(r"<style>(.*?)</style>", body, re.S).group(1)
     assert base64.b64encode(hashlib.sha256(style.encode()).digest()).decode() in headers["Content-Security-Policy"]

@@ -325,7 +325,7 @@ class PublicDashboardServer:
         tf = query.get("tf") if query.get("tf") in chart_reading.TIMEFRAMES else chart_reading.DEFAULT_TF
         lang = query.get("lang") if query.get("lang") in chart_reading.LANGS else "en"
         model = public_en.english_chart_model(self.chart_model({"symbol": "BTCUSDT", "tf": tf}))
-        return public_en.reading_page(chart_reading.render(chart_reading.build_reading(model, lang=lang)), tf, lang)
+        return public_en.reading_page(chart_reading.render(chart_reading.build_reading(model, lang=lang), drawing=False), tf, lang)
 
     def render_api(self, path: str, query: dict[str, str], member: bool = False) -> bytes:
         if path == "/api/chart/live":

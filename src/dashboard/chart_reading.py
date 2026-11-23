@@ -408,8 +408,9 @@ def svg(reading: Mapping[str, Any]) -> str:
     return "".join(parts)
 
 
-def render(reading: Mapping[str, Any]) -> str:
-    """Card body: the drawing, the numbered sentences, the price now and the time of the reading."""
+def render(reading: Mapping[str, Any], drawing: bool = True) -> str:
+    """Card body: the drawing (left out when the page shows the live chart), the numbered sentences, the price now
+    and the time of the reading."""
     lang = _lang(reading.get("lang"))
     T = TEXT[lang]
     stamp = _safe(datetime.fromisoformat(str(reading["generated_at"])).astimezone(LOCAL).strftime("%d.%m.%Y %H:%M"))
@@ -421,8 +422,8 @@ def render(reading: Mapping[str, Any]) -> str:
         for s in reading["sentences"])
     note = T["delta_yes" if reading.get("has_delta") else "delta_no"]
     footer = T["stamp"].format(stamp=stamp, n=len(reading["candles"]), tf=_safe(reading.get("timeframe")), note=_safe(note))
-    return (f"<div class='rd-chart'>{svg(reading)}</div>"
-            f"<ol class='rd-list'>{items}</ol>"
+    picture = f"<div class='rd-chart'>{svg(reading)}</div>" if drawing else ""
+    return (picture + f"<ol class='rd-list'>{items}</ol>"
             f"<p class='rd-now'><b>{_safe(reading['now_text'])}</b></p>"
             f"<p class='rd-stamp'>{footer}</p>")
 

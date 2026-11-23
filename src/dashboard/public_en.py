@@ -871,10 +871,13 @@ READING_DISCLAIMER = ("Not financial advice / Keine Anlageberatung. TIM describe
 
 
 def reading_csp() -> str:
-    """The reading page has its own style block and no script; the chart is inline SVG."""
+    """The reading page is the live chart (same scripts and data as /chart) plus its own style block."""
+    import re
+
+    from src.dashboard.pages.chart import CHART_CSP
+
     style_hash = base64.b64encode(hashlib.sha256(READING_STYLE.encode()).digest()).decode()
-    return (f"default-src 'none'; style-src 'sha256-{style_hash}'; script-src 'none'; connect-src 'none'; img-src 'self' data:; "
-            "font-src 'none'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+    return re.sub(r"style-src '[^']*'", f"style-src 'sha256-{style_hash}'", CHART_CSP, count=1)
 
 
 def reading_page(card: str, timeframe: str, lang: str) -> str:
@@ -883,15 +886,34 @@ def reading_page(card: str, timeframe: str, lang: str) -> str:
 
     de = lang == "de"
     title = "TIM Chart-Deutung" if de else "TIM chart reading"
-    intro = ("TIM liest den BTC-Chart automatisch und erklärt die wichtigsten Stellen in einfachen Sätzen."
-             if de else "TIM reads the BTC chart automatically and explains the key spots in plain sentences.")
+    intro = ("TIM liest den BTC-Chart automatisch und schreibt die wichtigsten Stellen als Kästen direkt in den Chart. "
+             "Darunter dasselbe als Text." if de else
+             "TIM reads the BTC chart automatically and writes the key spots as boxes straight onto the chart. The same as text below.")
 
-    def link(tf: str, lg: str, label: str, current: bool) -> str:
-        return f"<a href='/reading?tf={tf}&amp;lang={lg}'" + (" aria-current='page'" if current else "") + f">{_safe(label)}</a>"
+    def link(lg: str, label: str, current: bool) -> str:
+        return f"<a href='/reading?tf={timeframe}&amp;lang={lg}'" + (" aria-current='page'" if current else "") + f">{_safe(label)}</a>"
 
-    bar = ("<div class='rd-bar'>" + "".join(link(tf, lang, f"BTC {tf}", tf == timeframe) for tf in TIMEFRAMES)
-           + link(timeframe, "en", "English", not de) + link(timeframe, "de", "Deutsch", de) + "</div>")
-    body = _hero(title, intro) + f"<section class='cc-section'>{bar}{card}</section>"
+    # Uzi 23.11.2026 ("wie ein Chart-Layout"): the real interactive chart, opened on the "TIM AI overlay" layout, so the
+    # boxes sit on the live candles. Own browser memory (data-space), so choices here never change /chart.
+    frames = "".join(
+        f"<a href='/reading?tf={tf}&amp;lang={lang}' data-tf='{tf}' class='tc-tab{' tc-tab--active' if tf == timeframe else ''}'"
+        + (" aria-current='page'" if tf == timeframe else "") + f">BTC {tf}</a>" for tf in TIMEFRAMES)
+    now_label, fit_label = ("Zu jetzt", "Alles zeigen") if de else ("Go to now", "Show all")
+    layers_label = "Ebenen einzeln" if de else "Single layers"
+    chart = (
+        f"<section class='cc-section tc-live' id='tc-live' data-lang='{'de' if de else 'en'}' data-symbol='BTCUSDT' data-tf='{_safe(timeframe)}'"
+        " data-layout='tim:ai' data-fp='delta' data-space='reading'><div class='tc-pane' id='tc-pane'>"
+        f"<nav class='tc-tabs' aria-label='Timeframe'>{frames}</nav>"
+        "<div class='tc-live__bar'><div class='tc-live__layoutbox'><div id='tc-live-layouts' class='tc-live__layouts'></div>"
+        f"<details class='tc-live__edit'><summary>{layers_label}</summary><div id='tc-live-layers' class='tc-live__layers'></div></details></div>"
+        f"<div class='tc-live__actions'><button type='button' class='tc-tab' data-action='now'>{now_label}</button>"
+        f"<button type='button' class='tc-tab' data-action='fit'>{fit_label}</button></div></div>"
+        "<div class='tc-live__frame'><p id='tc-live-legend' class='tc-live__legend'></p>"
+        "<div id='tc-live-chart' class='tc-live__chart' role='img' aria-label='TIM AI overlay chart'></div></div>"
+        f"<p id='tc-live-status' class='cc-note tc-live__status'>{'Chart lädt …' if de else 'Chart loading…'}</p></div>"
+        f"<script src='{LIB_PATH}'></script><script src='{APP_SRC}'></script></section>")
+    bar = "<div class='rd-bar'>" + link("en", "English", not de) + link("de", "Deutsch", de) + "</div>"
+    body = _hero(title, intro) + f"<section class='cc-section'>{bar}</section>" + chart + f"<section class='cc-section'>{card}</section>"
     return shell(title, "/reading", body, extra_css=READING_CSS, disclaimer=READING_DISCLAIMER)
 
 

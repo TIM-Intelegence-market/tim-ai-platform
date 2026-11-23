@@ -26,6 +26,10 @@
   // the element ids and of the browser memory, so the two never overwrite each other. The first pane keeps
   // coin and timeframe in the address, the second one in localStorage.
   const SPLIT_STORE = 'tim-chart-split-v1';
+  // A page that shows one fixed TIM layout (the chart reading, Uzi 23.11.2026) keeps its own browser memory
+  // (data-space), so its choices never change the normal chart page, and starts on that layout (data-layout).
+  const SPACE = host.dataset.space ? '-' + host.dataset.space : '';
+  const START_LAYOUT = host.dataset.layout || '';
   const PANE2_STORE = 'tim-chart-pane2-v1';
   let secondPane = null;
   function setSplit(on) {
@@ -48,7 +52,7 @@
   const legend = document.getElementById('tc-live-legend' + PANE);
   const status = document.getElementById('tc-live-status' + PANE);
   const layers = document.getElementById('tc-live-layers' + PANE);
-  const STORE = 'tim-chart-layers-v1' + PANE;
+  const STORE = 'tim-chart-layers-v1' + PANE + SPACE;
   const NAME_SHIFT = 20;  // candles a level's name sits inside its line (not centred on the line start)
   const STYLE = { solid: LWC.LineStyle.Solid, dotted: LWC.LineStyle.Dotted, dashed: LWC.LineStyle.Dashed };
   let symbol = (PANE ? root : host).dataset.symbol, timeframe = (PANE ? root : host).dataset.tf;
@@ -79,7 +83,7 @@
     markTabs();
   }
   // Spot or perp trades behind volume profile, footprint, delta and bubbles (Beirat 29.10.2026, F5).
-  const MARKET_STORE = 'tim-chart-market-v1' + PANE;
+  const MARKET_STORE = 'tim-chart-market-v1' + PANE + SPACE;
   let market = (() => { try { return localStorage.getItem(MARKET_STORE) || 'spot'; } catch (error) { return 'spot'; } })();
   let lines = [];
 
@@ -680,8 +684,8 @@
   // 'profile' (Uzi 10.11.2026, "Footprint profile"): the same slim candle, but each bar is the volume
   // traded at that price (a small volume profile per candle), red part = market sells, blue = market buys.
   const FP_STYLES = ['cells', 'delta', 'profile'];
-  const FP_STYLE = 'tim-chart-fp-style-v1' + PANE;
-  let fpStyle = (() => { try { const saved = localStorage.getItem(FP_STYLE); return FP_STYLES.includes(saved) ? saved : 'cells'; } catch (error) { return 'cells'; } })();
+  const FP_STYLE = 'tim-chart-fp-style-v1' + PANE + SPACE;
+  let fpStyle = (() => { try { const saved = localStorage.getItem(FP_STYLE); return FP_STYLES.includes(saved) ? saved : FP_STYLES.includes(host.dataset.fp) ? host.dataset.fp : 'cells'; } catch (error) { return 'cells'; } })();
   function setFpStyle(style) {
     fpStyle = FP_STYLES.includes(style) ? style : 'cells';
     try { localStorage.setItem(FP_STYLE, fpStyle); } catch (error) { /* ignore */ }
@@ -1617,7 +1621,7 @@
   // Layers added after a visitor saved a choice (e.g. TIM's plans, footprint) start visible: only keys the
   // visitor has seen before can be hidden by a saved choice. Saves from before this list existed knew
   // neither the plans nor volume profile and footprint.
-  const KNOWN = 'tim-chart-layers-known-v1' + PANE;
+  const KNOWN = 'tim-chart-layers-known-v1' + PANE + SPACE;
   const LEGACY_NEW = ['vp', 'fp'];
   function shownGroups() {
     try {
@@ -1633,8 +1637,10 @@
       }
     } catch (error) { /* private window: defaults */ }
     if (!model) return new Set();
-    // First visit (nothing saved): the Lesen layout, not every default layer.
+    // First visit (nothing saved): the page's own layout if it has one, else the Lesen layout, not every default layer.
     const all = new Set(Object.keys(model.groups));
+    const fixed = START_LAYOUT && !PANE ? findLayout(START_LAYOUT) : null;
+    if (fixed && fixed.groups) return new Set((fixed.clean ? fixed.groups : BASE.concat(fixed.groups)).filter(key => all.has(key)));
     return new Set(BASE.concat(READ).filter(key => all.has(key)));
   }
   function saveGroups(groups) {
@@ -1648,7 +1654,7 @@
   // layers and, if it wants, coin, timeframe and spot/perp. TIM's layouts ship with the page; own layouts
   // live in this browser only (localStorage), like the ticks before.
   const LAYOUT_STORE = 'tim-chart-layouts-v1';
-  const LAYOUT_ACTIVE = 'tim-chart-layout-active-v1' + PANE;
+  const LAYOUT_ACTIVE = 'tim-chart-layout-active-v1' + PANE + SPACE;
   const layoutBox = document.getElementById('tc-live-layouts' + PANE);
   const L = EN
     ? { label: 'Layout', tim: 'TIM layouts (each with levels and structure)', own: 'My layouts', changed: 'changed, not saved', save: 'Save as…', rename: 'Rename', remove: 'Delete',
@@ -1720,9 +1726,9 @@
   function activeLayout() {
     try {
       const id = localStorage.getItem(LAYOUT_ACTIVE);
-      if (id === null) return localStorage.getItem(STORE) === null ? 'tim:read' : '';
+      if (id === null) return localStorage.getItem(STORE) === null ? (START_LAYOUT && !PANE ? START_LAYOUT : 'tim:read') : '';
       return id === '-' ? '' : id;
-    } catch (error) { return 'tim:read'; }  // no storage: shownGroups shows the Lesen layers
+    } catch (error) { return START_LAYOUT && !PANE ? START_LAYOUT : 'tim:read'; }  // no storage: shownGroups shows the same layers
   }
   function setActiveLayout(id) { try { localStorage.setItem(LAYOUT_ACTIVE, id || '-'); } catch (error) { /* ignore */ } }
   function findLayout(id) {
@@ -2122,7 +2128,8 @@
       showMarket();
       { const groups = shownGroups(); layoutBands(groups); tpo.visible = groups.has('tpo'); vp.visible = groups.has('vp'); fp.visible = groups.has('fp'); liq.visible = groups.has('liq'); liqev.visible = groups.has('liqev'); fib.visible = groups.has('fib'); setExoLayers(groups); }
       if (first || !sameView) {
-        chart.timeScale().setVisibleLogicalRange(viewRange(168));
+        // The AI overlay explains the last 24 candles: start on those, with room for the boxes.
+        chart.timeScale().setVisibleLogicalRange(viewRange(activeLayout() === 'tim:ai' ? 34 : 168));
         first = false;
       } else if (keep) {
         chart.timeScale().setVisibleLogicalRange(keep);

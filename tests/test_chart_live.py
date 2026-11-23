@@ -478,7 +478,7 @@ def test_a_first_visit_starts_in_the_lesen_layout_with_few_layers() -> None:
     """Hermes 17.11.2026: 21 of 35 layers were on at the first visit; Lesen shows the base levels, sessions, VWAP, plans."""
     script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
     assert "{ id: 'tim:read', name: L.read, groups: READ }" in script
-    assert "=== null ? 'tim:read' : ''" in script
+    assert "=== null ? (START_LAYOUT && !PANE ? START_LAYOUT : 'tim:read') : ''" in script
     base = re.search(r"const BASE = \[([^\]]*)\]", script).group(1).count("'") // 2
     read = re.search(r"const READ = \[([^\]]*)\]", script).group(1).count("'") // 2
     assert base + read <= 9
@@ -489,4 +489,12 @@ def test_the_nasdaq_index_gets_no_stale_warning_and_reset_keeps_tim_standard() -
     script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
     reset = script[script.index("action.dataset.action === 'reset'"):]
     assert "saveGroups(groups);" in reset[:400] and "removeItem(STORE)" not in reset[:400]
-    assert "return 'tim:read'; }  // no storage" in script
+    assert "return START_LAYOUT && !PANE ? START_LAYOUT : 'tim:read'; }  // no storage" in script
+
+
+def test_the_reading_page_keeps_its_own_browser_memory() -> None:
+    """Uzi 23.11.2026: /reading is the live chart on the AI overlay; its choices must not change /chart."""
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    for key in ("tim-chart-layers-v1", "tim-chart-market-v1", "tim-chart-layers-known-v1", "tim-chart-layout-active-v1", "tim-chart-fp-style-v1"):
+        assert f"'{key}' + PANE + SPACE" in script, key
+    assert "viewRange(activeLayout() === 'tim:ai' ? 34 : 168)" in script
