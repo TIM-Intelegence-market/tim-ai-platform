@@ -389,7 +389,7 @@ def test_live_page_names_the_traded_timeframes():
 
 def test_private_pages_need_login_and_chart_stays_open(server, tmp_path):
     public, base = server
-    for path in ("/live", "/journal", "/journal?rule=mid", "/journal/trade?rule=mid&id=abc", "/api/plan-journal"):
+    for path in ("/live", "/reading", "/reading?lang=de", "/journal", "/journal?rule=mid", "/journal/trade?rule=mid&id=abc", "/api/plan-journal"):
         status, headers, body = _get(base + path, headers={"Authorization": ""})
         assert status == 401 and "WWW-Authenticate" in headers and "Basic" in headers["WWW-Authenticate"], path
         assert "No live data" not in body and "Paper" not in body
@@ -497,3 +497,20 @@ def test_known_login_is_bound_to_the_login_file(tmp_path):
     assert known.has("Basic abc", first) and not known.has("Basic abd", first)
     public_auth.init_login(tmp_path / "a.json")
     assert not known.has("Basic abc", public_auth.load_credentials(tmp_path / "a.json"))
+
+
+def test_chart_reading_needs_login_and_comes_in_two_languages(server):
+    import base64
+    import hashlib
+
+    public, base = server
+    assert _get(base + "/reading", headers={"Authorization": ""})[0] == 401
+    status, headers, body = _get(base + "/reading?tf=1h&lang=de", headers=_login())
+    assert status == 200 and headers["Cache-Control"] == "no-store"
+    assert "TIM Chart-Deutung" in body and "Keine Anlageberatung" in body and "<script" not in body
+    assert "aria-current='page'>BTC 1h" in body and "aria-current='page'>Deutsch" in body
+    style = re.search(r"<style>(.*?)</style>", body, re.S).group(1)
+    assert base64.b64encode(hashlib.sha256(style.encode()).digest()).decode() in headers["Content-Security-Policy"]
+    status, _, body = _get(base + "/reading?tf=evil&lang=xx", headers=_login())
+    assert status == 200 and "TIM chart reading" in body and "aria-current='page'>BTC 30m" in body
+    assert "href='/reading'" in _get(base + "/chart")[2]

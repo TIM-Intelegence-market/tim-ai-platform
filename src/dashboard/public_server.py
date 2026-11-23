@@ -31,9 +31,9 @@ from src.dashboard.security import _require_loopback_host
 
 DEFAULT_PORT = 8780
 PLAN_PATHS = frozenset({"/chart", "/api/chart/live"})  # open, but TIM's plans on them need the login
-PAGES = ("/chart", "/journal", "/journal/trade", "/live")
+PAGES = ("/chart", "/journal", "/journal/trade", "/live", "/reading")
 # Query keys a public page or API may pass on; everything else is dropped before rendering.
-QUERY_KEYS = {"/chart": ("symbol", "tf"), "/journal": ("rule",), "/journal/trade": ("rule", "id"), "/live": (), "/api/chart/live": ("symbol", "tf", "market"), "/api/plan-journal": ("rule",)}
+QUERY_KEYS = {"/chart": ("symbol", "tf"), "/journal": ("rule",), "/journal/trade": ("rule", "id"), "/live": (), "/reading": ("tf", "lang"), "/api/chart/live": ("symbol", "tf", "market"), "/api/plan-journal": ("rule",)}
 PAGE_TTL = 10.0        # seconds a rendered public page is reused
 API_TTL = 5.0          # seconds a data answer is reused
 RATE_PER_MINUTE = 120  # requests per client and minute
@@ -188,10 +188,10 @@ class PublicDashboardServer:
                         page = outer.cache.get(key, PAGE_TTL, lambda: outer.render_page(path, query, member))
                         if page is None:
                             return self.respond(404, b'{"error":"not found"}', "application/json", head=head)
-                        from src.dashboard.public_en import journal_csp
+                        from src.dashboard.public_en import journal_csp, reading_csp
 
                         return self.respond(200, page.encode(), "text/html; charset=utf-8",
-                                            csp=CHART_CSP if path == "/chart" else journal_csp(), head=head, private=member)
+                                            csp=CHART_CSP if path == "/chart" else reading_csp() if path == "/reading" else journal_csp(), head=head, private=member)
                     payload = outer.cache.get(key, API_TTL, lambda: outer.render_api(path, query, member))
                     return self.respond(200, payload, "application/json", head=head, private=member)
                 except Exception as exc:  # noqa: BLE001 - a visitor gets a short error, never a trace
@@ -286,34 +286,50 @@ class PublicDashboardServer:
             return public_en.chart_page(query.get("symbol"), query.get("tf"), self.summary_html(member))
         if path == "/live":
             return public_en.live_page(self.live_status())
+        if path == "/reading":
+            return self.reading_page(query)
         if path == "/journal/trade":
             return public_en.trade_page(self.journals(), query.get("rule", ""), query.get("id", ""))
         return public_en.journal_page(self.journals(), query.get("rule", public_en.DEFAULT_JOURNAL))
 
+    def chart_model(self, query: dict[str, str], member: bool = False) -> dict[str, Any]:
+        """The interactive chart's data (German labels; ``english_chart_model`` translates them)."""
+        from src.dashboard.chart_live import build_live_chart
+        from src.dashboard.market_context import chart_context
+        from src.dashboard.perp_flow import chart_inputs as perp_chart_inputs
+
+        with self.state.lock:
+            footprint = dict(self.state.footprint)
+            gamma = dict(self.state.gamma)
+            gamma_zones = dict(getattr(self.state, "gamma_zones", None) or {})
+            liquidation = dict(self.state.liquidation)
+            perp, open_interest = perp_chart_inputs(self.state, query.get("symbol"))
+            bybit = dict(getattr(self.state, "bybit_flow", None) or {})
+        from src.dashboard.chart_live import load_plan_journals
+        from src.dashboard.gamma_zones import load as load_zone_watch
+
+        # Uzi 22.11.2026 "öffentlich": the yellow gamma zones (order book wall at a gamma level) on the public chart too.
+        zone_watch_path = getattr(self.state, "gamma_zone_watch_path", None)
+        model = build_live_chart(query.get("symbol"), query.get("tf"), self.state.chart_series(), footprint=footprint,
+                                 plan_journals=load_plan_journals(self.journal_paths()) if member else None, gamma=gamma,
+                                 gamma_zones=gamma_zones, gamma_zone_watch=load_zone_watch(zone_watch_path) if zone_watch_path else None,
+                                 liquidation=liquidation, perp=perp, open_interest=open_interest, bybit=bybit,
+                                 market=query.get("market"),
+                                 context=chart_context(query.get("symbol")))
+        return model
+
+    def reading_page(self, query: dict[str, str]) -> str:
+        """TIM chart reading for logged-in traders (Uzi 23.11.2026): BTC, plain sentences in English or German."""
+        from src.dashboard import chart_reading, public_en
+
+        tf = query.get("tf") if query.get("tf") in chart_reading.TIMEFRAMES else chart_reading.DEFAULT_TF
+        lang = query.get("lang") if query.get("lang") in chart_reading.LANGS else "en"
+        model = public_en.english_chart_model(self.chart_model({"symbol": "BTCUSDT", "tf": tf}))
+        return public_en.reading_page(chart_reading.render(chart_reading.build_reading(model, lang=lang)), tf, lang)
+
     def render_api(self, path: str, query: dict[str, str], member: bool = False) -> bytes:
         if path == "/api/chart/live":
-            from src.dashboard.chart_live import build_live_chart
-            from src.dashboard.market_context import chart_context
-            from src.dashboard.perp_flow import chart_inputs as perp_chart_inputs
-
-            with self.state.lock:
-                footprint = dict(self.state.footprint)
-                gamma = dict(self.state.gamma)
-                gamma_zones = dict(getattr(self.state, "gamma_zones", None) or {})
-                liquidation = dict(self.state.liquidation)
-                perp, open_interest = perp_chart_inputs(self.state, query.get("symbol"))
-                bybit = dict(getattr(self.state, "bybit_flow", None) or {})
-            from src.dashboard.chart_live import load_plan_journals
-            from src.dashboard.gamma_zones import load as load_zone_watch
-
-            # Uzi 22.11.2026 "öffentlich": the yellow gamma zones (order book wall at a gamma level) on the public chart too.
-            zone_watch_path = getattr(self.state, "gamma_zone_watch_path", None)
-            model = build_live_chart(query.get("symbol"), query.get("tf"), self.state.chart_series(), footprint=footprint,
-                                     plan_journals=load_plan_journals(self.journal_paths()) if member else None, gamma=gamma,
-                                     gamma_zones=gamma_zones, gamma_zone_watch=load_zone_watch(zone_watch_path) if zone_watch_path else None,
-                                     liquidation=liquidation, perp=perp, open_interest=open_interest, bybit=bybit,
-                                     market=query.get("market"),
-                                     context=chart_context(query.get("symbol")))
+            model = self.chart_model(query, member)
             from src.dashboard.pages.chart import APP_VERSION
             from src.dashboard.public_en import english_chart_model
 
