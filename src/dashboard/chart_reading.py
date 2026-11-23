@@ -76,6 +76,13 @@ TEXT = {
         "delta_yes": "Blue bar = more buying than selling in that bar, red = more selling (real Binance trades).",
         "delta_no": "No trade data for this view: bars are coloured by close only, the buying/selling parts are left out.",
         "nfa": "Not financial advice", "aria": "Chart with TIM reading",
+        "o_res": "{p} = resistance", "o_res_t": "{label}. Above it: buyers have the upper hand again",
+        "o_sup": "{p} = support", "o_sup_t": "{label}. Below it: sellers have the upper hand",
+        "o_thin": "Thin zone {a} – {b}", "o_thin_t": "Few trades here = little to slow price down",
+        "o_flip": "Gamma flip ~{p}", "o_flip_below": "Below it: bigger swings both ways (options estimate)",
+        "o_flip_above": "Above it: swings tend to be damped (options estimate)",
+        "o_now": "Now ~{p}", "o_now_both": "Between support and resistance", "o_now_one": "See the levels",
+        "o_head": "TIM reading · {stamp} · not financial advice",
     },
     "de": {
         "few": "Gerade zu wenige Kerzen, um den Chart zu deuten.",
@@ -102,6 +109,13 @@ TEXT = {
         "delta_yes": "Blaue Kerze = mehr Kauf als Verkauf in dieser Kerze, rot = mehr Verkauf (echte Binance-Trades).",
         "delta_no": "Für diese Ansicht keine Tradedaten: Kerzen nur nach Schlusskurs gefärbt, Kauf/Verkauf weggelassen.",
         "nfa": "Keine Anlageberatung", "aria": "Chart mit TIM-Deutung",
+        "o_res": "{p} = Widerstand", "o_res_t": "{label}. Darüber sind Käufer wieder im Vorteil",
+        "o_sup": "{p} = Stütze", "o_sup_t": "{label}. Darunter sind Verkäufer im Vorteil",
+        "o_thin": "Dünne Zone {a} – {b}", "o_thin_t": "Wenig Handel hier = wenig bremst den Preis",
+        "o_flip": "Gamma-Flip ~{p}", "o_flip_below": "Darunter: größere Ausschläge in beide Richtungen (Optionen-Schätzung)",
+        "o_flip_above": "Darüber: Ausschläge eher gedämpft (Optionen-Schätzung)",
+        "o_now": "Jetzt ~{p}", "o_now_both": "Zwischen Stütze und Widerstand", "o_now_one": "Siehe die Marken",
+        "o_head": "TIM-Deutung · {stamp} · keine Anlageberatung",
     },
 }
 # German names for the level labels the English chart model carries (prefix match, first hit wins).
@@ -411,3 +425,61 @@ def render(reading: Mapping[str, Any]) -> str:
             f"<ol class='rd-list'>{items}</ol>"
             f"<p class='rd-now'><b>{_safe(reading['now_text'])}</b></p>"
             f"<p class='rd-stamp'>{footer}</p>")
+
+
+# --- overlay on the interactive chart (Uzi 23.11.2026: "AI overlay chart") ------------------------------
+
+MAX_FLIP_PCT = 15.0  # a gamma flip further away than this is left out of the overlay
+
+
+def _boxes(reading: Mapping[str, Any], model: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Text boxes for the chart: the numbered points, then one box per key level, the thin zone, the gamma flip and now."""
+    lang = _lang(reading.get("lang"))
+    T = TEXT[lang]
+    boxes = [{"title": f"{p['n']}) {p['title']}", "text": p["text"], "tone": p["tone"], "time": p["time"], "price": p["price"]}
+             for p in reading.get("points") or []]
+    for key, title, text, tone in (("resistance", "o_res", "o_res_t", "level"), ("support", "o_sup", "o_sup_t", "sell")):
+        lv = reading.get(key)
+        if lv:
+            boxes.append({"title": T[title].format(p=_k(lv["price"], lang)), "text": T[text].format(label=_label(lv["label"], lang)),
+                          "tone": tone, "time": None, "price": lv["price"]})
+    thin = reading.get("thin")
+    if thin:
+        boxes.append({"title": T["o_thin"].format(a=_k(thin["low"], lang), b=_k(thin["high"], lang)), "text": T["o_thin_t"],
+                      "tone": "sell", "time": None, "price": (thin["low"] + thin["high"]) / 2})
+    flip = next((float(d["price"]) for d in model.get("drawings") or []
+                 if d.get("group") == "gamma" and str(d.get("label", "")).endswith("Gamma Flip") and d.get("price") is not None), None)
+    price = reading["price"]
+    if flip and abs(flip - price) / price * 100 <= MAX_FLIP_PCT:
+        boxes.append({"title": T["o_flip"].format(p=_k(flip, lang)), "text": T["o_flip_below" if price < flip else "o_flip_above"],
+                      "tone": "warn", "time": None, "price": flip})
+    candles = reading["candles"]
+    both = reading.get("support") and reading.get("resistance")
+    boxes.append({"title": T["o_now"].format(p=_k(price, lang)), "text": T["o_now_both" if both else "o_now_one"], "tone": "now",
+                  "time": candles[-1]["time"], "price": price})
+    return boxes
+
+
+def overlay(model: Mapping[str, Any], now: datetime | None = None) -> dict[str, Any] | None:
+    """Both languages of the reading as boxes, lines and a zone for the chart's "TIM reading" layer.
+
+    None when there is nothing to read; never raises (the chart must load without it)."""
+    try:
+        return _overlay(model, now)
+    except Exception:  # noqa: BLE001 - the reading only hides itself
+        return None
+
+
+def _overlay(model: Mapping[str, Any], now: datetime | None = None) -> dict[str, Any] | None:
+    now = now or datetime.now(timezone.utc)
+    stamp = now.astimezone(LOCAL).strftime("%d.%m. %H:%M")
+    out: dict[str, Any] = {"schema": SCHEMA, "generated_at": now.isoformat(), "window": WINDOW}
+    for lang in LANGS:
+        reading = build_reading(model, now, lang=lang)
+        if not reading.get("ok"):
+            return None
+        lines = [{"price": lv["price"], "tone": tone} for lv, tone in ((reading.get("resistance"), "level"), (reading.get("support"), "sell"),
+                                                                     (reading.get("extreme_level"), "wall")) if lv]
+        out[lang] = {"head": TEXT[lang]["o_head"].format(stamp=stamp), "boxes": _boxes(reading, model), "lines": lines,
+                     "thin": reading.get("thin"), "from": reading["candles"][0]["time"]}
+    return out

@@ -106,3 +106,24 @@ def test_drawing_is_plain_svg_without_script_and_escapes_labels():
 
 def test_rules_are_fixed_numbers():
     assert chart_reading.WINDOW == 24 and chart_reading.CONTROL_BARS == 3 and chart_reading.SCHEMA == "chart_reading/1"
+
+
+def test_overlay_has_boxes_in_both_languages_and_never_raises():
+    from src.dashboard.chart_reading import overlay
+
+    prices, deltas = _pump_then_sell()
+    model = _model(prices, deltas, thin=(62000, 62400),
+                   levels=(("gamma", "Opt Call Wall", 64550.0), ("gamma", "Opt Gamma Flip", 66000.0), ("day", "1D VAL", 62400.0)))
+    out = overlay(model, NOW)
+    assert set(out) >= {"en", "de"}
+    en, de = out["en"], out["de"]
+    assert [b["title"][:2] for b in en["boxes"][:3]] == ["1)", "2)", "3)"]
+    assert any(b["title"].startswith("Gamma flip") for b in en["boxes"]) and any(b["title"].startswith("Gamma-Flip") for b in de["boxes"])
+    assert en["boxes"][-1]["title"].startswith("Now ~") and de["boxes"][-1]["title"].startswith("Jetzt ~")
+    assert {line["tone"] for line in en["lines"]} >= {"sell", "wall"} and en["thin"]
+    assert "not financial advice" in en["head"] and "keine Anlageberatung" in de["head"]
+    for box in en["boxes"]:
+        assert box["time"] is None or box["time"] in {c["time"] for c in model["candles"]}
+    assert overlay({"candles": []}, NOW) is None
+    assert overlay({"candles": "broken"}, NOW) is None
+

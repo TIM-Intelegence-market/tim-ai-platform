@@ -514,3 +514,12 @@ def test_chart_reading_needs_login_and_comes_in_two_languages(server):
     status, _, body = _get(base + "/reading?tf=evil&lang=xx", headers=_login())
     assert status == 200 and "TIM chart reading" in body and "aria-current='page'>BTC 30m" in body
     assert "href='/reading'" in _get(base + "/chart")[2]
+
+
+def test_chart_overlay_is_sent_only_after_login(server):
+    public, base = server
+    anonymous = json.loads(_get(base + "/api/chart/live?symbol=BTCUSDT&tf=30m")[2])
+    member = json.loads(_get(base + "/api/chart/live?symbol=BTCUSDT&tf=30m", headers=_login())[2])
+    assert "reading" not in anonymous
+    assert member["reading"] and {"en", "de"} <= set(member["reading"])
+    assert {"reading", "reading_de"} <= set(member["groups"]) and "reading" not in member["default_groups"]

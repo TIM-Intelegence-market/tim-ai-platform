@@ -333,7 +333,12 @@ class PublicDashboardServer:
             from src.dashboard.pages.chart import APP_VERSION
             from src.dashboard.public_en import english_chart_model
 
-            return json.dumps({**english_chart_model(model), "app_version": APP_VERSION}, default=str).encode()
+            out = english_chart_model(model)
+            if member:  # TIM's reading as boxes on the chart, for logged-in traders only (Uzi 23.11.2026)
+                from src.dashboard.chart_reading import overlay
+
+                out["reading"] = overlay(out)
+            return json.dumps({**out, "app_version": APP_VERSION}, default=str).encode()
         from src.dashboard.plan_cost_check import with_cost_check
         from src.dashboard.plan_journal import load_view
 

@@ -122,6 +122,7 @@ GROUP_NAMES = {
     "plans_old": "TIM-Pläne Testversionen 30m",
     "gamma": "Options-Gamma (Deribit)",
     "gamma_ob": "Gamma-Zonen mit Orderbuch-Mauer (bestätigt)",
+    "reading": "TIM-Deutung Englisch (nur angemeldet)", "reading_de": "TIM-Deutung Deutsch (nur angemeldet)",
     "liq": "Liquidations-Heatmap (Modell, keine echten Liquidationen)",
     "liqev": "Liquidationen (echt, Binance + Bybit)",
     "cvd": "CVD Spot vs. Perp", "delta": "Delta Volume je Kerze (gewählter Markt)", "oi": "Open Interest je Börse (Binance, Bybit) + Z-Score (7,5 T, nur Binance)",

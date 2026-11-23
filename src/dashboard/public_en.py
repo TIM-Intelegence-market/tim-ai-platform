@@ -46,6 +46,7 @@ GROUPS_EN = {
     "plans_old": "TIM plans, test versions 30m",
     "gamma": "Options gamma (Deribit)",
     "gamma_ob": "Gamma zones with an order book wall (confirmed)",
+    "reading": "TIM reading, English (login only)", "reading_de": "TIM reading, German (login only)",
     "liq": "Liquidation heatmap (estimate)",
     "liqev": "Liquidations (real, Binance + Bybit)",
     "cvd": "CVD spot vs. perp", "delta": "Delta volume per candle (chosen market)", "oi": "Open interest per venue (Binance, Bybit) + Z-score (7.5 d, Binance only)",
