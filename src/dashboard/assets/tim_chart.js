@@ -1459,6 +1459,161 @@
   };
   candles.attachPrimitive(positions);
 
+  // TIM reading overlay (Uzi 23.11.2026: "AI overlay chart"): boxes with a title and a short text, each tied by a thin
+  // line to the candle or level it explains, the key levels as dashed lines and the thin zone as a band. Data from the
+  // server (chart_reading.overlay, both languages; the public view sends it only after login). Layer "reading" shows
+  // the English text, "reading_de" the German one; with both on, the page language wins.
+  const READ_TONE = { buy: '#5b8cff', sell: '#ff6b6b', warn: '#ffc53d', flat: '#9aa4b2', level: '#3ddc97', now: '#e6e9ef', wall: '#b18cff' };
+  function wrapText(ctx, text, width) {
+    const out = [];
+    let line = '';
+    for (const word of String(text).split(/\s+/)) {
+      const next = line ? line + ' ' + word : word;
+      if (line && ctx.measureText(next).width > width) { out.push(line); line = word; } else line = next;
+    }
+    if (line) out.push(line);
+    return out.slice(0, 4);
+  }
+  const reading = {
+    chart: null, series: null, requestUpdate: null, groups: new Set(),
+    attached(param) { this.chart = param.chart; this.series = param.series; this.requestUpdate = param.requestUpdate; },
+    detached() { this.chart = null; this.series = null; },
+    updateAllViews() {},
+    autoscaleInfo() { return null; },
+    paneViews() { return [this.backView, this.boxView]; },
+    data() {
+      if (!model || !model.reading) return null;
+      const en = this.groups.has('reading'), de = this.groups.has('reading_de');
+      if (!en && !de) return null;
+      return model.reading[(en && de) ? (EN ? 'en' : 'de') : (en ? 'en' : 'de')] || null;
+    },
+    backView: {
+      zOrder() { return 'bottom'; },
+      renderer() {
+        return {
+          draw(target) {
+            const data = reading.data();
+            if (!reading.chart || !data) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const y = p => reading.series.priceToCoordinate(p);
+              const xFrom = reading.chart.timeScale().timeToCoordinate(local(data.from));
+              const left = xFrom === null ? 0 : Math.max(0, xFrom);
+              if (data.thin) {
+                const top = y(data.thin.high), bottom = y(data.thin.low);
+                if (top !== null && bottom !== null) {
+                  ctx.fillStyle = 'rgba(255,107,107,0.13)';
+                  ctx.fillRect(left, top, mediaSize.width - left, bottom - top);
+                }
+              }
+              ctx.lineWidth = 1.5;
+              for (const line of data.lines || []) {
+                const ly = y(line.price);
+                if (ly === null) continue;
+                ctx.strokeStyle = READ_TONE[line.tone] || READ_TONE.flat;
+                ctx.setLineDash(line.tone === 'wall' ? [] : [8, 6]);
+                ctx.beginPath(); ctx.moveTo(left, Math.round(ly) + 0.5); ctx.lineTo(mediaSize.width, Math.round(ly) + 0.5); ctx.stroke();
+              }
+              ctx.setLineDash([]);
+            });
+          },
+        };
+      },
+    },
+    boxView: {
+      zOrder() { return 'top'; },
+      renderer() {
+        return {
+          draw(target) {
+            const data = reading.data();
+            if (!reading.chart || !data) return;
+            target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+              const W = mediaSize.width, H = mediaSize.height;
+              const small = W < 600;
+              const maxW = small ? Math.min(190, W * 0.6) : 250;
+              const titleFont = `600 ${small ? 11 : 13}px ui-sans-serif, system-ui, sans-serif`;
+              const textFont = `${small ? 10 : 12}px ui-sans-serif, system-ui, sans-serif`;
+              const lh = small ? 13 : 16;
+              const placed = [];
+              ctx.font = textFont;
+              ctx.fillStyle = 'rgba(230,233,239,0.75)';
+              ctx.textBaseline = 'top';
+              ctx.fillText(data.head, 8, 6);
+              placed.push({ x: 0, y: 0, w: ctx.measureText(data.head).width + 16, h: 22 });
+              const scale = reading.chart.timeScale();
+              // Candles in view are obstacles too: a box goes beside the bars, never on top of them.
+              const range = scale.getVisibleLogicalRange();
+              const bar = range ? W / Math.max(1, range.to - range.from) : 6;
+              const avoid = [];
+              if (bar >= 4) {
+                for (const c of model.candles) {
+                  const cx = scale.timeToCoordinate(local(c.time));
+                  if (cx === null || cx < -bar || cx > W + bar) continue;
+                  const top = reading.series.priceToCoordinate(c.high), bottom = reading.series.priceToCoordinate(c.low);
+                  if (top === null || bottom === null) continue;
+                  avoid.push({ x: cx - bar * 0.45, y: top, w: bar * 0.9, h: Math.max(2, bottom - top) });
+                }
+              }
+              const drawn = [];
+              for (const box of data.boxes || []) {
+                const ay = reading.series.priceToCoordinate(box.price);
+                if (ay === null || ay < 0 || ay > H) continue;
+                let ax = box.time == null ? W - 70 : scale.timeToCoordinate(local(box.time));
+                if (ax === null || ax < 0 || ax > W) continue;
+                ctx.font = titleFont;
+                const titleW = ctx.measureText(box.title).width;
+                ctx.font = textFont;
+                const lines = wrapText(ctx, box.text, maxW);
+                const w = Math.min(maxW, Math.max(titleW, ...lines.map(l => ctx.measureText(l).width))) + 16;
+                const h = lh + 6 + lines.length * lh + 8;
+                const gap = small ? 18 : 34;
+                const spots = box.time == null
+                  ? [[ax - w - gap, ay - h - 6], [ax - w - gap, ay + 6], [ax - 2 * w - gap, ay - h / 2], [W * 0.05, ay - h - 6], [W * 0.05, ay + 6]]
+                  : [[ax - w - gap, ay - h - gap], [ax + gap, ay - h - gap], [ax - w - gap, ay + gap], [ax + gap, ay + gap],
+                     [ax - w / 2, ay - h - 2 * gap], [ax - w / 2, ay + 2 * gap], [ax - w - 2 * gap, ay - h / 2], [ax + 2 * gap, ay - h / 2]];
+                const inside = ([x, yy]) => x >= 2 && yy >= 2 && x + w <= W - 2 && yy + h <= H - 2 &&
+                  !placed.some(b => x < b.x + b.w + 4 && b.x < x + w + 4 && yy < b.y + b.h + 4 && b.y < yy + h + 4);
+                const free = ([x, yy]) => inside([x, yy]) && !avoid.some(b => x < b.x + b.w && b.x < x + w && yy < b.y + b.h && b.y < yy + h);
+                let spot = spots.find(free);
+                if (!spot) {  // scan the screen in steps for any free place, nearest to the anchor first
+                  const tries = [];
+                  for (let yy = 4; yy + h < H; yy += 12) for (let x = 4; x + w < W; x += 24) tries.push([x, yy]);
+                  tries.sort((a, b) => Math.hypot(a[0] + w / 2 - ax, a[1] + h / 2 - ay) - Math.hypot(b[0] + w / 2 - ax, b[1] + h / 2 - ay));
+                  spot = tries.find(free) || spots.find(inside);  // a crowded screen: over the candles rather than not at all
+                }
+                if (!spot) continue;
+                const [bx, by] = spot;
+                placed.push({ x: bx, y: by, w, h });
+                drawn.push({ box, lines, bx, by, w, h, ax, ay, color: READ_TONE[box.tone] || READ_TONE.flat });
+              }
+              // All leader lines first, then the boxes: a line never runs across another box's text.
+              for (const d of drawn) {
+                const cx = Math.max(d.bx, Math.min(d.ax, d.bx + d.w)), cy = Math.max(d.by, Math.min(d.ay, d.by + d.h));
+                ctx.strokeStyle = d.color; ctx.lineWidth = 1.2;
+                ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(d.ax, d.ay); ctx.stroke();
+                ctx.fillStyle = d.color;
+                ctx.beginPath(); ctx.arc(d.ax, d.ay, 3.5, 0, Math.PI * 2); ctx.fill();
+              }
+              for (const { box, lines, bx, by, w, h, color } of drawn) {
+                ctx.strokeStyle = color;
+                ctx.fillStyle = 'rgba(11,15,23,0.92)';
+                ctx.beginPath();
+                if (ctx.roundRect) ctx.roundRect(bx, by, w, h, 5); else ctx.rect(bx, by, w, h);
+                ctx.fill();
+                ctx.lineWidth = 1.5; ctx.stroke();
+                ctx.textBaseline = 'top';
+                ctx.font = titleFont; ctx.fillStyle = color;
+                ctx.fillText(box.title, bx + 8, by + 5);
+                ctx.font = textFont; ctx.fillStyle = '#e6e9ef';
+                lines.forEach((l, i) => ctx.fillText(l, bx + 8, by + 5 + lh + 3 + i * lh));
+              }
+            });
+          },
+        };
+      },
+    },
+  };
+  candles.attachPrimitive(reading);
+
   // Layers added after a visitor saved a choice (e.g. TIM's plans, footprint) start visible: only keys the
   // visitor has seen before can be hidden by a saved choice. Saves from before this list existed knew
   // neither the plans nor volume profile and footprint.
@@ -1501,13 +1656,13 @@
         fpDelta: 'Footprint: delta bars', fpCells: 'Footprint: bid × ask', fpProfile: 'Footprint: profile', other: 'Other', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume profile',
         standard: 'TIM standard (all default layers)', read: 'Read (few layers, start)', pro: 'Orderflow Pro (BTC 15m perp)', orderflow: 'Orderflow', profile: 'Profiles (VP, TPO)', levels: 'Levels',
         vwap: 'VWAP', structure: 'Structure', positioning: 'Positioning', macro: 'Macro', trades: "TIM's trades",
-        exo: 'Exo workspace: VWAP, bubbles, OI, CVD', exoVp: 'Exo profile: VP range, VPOC', exoTpo: 'Exo TPO: sessions and profiles', usdtd: 'USDT.D (dominance)', gammaZones: 'Gamma zones (BTC 30m): zones, reaction, no signal' }
+        exo: 'Exo workspace: VWAP, bubbles, OI, CVD', exoVp: 'Exo profile: VP range, VPOC', exoTpo: 'Exo TPO: sessions and profiles', usdtd: 'USDT.D (dominance)', gammaZones: 'Gamma zones (BTC 30m): zones, reaction, no signal', ai: 'TIM AI overlay (BTC 30m): reading in boxes, no signal' }
     : { label: 'Layout', tim: 'TIM-Layouts (immer mit Level und Struktur)', own: 'Eigene Layouts', changed: 'geändert, nicht gespeichert', save: 'Speichern unter…', rename: 'Umbenennen', remove: 'Löschen',
         ask: 'Name des Layouts:', taken: 'Dieser Name gehört zu einem TIM-Layout.', confirm: name => `Layout "${name}" löschen?`,
         fpDelta: 'Footprint: Delta-Balken', fpCells: 'Footprint: Bid × Ask', fpProfile: 'Footprint: Profil', other: 'Sonstiges', footprint: 'Footprint', tpo: 'TPO', vp: 'Volume Profile',
         standard: 'TIM Standard (alle Standard-Ebenen)', read: 'Lesen (wenige Ebenen, Start)', pro: 'Orderflow Pro (BTC 15m Perp)', orderflow: 'Orderflow', profile: 'Profile (VP, TPO)', levels: 'Level',
         vwap: 'VWAP', structure: 'Struktur', positioning: 'Positionierung', macro: 'Makro', trades: 'TIMs Trades',
-        exo: 'Exo-Workspace: VWAP, Bubbles, OI, CVD', exoVp: 'Exo-Profil: VP-Range, VPOC', exoTpo: 'Exo-TPO: Sessions und Profile', usdtd: 'USDT.D (Dominanz)', gammaZones: 'Gamma-Zonen (BTC 30m): Zonen, Reaktion, kein Signal' };
+        exo: 'Exo-Workspace: VWAP, Bubbles, OI, CVD', exoVp: 'Exo-Profil: VP-Range, VPOC', exoTpo: 'Exo-TPO: Sessions und Profile', usdtd: 'USDT.D (Dominanz)', gammaZones: 'Gamma-Zonen (BTC 30m): Zonen, Reaktion, kein Signal', ai: 'TIM-KI-Deutung (BTC 30m): Erklärung in Kästen, kein Signal' };
   // Every layer belongs to exactly one category (Uzi 09.11.2026: each layout a category); a category is a
   // layout of its own, and the ticks under "edit layout" are sorted the same way.
   const CATEGORIES = [
@@ -1518,7 +1673,7 @@
     { name: L.structure, groups: ['structure', 'trend', 'fib'] },
     { name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma', 'gamma_ob'] },
     { name: L.macro, groups: ['dominance', 'macro'] },
-    { name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long', 'plans_old'] },
+    { name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long', 'plans_old', 'reading', 'reading_de'] },
     { name: L.usdtd, groups: ['usdtd_swing', 'usdtd_sr', 'usdtd_ema'] },
   ];
   // The layouts are working views (Uzi 09.11.2026: one click for everything orderflow, TPO, footprint or
@@ -1549,6 +1704,9 @@
     // order book wall) and the thin gamma lines, the day levels as the next targets and delta per candle for the reaction.
     // No bubbles, footprint, structure, week levels or plans: a phone screen stays readable. Display, no signal.
     { id: 'tim:gammazones', name: L.gammaZones, symbol: 'BTCUSDT', tf: '30m', market: 'perp', clean: true, groups: ['gamma_ob', 'gamma', 'day', 'delta'] },
+    // TIM AI overlay (Uzi 23.11.2026, after his annotated BTC 30m footprint): TIM's reading as boxes with lines on the
+    // footprint, plus the levels it talks about. Only a logged-in visitor gets the reading; it explains, it never signals.
+    { id: 'tim:ai', name: L.ai, symbol: 'BTCUSDT', tf: '30m', fp: 'delta', clean: true, groups: [EN ? 'reading' : 'reading_de', 'fp', 'gamma', 'delta'] },
     { id: 'tim:standard', name: L.standard, groups: null },
   ];
   function ownLayouts() {
@@ -1634,6 +1792,8 @@
     }
     layers.querySelectorAll('input').forEach(node => { node.checked = groups.has(node.value); });
     applyVisibility(groups);
+    // The AI overlay explains the last 24 candles: show those, with room for the boxes.
+    if (layout.id === 'tim:ai' && model.candles.length) chart.timeScale().setVisibleLogicalRange(viewRange(34));
     buildLayouts();
     const tab = layout.tf && layout.tf !== timeframe ? root.querySelector(`a[data-tf='${layout.tf}']`) : null;
     if (tab) tab.click(); else if (reload) { showMarket(); load(); }
@@ -1839,6 +1999,8 @@
     layoutBands(groups);
     positions.groups = groups;
     if (positions.requestUpdate) positions.requestUpdate();
+    reading.groups = groups;
+    if (reading.requestUpdate) reading.requestUpdate();
     if (tpo.requestUpdate) tpo.requestUpdate();
   }
 
@@ -1872,6 +2034,8 @@
     }
     labelLines(groups);
     positions.groups = groups;
+    reading.groups = groups;
+    if (reading.requestUpdate) reading.requestUpdate();
     drawPlans(groups);
     planMarkers(groups);
   }

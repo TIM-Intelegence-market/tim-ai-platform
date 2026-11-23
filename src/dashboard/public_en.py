@@ -27,7 +27,7 @@ from src.dashboard.plan_journal import FILLED, OPEN, RULE_LEVEL, RULE_STRUCT, RU
 LOCAL = ZoneInfo("Europe/Berlin")
 DISCLAIMER = ("Research, not financial advice. Observation and paper tracking only: no orders, no recommendations. "
               "Data: public Binance candles and TIM's own analysis; the view can be delayed or incomplete.")
-NAV = (("/chart", "Chart"), ("/journal", "Paper journal"), ("/live", "Live account"))
+NAV = (("/chart", "Chart"), ("/reading", "Chart reading"), ("/journal", "Paper journal"), ("/live", "Live account"))
 REPO = "https://github.com/TIM-Intelegence-market/tim-ai-platform"
 
 GROUPS_EN = {
@@ -46,6 +46,7 @@ GROUPS_EN = {
     "plans_old": "TIM plans, test versions 30m",
     "gamma": "Options gamma (Deribit)",
     "gamma_ob": "Gamma zones with an order book wall (confirmed)",
+    "reading": "TIM reading, English (login only)", "reading_de": "TIM reading, German (login only)",
     "liq": "Liquidation heatmap (estimate)",
     "liqev": "Liquidations (real, Binance + Bybit)",
     "cvd": "CVD spot vs. perp", "delta": "Delta volume per candle (chosen market)", "oi": "Open interest per venue (Binance, Bybit) + Z-score (7.5 d, Binance only)",
@@ -850,6 +851,48 @@ def _live_timeframes(status: Mapping[str, Any] | None) -> tuple[str, ...]:
         if picked:
             return picked
     return LIVE_TIMEFRAMES
+
+
+READING_CSS = (
+    ".rd-bar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}"
+    ".rd-bar a{padding:6px 12px;border:1px solid var(--line);border-radius:8px;color:var(--text-soft);text-decoration:none}"
+    ".rd-bar a[aria-current]{border-color:var(--blue);color:var(--text);background:#101b2c}"
+    ".rd-chart{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#0b0f17}"
+    ".rd-svg{display:block;width:100%;height:auto}"
+    ".rd-list{margin:14px 0 0;padding:0;list-style:none;display:grid;gap:8px}"
+    ".rd-item{padding:10px 12px;border:1px solid var(--line);border-left-width:4px;border-radius:8px;background:var(--surface);line-height:1.45}"
+    ".rd-buy{border-left-color:#5b8cff}.rd-sell{border-left-color:#ff6b6b}.rd-warn{border-left-color:#ffc53d}"
+    ".rd-flat{border-left-color:#9aa4b2}.rd-level{border-left-color:#3ddc97}"
+    ".rd-now{margin:12px 0 4px;font-size:1.05rem}.rd-stamp{color:var(--text-soft);font-size:.9rem}"
+)
+READING_STYLE = CSS + EXTRA_CSS + READING_CSS
+READING_DISCLAIMER = ("Not financial advice / Keine Anlageberatung. TIM describes what the chart already shows; "
+                      "no signal, no recommendation, no orders.")
+
+
+def reading_csp() -> str:
+    """The reading page has its own style block and no script; the chart is inline SVG."""
+    style_hash = base64.b64encode(hashlib.sha256(READING_STYLE.encode()).digest()).decode()
+    return (f"default-src 'none'; style-src 'sha256-{style_hash}'; script-src 'none'; connect-src 'none'; img-src 'self' data:; "
+            "font-src 'none'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+
+
+def reading_page(card: str, timeframe: str, lang: str) -> str:
+    """TIM chart reading (BTC) for logged-in traders, in English or German (Uzi 23.11.2026)."""
+    from src.dashboard.chart_reading import TIMEFRAMES
+
+    de = lang == "de"
+    title = "TIM Chart-Deutung" if de else "TIM chart reading"
+    intro = ("TIM liest den BTC-Chart automatisch und erklärt die wichtigsten Stellen in einfachen Sätzen."
+             if de else "TIM reads the BTC chart automatically and explains the key spots in plain sentences.")
+
+    def link(tf: str, lg: str, label: str, current: bool) -> str:
+        return f"<a href='/reading?tf={tf}&amp;lang={lg}'" + (" aria-current='page'" if current else "") + f">{_safe(label)}</a>"
+
+    bar = ("<div class='rd-bar'>" + "".join(link(tf, lang, f"BTC {tf}", tf == timeframe) for tf in TIMEFRAMES)
+           + link(timeframe, "en", "English", not de) + link(timeframe, "de", "Deutsch", de) + "</div>")
+    body = _hero(title, intro) + f"<section class='cc-section'>{bar}{card}</section>"
+    return shell(title, "/reading", body, extra_css=READING_CSS, disclaimer=READING_DISCLAIMER)
 
 
 def live_page(status: Mapping[str, Any] | None, now: Any = None) -> str:

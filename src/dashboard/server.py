@@ -171,7 +171,9 @@ class DashboardServer:
                                                  liquidation=liquidation, perp=perp, open_interest=open_interest, bybit=bybit,
                                                  market=query.get("market", [None])[0],
                                                  context=chart_context(query.get("symbol", [None])[0]))
+                        from src.dashboard.chart_reading import overlay
                         from src.dashboard.pages.chart import APP_VERSION
+                        model["reading"] = overlay(model)  # Control Center = Uzi's own machine
                         model["app_version"] = APP_VERSION
                     except Exception as exc:  # noqa: BLE001 - malformed data must not drop the connection
                         return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")

@@ -123,6 +123,13 @@ LAYERS: dict[str, list[Mark]] = {
         (("line", *GAMMA["em_high"]), "erwartete Spanne oben/unten aus den Optionspreisen (gepunktet)", "Expected move up/down from option prices (dotted)"),
         (("line", *GAMMA["flip"]), "Alles Schätzung aus Deribit (Annahme: Händler long Calls, short Puts); Wirkung auf den BTC-Preis ungetestet. Jede Linie beginnt dort, wo das Level seinen jetzigen Wert bekam", "All estimates from Deribit (assumption: dealers long calls, short puts); effect on the BTC price untested. Each line starts where the level reached its current value"),
     ],
+    "reading": [
+        (("line", "#5b8cff", "solid"), "TIMs Deutung in Kästen, je mit Linie zur Kerze oder Marke, die sie erklärt (Englisch). Nur nach Anmeldung", "TIM's reading in boxes, each with a line to the candle or level it explains (English). Login only"),
+        (("line", "#3ddc97", "dashed"), "Gestrichelt: Widerstand (grün) und Stütze (rot); rotes Band = dünne Zone mit wenig Handel. Beschreibt, was passiert ist; kein Signal", "Dashed: resistance (green) and support (red); red band = thin zone with little trading. Describes what happened; no signal"),
+    ],
+    "reading_de": [
+        (("line", "#5b8cff", "solid"), "Dieselbe Deutung auf Deutsch. Nur nach Anmeldung", "The same reading in German. Login only"),
+    ],
     "gamma_ob": [
         (("line", "#ffd24a", "solid"), "Gelbes Band: Gamma-Level, an dem im Orderbuch (Binance Perp, eigene Aufzeichnung) seit mindestens 30 Minuten eine große Auftragsmauer steht", "Yellow band: gamma level with a large order book wall (Binance perp, own recording) standing for at least 30 minutes"),
         (("line", "#ffd24a", "solid"), "Mauer = Preisstufe mit mindestens 5-fach so viel wartenden Aufträgen wie üblich; Aufträge können jederzeit zurückgezogen werden. Nur BTC, nur Anzeige; ob die Zonen halten, wird mitgezählt (Urteil ab 30 Berührungen)", "Wall = price step with at least 5 times the usual resting orders; orders can be pulled at any time. BTC only, display only; whether the zones hold is being counted (verdict from 30 visits)"),

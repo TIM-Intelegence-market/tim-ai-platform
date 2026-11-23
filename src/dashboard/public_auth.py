@@ -25,7 +25,7 @@ from typing import Callable
 
 AUTH_FILE_ENV = "TIM_PUBLIC_AUTH_FILE"
 AUTH_FILE = Path.home() / "Library/Application Support/TIM/public-auth.json"
-PROTECTED = frozenset({"/journal", "/journal/trade", "/live", "/api/plan-journal"})
+PROTECTED = frozenset({"/journal", "/journal/trade", "/live", "/reading", "/api/plan-journal"})
 ITERATIONS = 600_000
 MAX_AUTH_FILE_BYTES = 4096
 MAX_HEADER = 512
