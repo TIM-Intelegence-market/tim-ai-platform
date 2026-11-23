@@ -21,6 +21,7 @@ import itertools
 import json
 import math
 import random
+import re
 import statistics
 import sys
 import zipfile
@@ -42,7 +43,11 @@ from src.research_lab.fusion.walkforward import (
 )
 from src.research_lab.options_flow.contract import Rejected, normalize_trade
 from src.research_lab.options_flow.features_q import trade_greeks
-from src.research_lab.protocol import HOLDOUT_START_MS, VALIDATION_START_MS
+from src.research_lab.protocol import (
+    HOLDOUT_START_MS,
+    STRESS_COSTS,
+    VALIDATION_START_MS,
+)
 from src.research_lab.stats.deflated import deflated_sharpe
 
 BAR_MS = 5 * 60_000
@@ -68,6 +73,7 @@ BOOT_DRAWS, BOOT_SEED = 10_000, 40
 CVD = {"lookback": 24, "right": 3, "k_sigma": 1.0}
 SWEEP = {"lookback": 24, "m": 3, "min_excess": 0.001, "vol_mult": 2.0}
 EVENT_BARS = 12
+OPTIONS_START_MONTH: str | None = None  # set in version 1.0 from the data report (plan section 4); None = report value
 
 PRICE = ("ret_1h", "ret_4h", "ret_24h", "rv_24h", "hour_sin", "hour_cos")
 ORDERFLOW = ("ai_1h", "ai_4h", "cvd_div", "sweep")
@@ -99,9 +105,17 @@ def _day(ms: int) -> str:
 
 
 # Loading -----------------------------------------------------------------------------------------------------------
+def _before_holdout(name: str) -> bool:
+    """File names carry their day or month (``2024-12-31...``/``...-2024-12.zip``); 2025 or later is never opened."""
+    m = re.search(r"(\d{4})-(\d{2})", name)
+    return bool(m) and int(m.group(1)) < 2025
+
+
 def load_bars(root: Path, symbol: str) -> list[Bar]:
     out: list[Bar] = []
     for p in sorted((root / "bars" / symbol).glob("*.csv.gz")):
+        if not _before_holdout(p.name):
+            continue
         for r in csv.DictReader(io.StringIO(gzip.decompress(p.read_bytes()).decode())):
             t = to_ms(int(r["open_ms"]))
             if t >= HOLDOUT_START_MS:
@@ -157,24 +171,31 @@ def build_option_flow(contribs: Sequence[tuple[int, float, float]], valid_days: 
     return OptionFlow([c[0] for c in contribs], cd, cg, frozenset(valid_days))
 
 
-def load_option_flow(root: Path) -> OptionFlow:
+def load_option_flow(root: Path, start_month: str) -> OptionFlow:
     valid_days: set[str] = set()
-    contribs: list[tuple[int, float, float]] = []
+    buckets: dict[int, tuple[float, float]] = {}
     status = root / "status" / "deribit"
     for p in sorted((root / "deribit").glob("*.jsonl.gz")):
+        if not _before_holdout(p.name):
+            continue
         day = p.name.split(".")[0]
         st_path = status / f"{day}.json"
         st = json.loads(st_path.read_text()) if st_path.exists() else {}
-        if st.get("ok") and st.get("trades", 0) >= 50:
+        if st.get("ok") and st.get("trades", 0) >= 50 and day[:7] >= start_month:
             valid_days.add(day)
         rows = [json.loads(x) for x in gzip.decompress(p.read_bytes()).splitlines() if x.strip()]
-        contribs.extend(option_contributions(rows))
-    return build_option_flow(contribs, valid_days)
+        for ts, d, g in option_contributions(rows):  # one bucket per second keeps memory small and stays exact
+            k = -(-ts // 1000) * 1000                    # ceil to the second: lo < ts <= hi  <=>  lo < k <= hi
+            prev = buckets.get(k, (0.0, 0.0))
+            buckets[k] = (prev[0] + d, prev[1] + g)
+    return build_option_flow([(k, d, g) for k, (d, g) in buckets.items()], valid_days)
 
 
 def load_funding(root: Path, symbol: str) -> list[tuple[int, float]]:
     out = []
     for p in sorted((root / "funding" / symbol).glob("*.zip")):
+        if not _before_holdout(p.name):
+            continue
         with zipfile.ZipFile(p) as z:
             for name in z.namelist():
                 for row in csv.reader(io.StringIO(z.read(name).decode())):
@@ -237,7 +258,7 @@ def raw_features(bars: Sequence[Bar], opens: Sequence[int], t_ms: int, fast: Fas
     i = bisect.bisect_right(opens, t_ms - BAR_MS) - 1
     while i >= 0 and bars[i].known_ms > t_ms:
         i -= 1
-    if i < 0 or bars[i].open_ms < t_ms - 2 * H_MS:
+    if i < 0 or bars[i].open_ms < t_ms - 3 * BAR_MS:  # last known bar older than 10 min: no row
         return None
     out: dict[str, float | None] = {}
     c = bars[i].close
@@ -283,15 +304,16 @@ def zscore_series(times: Sequence[int], values: Sequence[float | None]) -> list[
 
 def label(bars: Sequence[Bar], opens: Sequence[int], t_ms: int, hours: int) -> tuple[float, int, int] | None:
     """(log return, entry open_ms, exit open_ms): entry at the first bar opening at or after t (all features are
-    known by t), exit at the open h hours of bars later. None if missing or stretched by gaps."""
+    known by t) and before t + 5 min, exit at the open h hours of bars later; the stretch is measured from t.
+    None if missing or stretched by gaps more than 10 %."""
     j = bisect.bisect_left(opens, t_ms)
     n_bars = hours * H_MS // BAR_MS
     if j + n_bars >= len(bars):
         return None
     a, b = bars[j], bars[j + n_bars]
-    if a.open <= 0 or b.open <= 0 or b.open_ms - a.open_ms > MAX_LABEL_STRETCH * hours * H_MS:
+    if a.open_ms >= t_ms + BAR_MS:  # the bar right after t is missing: no entry
         return None
-    if a.open_ms - t_ms > MAX_LABEL_STRETCH * hours * H_MS:
+    if a.open <= 0 or b.open <= 0 or b.open_ms - t_ms > MAX_LABEL_STRETCH * hours * H_MS:
         return None
     return math.log(b.open / a.open), a.open_ms, b.open_ms
 
@@ -302,27 +324,33 @@ def build_rows(bars: Sequence[Bar], opt: OptionFlow | None, valid_months: set[st
     fast = FastOF(bars)
     opens = [b.open_ms for b in bars]
     times = list(range(start_ms - start_ms % H_MS, min(end_ms, HOLDOUT_START_MS), H_MS))
-    raw = [raw_features(bars, opens, t, fast, opt) or {} for t in times]
+    raw = [raw_features(bars, opens, t, fast, opt) or {} if _month(t) in valid_months and _month(t - DAY_MS)
+           in valid_months else {} for t in times]  # values from invalid months never enter a z window
     keys = PRICE + ORDERFLOW + (OPTIONSFLOW if opt is not None else ())
     cols = {k: [r.get(k) for r in raw] for k in keys}
     for k in keys:
         if k not in RAW:
             cols[k] = zscore_series(times, cols[k])
     out: dict[str, list[dict[str, Any]]] = {"1h": [], "4h": []}
+    dropped = {h: {"no_label": 0, "past_end": 0, "invalid_month": 0} for h in HORIZONS}
     for n, t in enumerate(times):
         for h, hours in HORIZONS.items():
             if hours == 4 and datetime.fromtimestamp(t / 1000, tz=timezone.utc).hour % 4:
                 continue
             lab = label(bars, opens, t, hours)
             if lab is None:
+                dropped[h]["no_label"] += 1
                 continue
             y, entry, exit_ = lab
-            if exit_ >= HOLDOUT_START_MS or t >= HOLDOUT_START_MS:
+            if exit_ >= min(end_ms, HOLDOUT_START_MS) or t >= HOLDOUT_START_MS:
+                dropped[h]["past_end"] += 1
                 continue
             if not {_month(t - DAY_MS), _month(t), _month(exit_)} <= valid_months:
+                dropped[h]["invalid_month"] += 1
                 continue
             out[h].append({"t_ms": t, "entry_ms": entry, "label_end_ms": exit_, "y": y,
                            **{k: cols[k][n] for k in keys}})
+    out["_dropped"] = dropped  # type: ignore[assignment]
     return out
 
 
@@ -475,9 +503,10 @@ def trade_returns(rows: Sequence[Mapping[str, Any]], preds: Sequence[float], fun
 
 def week_bootstrap_lower(trades: Sequence[tuple[int, float]], draws: int = BOOT_DRAWS, seed: int = BOOT_SEED,
                          q: float = 0.05) -> float | None:
-    weeks: dict[int, list[float]] = {}
+    weeks: dict[tuple[int, int], list[float]] = {}
     for t, x in trades:
-        weeks.setdefault(t // (7 * DAY_MS), []).append(x)
+        iso = datetime.fromtimestamp(t / 1000, tz=timezone.utc).isocalendar()
+        weeks.setdefault((iso[0], iso[1]), []).append(x)
     blocks = list(weeks.values())
     if len(blocks) < 2:
         return None
@@ -494,15 +523,20 @@ def week_bootstrap_lower(trades: Sequence[tuple[int, float]], draws: int = BOOT_
 def trading_check(rows, preds, funding) -> dict[str, Any]:
     base = trade_returns(rows, preds, funding, BASE_ROUND_TRIP, credits=True)
     stress = trade_returns(rows, preds, funding, STRESS_ROUND_TRIP, credits=False)
+    proto = trade_returns(rows, preds, funding, 2 * (STRESS_COSTS.fee + STRESS_COSTS.slippage), credits=False)
     if len(base) < MIN_TRADES:
         return {"verdict": "nicht prüfbar", "n": len(base)}
     xs = [x for _, x in base]
     lower = week_bootstrap_lower(base)
-    dsr = deflated_sharpe(xs, DSR_TRIALS).dsr
+    try:
+        dsr: float | None = deflated_sharpe(xs, DSR_TRIALS).dsr
+    except ValueError:  # degenerate moments: counted as not passed
+        dsr = None
     ok = statistics.fmean(xs) > 0 and lower is not None and lower > 0 and statistics.fmean(x for _, x in stress) > 0 \
-        and dsr >= 0.95
+        and dsr is not None and dsr >= 0.95
     return {"n": len(base), "mean": statistics.fmean(xs), "boot_lower_90": lower,
-            "mean_stress": statistics.fmean(x for _, x in stress), "dsr": dsr,
+            "mean_stress": statistics.fmean(x for _, x in stress),
+            "mean_protocol_stress": statistics.fmean(x for _, x in proto), "dsr": dsr,
             "verdict": "bestanden" if ok else "nicht bestanden"}
 
 
@@ -511,9 +545,18 @@ def _valid_months(report: Mapping[str, Any], symbol: str) -> set[str]:
     return {k for k, v in report["binance"][symbol]["months"].items() if v["valid"]}
 
 
+def options_start(report: Mapping[str, Any]) -> str | None:
+    """Start month of the option-flow tests, or None when Deribit fails the 70 % rule (T7-T12 not testable)."""
+    d = report.get("deribit", {})
+    if not d.get("testable"):
+        return None
+    return OPTIONS_START_MONTH or d.get("first_valid_month")
+
+
 def _rows_for(root: Path, report: Mapping[str, Any], symbol: str, with_options: bool, end_ms: int):
     bars = load_bars(root, symbol)
-    opt = load_option_flow(root) if with_options else None
+    start = options_start(report) if with_options else None
+    opt = load_option_flow(root, start) if start else None
     return build_rows(bars, opt, _valid_months(report, symbol), bars[0].open_ms + 21 * DAY_MS, end_ms)
 
 
@@ -527,6 +570,19 @@ def main(argv: list[str] | None = None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     report = json.loads((root / "datenreife.json").read_text())
     code_sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    data_sha = hashlib.sha256((root / "datenreife.json").read_bytes()).hexdigest()
+    if a.phase == "train" and (out / "s40_train.json").exists():
+        raise SystemExit("training already ran; a new run needs a new study version")
+    if a.phase == "validate":
+        train = json.loads((out / "s40_train.json").read_text())
+        if train.get("code_sha256") != code_sha or train.get("data_sha256") != data_sha:
+            raise SystemExit("code or data changed since the training run; validation refused")
+        if (out / "s40_validate.json").exists():
+            raise SystemExit("validation already ran once; S40 allows exactly one run")
+        passed = [k for k, v in train["verdicts"].items() if v["verdict"] == "bestanden"]
+        if not passed:
+            print("keine Tests im Training bestanden, Validierung entfällt")
+            return 0
     end = VALIDATION_START_MS if a.phase == "train" else HOLDOUT_START_MS
     cache: dict[str, dict[str, list]] = {}
     for sym in ("BTCUSDT", "ETHUSDT", "SOLUSDT"):
@@ -535,19 +591,18 @@ def main(argv: list[str] | None = None) -> int:
     if a.phase == "train":
         res = {}
         for tid, (sym, small, big, h) in TESTS.items():
-            res[tid] = evaluate_train(cache[sym][h], small, big, h) if sym in cache else {"status": "nicht prüfbar"}
+            if sym not in cache or (big in ("A2", "A5") and options_start(report) is None):
+                res[tid] = {"status": "nicht prüfbar"}
+                continue
+            res[tid] = evaluate_train(cache[sym][h], small, big, h)
         verdicts = train_verdicts(res)
-        (out / "s40_train.json").write_text(json.dumps({"code_sha256": code_sha, "tests": res, "verdicts": verdicts},
+        (out / "s40_train.json").write_text(json.dumps({"code_sha256": code_sha, "data_sha256": data_sha,
+                                                        "options_start": options_start(report),
+                                                        "dropped": {k: v["_dropped"] for k, v in cache.items()},
+                                                        "tests": res, "verdicts": verdicts},
                                                        indent=2, default=str) + "\n")
         print(json.dumps(verdicts, indent=2))
         return 0
-    train = json.loads((out / "s40_train.json").read_text())
-    passed = [k for k, v in train["verdicts"].items() if v["verdict"] == "bestanden"]
-    if not passed:
-        print("keine Tests im Training bestanden, Validierung entfällt")
-        return 0
-    if (out / "s40_validate.json").exists():
-        raise SystemExit("validation already ran once; S40 allows exactly one run")
     res = {}
     for tid in passed:
         sym, small, big, h = TESTS[tid]
@@ -562,7 +617,7 @@ def main(argv: list[str] | None = None) -> int:
             v["trading"] = trading_check(v["rows"], v["predictions"], load_funding(root, TESTS[k][0]))
         v.pop("rows", None)
         v.pop("predictions", None)
-    (out / "s40_validate.json").write_text(json.dumps({"code_sha256": code_sha, "tests": res}, indent=2, default=str) + "\n")
+    (out / "s40_validate.json").write_text(json.dumps({"code_sha256": code_sha, "data_sha256": data_sha, "tests": res}, indent=2, default=str) + "\n")
     print(json.dumps({k: v["verdict"] for k, v in res.items()}, indent=2))
     return 0
 

@@ -29,14 +29,14 @@ andere Teilung wäre eine Entscheidung von Uzi vor dem Einfrieren.)
 ## 4. Daten
 | Quelle | Inhalt | Zeitraum | Markt |
 |---|---|---|---|
-| Binance USDⓈ-M Archiv `aggTrades`, Monats-ZIP mit CSV | `agg_trade_id`, Preis, Menge, Zeit, `is_buyer_maker` | 2020-01 bis 2024-12 | BTCUSDT, ETHUSDT, SOLUSDT (ab 2020-09-14) |
+| Binance USDⓈ-M Archiv `aggTrades`, Tages-ZIP mit CSV | `agg_trade_id`, Preis, Menge, Zeit, `is_buyer_maker` | 2020-01 bis 2024-12 | BTCUSDT, ETHUSDT, SOLUSDT (ab 2020-09-14) |
 | Binance Funding-Archiv `fundingRate` | Rate je Funding-Zeitpunkt | 2020-01 bis 2024-12 | wie oben |
 | Deribit `history.deribit.com` Optionstrades | Instrument, Menge, IV, Index, Taker-Seite, Block-/Combo-ID | 2020-01 bis 2024-12, **Abdeckung vor 2021 OFFEN** | nur BTC |
 
 - Empfangszeit: historische Zeilen bekommen `recv_ms = ts + 2000 ms` (`historisch.LATENCY_MS`).
 - **Datenreife (Paket 1, vor Version 1.0):** je Quelle und Kalendermonat ein eigener Bericht (Monat für Monat gelesen,
   nicht der ganze Strom auf einmal). Perp-Trades: Monat gilt, wenn Lückenanteil < 2 % (Lücke = mehr als 10 min ohne
-  Trade, `datenreife.report` mit `id_key="id"`). Deribit-Optionen: ein UTC-Tag gilt, wenn ≥ 50 Optionstrades
+  Trade, berechnet beim Laden je Tag in `studies/s40_daten.py`, gleiche Konstanten wie `fusion/datenreife.py`). Deribit-Optionen: ein UTC-Tag gilt, wenn ≥ 50 Optionstrades
   (Optionen handeln nachts selten, die 10-min-Regel passt dort nicht). Ungültige Monate/Tage werden gezählt, nie gefüllt.
 - Fehlt Deribit vor 2021 oder ist es lückenhaft, beginnen nur die Optionsflow-Tests (T7–T12) später. Der Startmonat wird
   im Datenreife-Bericht festgestellt und **vor jedem Ergebnis** in Version 1.0 eingetragen.
@@ -165,8 +165,9 @@ Vorhersagekraft. "Nicht bestanden" ist das wahrscheinlichste Ergebnis und wird s
 
 ## 12. Pakete und Prüfbefehle
 1. **Datenreife** (liest nur, vor 1.0): Archive 2020–2024 auf der PS5 laden, dann
-   `python -m src.research_lab.studies.s40 --phase datenreife` (neu: liest Monats-ZIPs über `historisch.read_aggtrades_zip`,
-   Monatsberichte mit `datenreife.report(id_key="id")`, Deribit-Tagesregel). Ergebnis in `S40_DATENREIFE.md`.
+   `python -m src.research_lab.studies.s40_daten laden --ziel DIR`, dann `... s40_daten bericht --ziel DIR`
+   (Tages-ZIPs mit Prüfsumme, 5-min-Bars, Lücken je Tag, Deribit-Tagesregel, Monatsbericht `datenreife.json`).
+   Ergebnis in `S40_DATENREIFE.md`. Der Startmonat Optionsflow wird als `OPTIONS_START_MONTH` in `s40.py` eingetragen.
 2. **Einfrieren 1.0** per PR: diese Datei ohne "ENTWURF", Startmonat Optionsflow eingetragen,
    `src/research_lab/studies/s40.py`, Tests mit synthetischen Daten: Look-ahead-Test je Merkmal (Zukunft verändern,
    Merkmal bei t gleich), inkrementell = Baustein, Validierungsgrenze und Hash, HAC-Clark-West gegen Handrechnung.
@@ -185,4 +186,12 @@ Offen bis 1.0: Deribit-Abdeckung 2020 (Paket 1).
 **0.3 (23.11.):** Rechencode `src/research_lab/studies/s40.py` mit Tests `tests/test_s40.py` (schnelle Merkmale gleich
 den Bausteinen, Look-ahead, z-Werte nur aus Vorstunden, HAC-Clark-West gegen Handrechnung, Holm, Jahresregel,
 Monatsausschluss und Holdout, Kosten und Funding, Wiederfinden eines eingepflanzten Effekts). Einstiegsregel in
-Abschnitt 5 präzisiert. Datenlauf (Paket 1) läuft seit 23.11. 21:18 auf dem Mac.
+Abschnitt 5 präzisiert (Einstiegs-Bar muss vor t + 5 min öffnen, Dehnung ab t gemessen, letzte bekannte Bar höchstens
+10 min alt). Zweite Prüfung `studien-pruefer` (12 Punkte) eingearbeitet: Trainingsziele enden vor 2023, Werte aus
+ungültigen Monaten nicht im z-Fenster, Ausschlüsse je Grund gezählt, Deribit-70-%-Regel und Startmonat, Dateien ab 2025
+ungeöffnet, `STRESS_COSTS` zusätzlich berichtet, ISO-Wochen im Bootstrap, Sperren gegen zweites Training und gegen
+Validierung mit anderem Code oder anderen Daten, Optionen je Sekunde gebündelt (Speicher).
+
+**Vor dem Einfrieren von Uzi zu entscheiden:** (1) Teilung 2020–2022/2023–2024 (wie `protocol.py`) oder 2020–2023/2024
+(wie OFX am 10.11.); (2) Deflated Sharpe ≥ 0,95 als Pflicht der Handelsprüfung (in `stats/deflated.py` sonst nur
+Zusatzauswertung). Datenlauf (Paket 1) läuft seit 23.11. 21:18 auf dem Mac.

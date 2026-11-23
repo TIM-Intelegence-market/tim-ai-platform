@@ -149,3 +149,100 @@ def test_evaluate_train_finds_planted_orderflow_effect():
     assert res["n_oos"] > 4000 and res["cw_p"] < 1e-6 and res["ic_big"] > res["ic_small"]
     null = s40.evaluate_train([{**r, "y": rng.gauss(0, 1)} for r in rows], "A0", "A1", "1h")
     assert null["cw_p"] > 0.01
+
+
+def _hours(ms: int) -> int:
+    return ms // s40.H_MS
+
+
+def test_training_rows_end_before_validation_start():
+    start = VALIDATION_START_MS - 30 * 86_400_000
+    bars = synth_bars(32 * 288, seed=9, start=start)
+    months = {s40._month(b.open_ms) for b in bars}
+    rows = s40.build_rows(bars, None, months, start + 21 * 86_400_000, VALIDATION_START_MS)
+    assert rows["1h"] and all(r["label_end_ms"] < VALIDATION_START_MS for r in rows["1h"] + rows["4h"])
+    assert rows["_dropped"]["1h"]["past_end"] >= 1
+
+
+def test_invalid_month_values_stay_out_of_z_windows():
+    start = int(datetime(2021, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+    bars = synth_bars(75 * 288, seed=4, start=start)
+    months = {"2021-02", "2021-03"}
+    changed = [Bar(b.open_ms, b.open, b.high, b.low, b.close, b.buy * 50, b.sell, b.known_ms)
+               if s40._month(b.open_ms) == "2021-01" else b for b in bars]
+    a = s40.build_rows(bars, None, months, start, start + 75 * 86_400_000)["1h"]
+    b = s40.build_rows(changed, None, months, start, start + 75 * 86_400_000)["1h"]
+    assert a and [r["ai_1h"] for r in a] == [r["ai_1h"] for r in b]
+
+
+def test_entry_needs_the_bar_right_after_t():
+    bars = synth_bars(200)
+    t = bars[100].open_ms
+    gap = bars[:100] + bars[102:]
+    assert s40.label(gap, [x.open_ms for x in gap], t, 1) is None
+    assert s40.label(bars, [x.open_ms for x in bars], t, 1)[1] == t
+
+
+def test_option_features_do_not_look_ahead():
+    bars = synth_bars(600, seed=2)
+    t = T0 + 30 * s40.H_MS
+    days = {s40._day(t - 86_400_000), s40._day(t - 1)}
+    early = [(t - 3_600_000 + 5_000, 1.0, 2.0), (t - 2_000, 3.0, 4.0)]
+    flow_a = s40.build_option_flow(early, days)
+    flow_b = s40.build_option_flow([*early, (t - 1_999, 100.0, 100.0), (t + 60_000, 9.0, 9.0)], days)
+    opens = [b.open_ms for b in bars]
+    fa = s40.raw_features(bars, opens, t, s40.FastOF(bars), flow_a)
+    fb = s40.raw_features(bars, opens, t, s40.FastOF(bars), flow_b)
+    assert fa == fb and fa["daf_1h"] == 4.0 and fa["gaf_24h"] == 6.0
+    assert "daf_1h" not in s40.raw_features(bars, opens, t, s40.FastOF(bars), s40.build_option_flow(early, set()))
+
+
+def test_validation_fit_respects_the_boundary_and_hashes():
+    rng = random.Random(3)
+    rows = []
+    for k in range(20_000):
+        t = VALIDATION_START_MS - 8_000 * s40.H_MS + k * s40.H_MS
+        if t + s40.H_MS >= HOLDOUT_START_MS:
+            break
+        r = {key: rng.gauss(0, 1) for key in s40.keys_of("A1")}
+        r.update(t_ms=t, entry_ms=t, label_end_ms=t + s40.H_MS, y=0.2 * r["ai_1h"] + rng.gauss(0, 1))
+        rows.append(r)
+    v1 = s40.evaluate_validation(rows, "A0", "A1", "1h")
+    v2 = s40.evaluate_validation(rows, "A0", "A1", "1h")
+    assert v1["coef_sha256"] == v2["coef_sha256"] and v1["cw_p"] < 1e-6
+    assert all(r["t_ms"] >= VALIDATION_START_MS for r in v1["rows"])
+    shifted = [{**r, "y": 50.0} if VALIDATION_START_MS - 25 * s40.H_MS <= r["label_end_ms"] < VALIDATION_START_MS
+               else r for r in rows]  # rows inside the embargo must not change the fit
+    assert s40.evaluate_validation(shifted, "A0", "A1", "1h")["coef_sha256"] == v1["coef_sha256"]
+
+
+def test_trading_check_and_iso_week_bootstrap():
+    rng = random.Random(8)
+    rows, preds = [], []
+    for k in range(600):
+        t = VALIDATION_START_MS + k * 4 * s40.H_MS
+        rows.append({"y": rng.gauss(0.004, 0.01), "entry_ms": t, "label_end_ms": t + 4 * s40.H_MS})
+        preds.append(0.01)
+    res = s40.trading_check(rows, preds, [])
+    assert res["n"] == 600 and res["mean"] > res["mean_protocol_stress"] > res["mean_stress"]
+    assert res["boot_lower_90"] is not None and res["dsr"] is not None
+    assert s40.week_bootstrap_lower([(VALIDATION_START_MS, 1.0)]) is None
+
+
+def test_runs_are_locked(tmp_path):
+    (tmp_path / "d").mkdir()
+    (tmp_path / "d" / "datenreife.json").write_text("{}")
+    (tmp_path / "o").mkdir()
+    (tmp_path / "o" / "s40_train.json").write_text("{}")
+    with pytest.raises(SystemExit):
+        s40.main(["--phase", "train", "--daten", str(tmp_path / "d"), "--aus", str(tmp_path / "o")])
+    with pytest.raises(SystemExit):
+        s40.main(["--phase", "validate", "--daten", str(tmp_path / "d"), "--aus", str(tmp_path / "o")])
+    assert not s40._before_holdout("2025-01-01.jsonl.gz") and s40._before_holdout("BTCUSDT-fundingRate-2024-12.zip")
+
+
+def test_clark_west_hac_fixed_value():
+    y = [0.5, -0.2, 0.1, 0.4, -0.3, 0.2, 0.0, -0.1, 0.3, 0.6]
+    big = [0.2, -0.1, 0.0, 0.3, -0.1, 0.1, 0.1, 0.0, 0.2, 0.3]
+    t, _ = s40.clark_west_hac(y, [0.0] * 10, big)
+    assert s40.newey_west_lag(10) == 2 and t == pytest.approx(3.1278009342726083, rel=1e-9)  # computed once by hand-script
