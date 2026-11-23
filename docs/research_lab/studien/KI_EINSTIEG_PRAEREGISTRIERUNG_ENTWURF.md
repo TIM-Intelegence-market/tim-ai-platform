@@ -55,3 +55,14 @@ Kosten bessere Papier-Entscheidungen als die festen Kreis-Regeln R-ABS-2 0.6 (mi
 Mac-Agent `com.tim.ki-entry` (Vorlage `ops/launchd/com.tim.ki-entry.plist`, alle 5 Minuten), Protokoll
 `~/Library/Application Support/TIM/ki-entry/ki_entry_decisions.jsonl`. Auswertung:
 `python -m src.research_lab.ki_entry report`. Einrichten erst auf Uzis "einrichten".
+
+## Zusatz 0.1-hermes (Uzi 23.11.2026 "go hermes")
+
+- **Zweitmeinung**: Nach jeder KI-Entscheidung bekommt Hermes (DeepSeek, Cloud) die öffentlichen Zahlen (Preis, Zone und
+  Marken, Aktion, Einstieg/Stop/Ziel, Grund, letzte Kerzen mit Delta, große Orders, Trend, Funding, OI) und antwortet
+  DAFÜR / DAGEGEN / URTEIL. Keine Schlüssel, keine Kontodaten, kein Code. Höchstens 20 Minuten nach der Entscheidung,
+  höchstens ein Aufruf je Lauf. Die Meinung ändert nichts am Papier-Trade. Ausgewertet wird, ob DAFÜR/DAGEGEN die
+  Ergebnisse trennt (ab 30 Trades, zusätzlicher Test, so berichtet).
+- **Bitunix-Papierkonto**: jeder beendete KI-Papier-Trade wird auf 1.000 USDT gebucht: 1 % Risiko, Maker 0,02 % rein,
+  Taker 0,06 % raus (Uzis VIP0-Angaben, nicht amtlich bestätigt), 0,05 % Schlupf am Stop, Marge höchstens 5 % des
+  Kontos (Hebel daraus), Prüfung gegen die Bitunix-Hebelstufen. Kein Auftrag, der Bitunix-Schlüssel wird nicht benutzt.
