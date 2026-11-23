@@ -164,5 +164,5 @@ def test_count_is_results_blind():
 
 def test_evaluate_refuses_while_draft():
     with pytest.raises(PermissionError):
-        s23.evaluate(_rows(False, 5))
-    assert s23.VERSION == "0.1" and s20.VERSION == "1.0"
+        s23.evaluate(_rows(False, 5), version="0.1")
+    assert s23.VERSION == "1.0" and s20.VERSION == "1.0"
