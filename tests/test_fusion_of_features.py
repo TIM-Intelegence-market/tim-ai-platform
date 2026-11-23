@@ -28,10 +28,12 @@ def random_bars(n=120, seed=7):
 
 
 def test_bars_from_trades():
-    trades = [{"ts_ms": 5, "price": 10, "qty": 1, "side": 1}, {"ts_ms": 10, "price": 12, "qty": 2, "side": -1},
+    trades = [{"ts_ms": 5, "price": 10, "qty": 1, "side": 1},
+              {"ts_ms": M - 1, "recv_ms": M + 500, "price": 12, "qty": 2, "side": -1},
               {"ts_ms": M + 1, "price": 11, "qty": 3, "side": 1}]
     b = f.bars_from_trades(trades, M)
     assert len(b) == 2
+    assert b[0].known_ms == M + 500 and b[1].known_ms == 2 * M  # never before the bar end
     assert (b[0].open, b[0].high, b[0].low, b[0].close, b[0].buy, b[0].sell) == (10, 12, 10, 12, 1, 2)
     assert b[0].delta == -1 and f.cvd(b, 1) == 2
     with pytest.raises(ValueError):
@@ -41,7 +43,7 @@ def test_bars_from_trades():
 SIGNALS = {
     "F1": lambda b, i: f.cvd_divergence(b, i, lookback=20, right=2, k_sigma=0.5),
     "F2": lambda b, i: f.aggressor_imbalance(b, i, 5, history=40),
-    "F3": lambda b, i: f.absorption(b, i, level=b[50].close, band=0.5, history=20, z_min=1.0, max_move_atr=0.5),
+    "F3": lambda b, i: f.absorption(b, i, level=100.0, band=3.0, history=20, z_min=1.0, max_move_atr=0.5),
     "F6": lambda b, i: f.sweep(b, i, lookback=20, m=3, min_excess=0.0005, vol_mult=1.0),
     "F7": lambda b, i: f.failed_breakout(b, i, lookback=20, m=3, min_width_atr=0.5),
 }
@@ -49,12 +51,15 @@ SIGNALS = {
 
 @pytest.mark.parametrize("name", sorted(SIGNALS))
 def test_no_look_ahead(name):
-    bars = random_bars()
+    bars = random_bars(400)
     fn = SIGNALS[name]
-    for i in range(30, 100, 7):
+    fired = 0
+    for i in range(30, 380, 3):
         before = fn(bars, i)
+        fired += before[0] is not None if isinstance(before, tuple) else before != 0
         future = [Bar(b.open_ms, b.open * 3, b.high * 3, b.low * 0.1, b.close * 2, b.buy * 9, 0.0) for b in bars[i + 1:]]
         assert fn(bars[: i + 1] + future, i) == before, (name, i)
+    assert fired > 0, f"{name} never fired on the test data, so the look-ahead test proved nothing"
 
 
 def test_cvd_divergence_bearish():
@@ -99,16 +104,24 @@ def test_sweep_and_failed_breakout():
 
 def test_footprint_and_profile():
     levels = [(100, 10, 5), (101, 2, 30), (102, 2, 30), (103, 2, 30), (104, 10, 10)]
-    assert f.stacked_imbalances(levels, ratio=3, run=3) == 1
+    assert f.stacked_imbalances(levels, ratio=3, run=3, tick=1) == 1
+    assert f.stacked_imbalances([(100, 0, 5), (101, 0, 5), (102, 0, 5), (103, 0, 5)], ratio=3, run=3, tick=1) == 1
+    gap = [(100, 10, 5), (101, 2, 30), (103, 2, 30), (104, 2, 30), (105, 10, 10)]
+    assert f.stacked_imbalances(gap, ratio=3, run=3, tick=1) == 0  # 101 -> 103 is not adjacent
     nodes = f.volume_nodes([(100, 5), (101, 50), (102, 20), (103, 1), (104, 8)])
     assert nodes["poc"] == 101 and 101 in nodes["hvn"] and 103 in nodes["lvn"]
 
 
 def test_spoofing_like_pattern_only():
     snaps = [(0, {100: 5, 99: 5}), (1000, {100: 5, 99: 5, 98: 100}), (2000, {100: 5, 99: 5, 98: 0})]
-    ev = f.spoofing_like(snaps, {}, k_median=5, max_life_ms=5000)
+    ev = f.spoofing_like(snaps, [], k_median=5, max_life_ms=5000)
     assert len(ev) == 1 and ev[0]["price"] == 98 and "pattern only" in ev[0]["label"]
-    assert f.spoofing_like(snaps, {98: 90}, k_median=5, max_life_ms=5000) == []  # it traded: not flagged
+    assert f.spoofing_like(snaps, [(1500, 98, 90)], k_median=5, max_life_ms=5000) == []  # it traded: not flagged
+    assert len(f.spoofing_like(snaps, [(9000, 98, 90)], k_median=5, max_life_ms=5000)) == 1  # later trade: ignored
+    gradual = [(0, {100: 5, 99: 5}), (1000, {100: 5, 99: 5, 98: 100}), (2000, {100: 5, 99: 5, 98: 50}),
+               (3000, {100: 5, 99: 5, 98: 1})]
+    assert len(f.spoofing_like(gradual, [], k_median=5, max_life_ms=5000)) == 1
+    assert f.spoofing_like(gradual, [], k_median=5, max_life_ms=1500) == []  # outlived max_life
 
 
 def test_multi_exchange_and_clock():

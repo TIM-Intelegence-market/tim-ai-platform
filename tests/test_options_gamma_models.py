@@ -1,6 +1,7 @@
 """P1 gamma models: M0 equals gex.py, sign assumptions, forward variant, vanna/charm, flip only where it can exist."""
 from __future__ import annotations
 
+import itertools
 import json
 from datetime import timedelta
 from pathlib import Path
@@ -100,6 +101,33 @@ def test_sensitivity_grid_and_time_decay(chain):
     assert base["net_gex"] == pytest.approx(m.model_profile(quotes, spot, as_of, m.DealerModel.M0).net_gex)
     later = m.model_profile(quotes, spot, as_of + timedelta(days=30), m.DealerModel.M0)
     assert later.used < len(quotes)  # expired contracts drop out
+
+
+def test_flip_nearest_to_spot_is_reported(chain):
+    _, spot, as_of, quotes = chain
+    p = m.model_profile(quotes, spot, as_of, m.DealerModel.M0)
+    grid = [spot * (1 + m.FLIP_STEP * i) for i in range(-40, 41)]
+    vals = [m.model_profile(quotes, s, as_of, m.DealerModel.M0).net_gex for s in grid]
+    crossings = [a for a, (v0, v1) in zip(grid, itertools.pairwise(vals), strict=False) if (v0 < 0) != (v1 < 0)]
+    assert crossings and abs(p.gamma_flip - spot) <= min(abs(c - spot) for c in crossings) + spot * m.FLIP_STEP
+
+
+def test_m3_zero_net_flow_is_skipped(chain):
+    _, spot, as_of, quotes = chain
+    k = m.quote_key(quotes[0])
+    p = m.model_profile(quotes, spot, as_of, m.DealerModel.M3,
+                        positioning=m.Positioning(taker_net={k: 0.0}, complete=frozenset({k})))
+    assert p.used == 0
+
+
+def test_forward_vanna_uses_forward_dollars(chain):
+    _, spot, as_of, quotes = chain
+    fw = {q.expiry: spot * 1.05 for q in quotes}
+    a = m.model_profile(quotes, spot, as_of, m.DealerModel.M2, variant="forward", forwards=fw)
+    q0 = [q for q in quotes if (q.expiry - as_of).total_seconds() > 0]
+    yrs = lambda q: (q.expiry - as_of).total_seconds() / m.SECONDS_PER_YEAR
+    want = sum(q.open_interest * m.vanna(fw[q.expiry], q.strike, yrs(q), q.implied_vol) * fw[q.expiry] * 0.01 for q in q0)
+    assert a.vanna_exposure == pytest.approx(want)
 
 
 def test_assumption_independent_rule():

@@ -11,6 +11,7 @@ import pytest
 from src.research_lab.fusion import datenreife as dr
 from src.research_lab.fusion import historisch as hi
 from src.research_lab.fusion import walkforward as wf
+from src.research_lab.fusion.of_features import Bar
 from src.research_lab.protocol import HOLDOUT_START_MS, VALIDATION_START_MS
 
 MIN = 60_000
@@ -72,6 +73,17 @@ def test_aggtrades_zip_reader(tmp_path):
     assert next(hi.parse_aggtrades_csv(micro))["ts_ms"] == VALIDATION_START_MS
 
 
+def test_seconds_timestamps_are_refused_not_let_through():
+    secs = HOLDOUT_START_MS // 1000 + 86_400  # a 2025 time in seconds would look like 1970 in ms
+    with pytest.raises(ValueError):
+        list(hi.guard([{"ts_ms": secs}], hi.HoldoutCounter()))
+    with pytest.raises(ValueError):
+        hi.split(secs)
+    with pytest.raises(ValueError):
+        next(hi.parse_aggtrades_csv(f"1,1,1,1,1,{secs},true\n"))
+    assert hi.to_ms(HOLDOUT_START_MS * 1_000_000) == HOLDOUT_START_MS  # nanoseconds
+
+
 def test_deribit_history_rows():
     c = hi.HoldoutCounter()
     res = {"trades": [{"timestamp": VALIDATION_START_MS}, {"timestamp": HOLDOUT_START_MS}, {"timestamp": "x"}]}
@@ -80,14 +92,19 @@ def test_deribit_history_rows():
 
 
 # P4 walk-forward ----------------------------------------------------------------------------------------------------
-def test_forward_label_enters_after_signal():
-    opens = [100.0, 101.0, 102.0, 103.0]
-    assert wf.forward_label(opens, 0, 2) == pytest.approx(math.log(103 / 101))
-    assert wf.forward_label(opens, 1, 2) is None
+def test_forward_label_enters_only_after_the_signal_is_known():
+    bars = [Bar(k * MIN, 100.0 + k, 0, 0, 0, 0, 0, known_ms=(k + 1) * MIN) for k in range(6)]
+    lab, end = wf.forward_label(bars, 0, 2)
+    assert lab == pytest.approx(math.log(103 / 101)) and end == 3 * MIN
+    late = [*bars[:1], *bars[1:]]
+    late[0] = Bar(0, 100.0, 0, 0, 0, 0, 0, known_ms=MIN + 2_000)  # last trade arrived 2 s after the bar end
+    lab2, _ = wf.forward_label(late, 0, 2)
+    assert lab2 == pytest.approx(math.log(104 / 102))  # entry moves one bar later
+    assert wf.forward_label(bars, 3, 2) is None
 
 
 def test_purged_splits_remove_overlapping_labels():
-    times = [k * 10 for k in range(100)]
+    times = [VALIDATION_START_MS + k * 10 for k in range(100)]
     ends = [t + 35 for t in times]  # each label spans 3.5 rows
     folds = wf.purged_splits(times, ends, folds=4, min_train=40, embargo_ms=10)
     assert len(folds) == 4 and folds[-1].test[-1] == 99
@@ -96,7 +113,11 @@ def test_purged_splits_remove_overlapping_labels():
         assert all(ends[j] < start - 10 for j in fold.train)
         assert max(fold.train) < fold.test[0] - 3
     with pytest.raises(ValueError):
-        wf.purged_splits([2, 1], [3, 4], folds=1, min_train=1, embargo_ms=0)
+        wf.purged_splits([VALIDATION_START_MS + 2, VALIDATION_START_MS + 1], [VALIDATION_START_MS + 3] * 2,
+                         folds=1, min_train=1, embargo_ms=0)
+    t0 = HOLDOUT_START_MS - 10 * DAY
+    with pytest.raises(ValueError):  # the last label ends inside the holdout
+        wf.purged_splits([t0, t0 + DAY], [t0 + DAY, HOLDOUT_START_MS], folds=1, min_train=1, embargo_ms=0)
 
 
 def test_ridge_recovers_signal_and_ic():
@@ -107,6 +128,7 @@ def test_ridge_recovers_signal_and_ic():
     assert m.coef[0] / m.scale[0] == pytest.approx(2, abs=0.05) and m.coef[1] / m.scale[1] == pytest.approx(-1, abs=0.05)
     assert wf.spearman_ic(wf.predict(m, x), y) > 0.95
     assert wf.spearman_ic([1, 1, 1], [1, 2, 3]) is None
+    assert wf.spearman_ic([1, 2, 2, 3], [10, 20, 20, 30]) == pytest.approx(1.0)  # ties handled
 
 
 def _synthetic_rows(n=600, seed=3):
@@ -114,7 +136,8 @@ def _synthetic_rows(n=600, seed=3):
     rows = []
     for k in range(n):
         price, of, opt, gam = (rnd.gauss(0, 1) for _ in range(4))
-        rows.append({"t_ms": VALIDATION_START_MS - (n - k) * 3_600_000, "mom": price, "ofi": of, "pcr": opt,
+        t = VALIDATION_START_MS - (n - k) * 3_600_000
+        rows.append({"t_ms": t, "label_end_ms": t + 3_600_000, "mom": price, "ofi": of, "pcr": opt,
                      "gex": gam, "y": 0.6 * of + rnd.gauss(0, 1)})
     return rows
 
@@ -125,18 +148,40 @@ def test_compare_finds_planted_orderflow_effect_only():
     folds = wf.purged_splits(times, [t + 3_600_000 for t in times], folds=4, min_train=200, embargo_ms=3_600_000)
     groups = {"price": ["mom"], "orderflow": ["ofi"], "optionsflow": ["pcr"], "gamma": ["gex"]}
     res = wf.compare(rows, groups, label="y", folds=folds)
-    assert set(res) == set(wf.MODELS)
+    assert set(res) == set(wf.MODELS) | {"_excluded"}
+    assert len({res[m]["n"] for m in wf.MODELS}) == 1  # all models scored on the same rows
     assert res["A1_orderflow"]["ic"] > 0.3 and abs(res["A0_price"]["ic"]) < 0.15
     assert res["A1_orderflow"]["clark_west_t"] > 3
     assert res["A2_optionsflow"]["clark_west_t"] < 1.645  # nothing planted there
 
 
-def test_compare_refuses_holdout_rows():
+def test_compare_refuses_holdout_rows_and_labels():
     rows = _synthetic_rows(50)
     rows[-1]["t_ms"] = HOLDOUT_START_MS
     with pytest.raises(ValueError):
         wf.compare(rows, {"price": ["mom"]}, label="y", folds=[])
+    rows = _synthetic_rows(50)
+    rows[-1]["label_end_ms"] = HOLDOUT_START_MS
+    with pytest.raises(ValueError):
+        wf.compare(rows, {"price": ["mom"]}, label="y", folds=[])
 
 
-def test_clark_west_needs_rows():
+def test_compare_drops_missing_features_for_all_models():
+    rows = _synthetic_rows(300)
+    rows[250]["ofi"] = None
+    rows[260]["pcr"] = float("nan")
+    times = [r["t_ms"] for r in rows]
+    folds = wf.purged_splits(times, [r["label_end_ms"] for r in rows], folds=2, min_train=150, embargo_ms=3_600_000)
+    groups = {"price": ["mom"], "orderflow": ["ofi"], "optionsflow": ["pcr"], "gamma": ["gex"]}
+    res = wf.compare(rows, groups, label="y", folds=folds)
+    assert res["_excluded"] == {"rows": 2, "of": 300}
+    assert res["A0_price"]["n"] == res["A6_all"]["n"] == 148
+
+
+def test_clark_west_numbers():
     assert wf.clark_west([1.0], [0.0], [1.0]) is None
+    y, small, big = [1.0, -1.0, 2.0, 0.5], [0.0, 0.0, 0.0, 0.0], [0.9, -0.8, 1.7, 0.6]
+    f = [(a - s) ** 2 - ((a - b) ** 2 - (s - b) ** 2) for a, s, b in zip(y, small, big, strict=True)]
+    import statistics as st
+    assert wf.clark_west(y, small, big) == pytest.approx(st.fmean(f) / (st.stdev(f) / math.sqrt(4)))
+    assert wf.clark_west(y, small, big) > 1.645

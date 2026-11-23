@@ -25,6 +25,21 @@ from typing import Any
 from src.research_lab.protocol import HOLDOUT_START_MS, VALIDATION_START_MS
 
 LATENCY_MS = 2_000
+MIN_PLAUSIBLE_MS = 1_262_304_000_000   # 2010-01-01: anything smaller is not a millisecond time (e.g. seconds)
+MAX_PLAUSIBLE_MS = 4_102_444_800_000   # 2100-01-01
+
+
+def to_ms(ts: int) -> int:
+    """Normalise micro- or nanosecond stamps to milliseconds; refuse anything that is not a plausible time."""
+    if isinstance(ts, bool) or not isinstance(ts, int):
+        raise ValueError("timestamp must be an integer")  # noqa: TRY004 - one error type for every bad stamp
+    if ts > 10**17:
+        ts //= 1_000_000
+    elif ts > 10**14:
+        ts //= 1_000
+    if not MIN_PLAUSIBLE_MS <= ts < MAX_PLAUSIBLE_MS:
+        raise ValueError(f"timestamp {ts} is not a plausible millisecond time")
+    return ts
 
 
 class HoldoutCounter:
@@ -35,16 +50,18 @@ class HoldoutCounter:
 def guard(rows: Iterable[Mapping[str, Any]], counter: HoldoutCounter, ts_key: str = "ts_ms") -> Iterator[dict]:
     """Pass rows before 2025-01-01 through, drop the rest and count them. Adds ``recv_ms`` if missing."""
     for r in rows:
-        t = int(r[ts_key])
+        t = to_ms(r[ts_key])
         if t >= HOLDOUT_START_MS:
             counter.dropped += 1
             continue
         out = dict(r)
+        out[ts_key] = t
         out.setdefault("recv_ms", t + LATENCY_MS)
         yield out
 
 
 def split(ts_ms: int) -> str:
+    ts_ms = to_ms(ts_ms)
     if ts_ms >= HOLDOUT_START_MS:
         raise ValueError("holdout row reached a study step")
     return "train" if ts_ms < VALIDATION_START_MS else "validation"
@@ -58,9 +75,7 @@ def parse_aggtrades_csv(text: str) -> Iterator[dict]:
     for row in csv.reader(io.StringIO(text)):
         if not row or not row[0].strip().lstrip("-").isdigit():
             continue  # header or empty line
-        ts = int(row[5])
-        if ts > 10**15:  # microseconds in some newer archives
-            ts //= 1000
+        ts = to_ms(int(row[5]))  # some newer archives use microseconds
         yield {"id": int(row[0]), "price": float(row[1]), "qty": float(row[2]), "ts_ms": ts,
                "side": -1 if _truthy(row[6]) else 1}
 
@@ -87,6 +102,7 @@ def deribit_history_rows(result: Mapping[str, Any], counter: HoldoutCounter) -> 
         ts = t.get("timestamp")
         if not isinstance(ts, int) or isinstance(ts, bool):
             continue
+        ts = to_ms(ts)
         if ts >= HOLDOUT_START_MS:
             counter.dropped += 1
             continue

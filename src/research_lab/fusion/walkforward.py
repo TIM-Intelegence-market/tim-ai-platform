@@ -1,6 +1,7 @@
 """P4: test scaffold for the comparison models A0-A6 (plan sections 7 and 8). No real data, no results.
 
-- ``forward_label``: future return from the open of bar i+1 to the open of bar i+1+h (entry after the signal).
+- ``forward_label``: future return from the first bar that opens after the signal bar was **known** (``known_ms``,
+  latest receive time) over h bars; returns the label and the time its last price is known.
 - ``purged_splits``: expanding walk-forward; training rows whose label interval reaches into the test fold (minus an
   embargo) are removed.
 - ``ridge_fit`` / ``predict``: few features, fixed penalty, plain least squares (standard library).
@@ -17,6 +18,7 @@ import statistics
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from src.research_lab.fusion.historisch import to_ms
 from src.research_lab.protocol import HOLDOUT_START_MS
 
 MODELS: dict[str, tuple[str, ...]] = {
@@ -31,11 +33,16 @@ MODELS: dict[str, tuple[str, ...]] = {
 """Every model includes the price baseline, so each comparison against A0 is nested (Clark-West applies)."""
 
 
-def forward_label(opens: Sequence[float], i: int, h: int) -> float | None:
-    """Log return from open[i+1] to open[i+1+h]; None at the end of the series."""
-    if i + 1 + h >= len(opens) or opens[i + 1] <= 0 or opens[i + 1 + h] <= 0:
+def forward_label(bars: Sequence, i: int, h: int) -> tuple[float, int] | None:
+    """(log return, end_ms) from the open of the first bar j > i with ``open_ms >= bars[i].known_ms`` to the open of
+    bar j+h. None at the end of the series. Bars come from ``of_features.bars_from_trades``."""
+    known = bars[i].known_ms
+    if known is None:
+        raise ValueError("bar has no known_ms; build bars with bars_from_trades")
+    j = next((k for k in range(i + 1, len(bars)) if bars[k].open_ms >= known), None)
+    if j is None or j + h >= len(bars) or bars[j].open <= 0 or bars[j + h].open <= 0:
         return None
-    return math.log(opens[i + 1 + h] / opens[i + 1])
+    return math.log(bars[j + h].open / bars[j].open), bars[j + h].open_ms
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +58,8 @@ def purged_splits(times: Sequence[int], label_end: Sequence[int], *, folds: int,
     n = len(times)
     if n != len(label_end) or any(b < a for a, b in itertools.pairwise(times)):
         raise ValueError("times must be sorted and match label_end")
+    if any(to_ms(e) >= HOLDOUT_START_MS for e in label_end):
+        raise ValueError("a label reaches into the holdout")
     if folds < 1 or min_train < 1 or min_train >= n:
         raise ValueError("bad fold settings")
     size = (n - min_train) // folds
@@ -144,37 +153,47 @@ def clark_west(y: Sequence[float], small: Sequence[float], big: Sequence[float])
     return statistics.fmean(f) / (sd / math.sqrt(len(f))) if sd > 0 else None
 
 
+def _finite(v) -> bool:
+    try:
+        return v is not None and not isinstance(v, bool) and math.isfinite(float(v))
+    except (TypeError, ValueError):
+        return False
+
+
 def compare(rows: Sequence[Mapping], groups: Mapping[str, Sequence[str]], *, label: str, folds: Sequence[Fold],
             lam: float = 1.0, models: Mapping[str, Sequence[str]] = MODELS) -> dict[str, dict]:
-    """Out-of-sample predictions of each model on the same folds. ``groups`` maps a group name ('price', ...) to the
-    feature keys in ``rows``. Rows need ``t_ms`` and the label; any row in the holdout stops the run."""
-    if any(int(r["t_ms"]) >= HOLDOUT_START_MS for r in rows):
-        raise ValueError("holdout rows must never reach the comparison")
-    out: dict[str, dict] = {}
+    """Out-of-sample predictions of each model on the same folds and the **same rows**. ``groups`` maps a group name
+    ('price', ...) to feature keys in ``rows``. Rows need ``t_ms``, ``label_end_ms`` and the label. Any signal time or
+    label end in the holdout stops the run. Rows where the label or any feature of any model is missing or not finite
+    are left out for all models alike; their number is reported as ``_excluded``."""
+    for r in rows:
+        if to_ms(r["t_ms"]) >= HOLDOUT_START_MS or to_ms(r["label_end_ms"]) >= HOLDOUT_START_MS:
+            raise ValueError("holdout rows must never reach the comparison")
+    used = {name: [k for g in gs for k in groups.get(g, ())] for name, gs in models.items()}
+    used = {name: keys for name, keys in used.items() if keys}
+    all_keys = {k for keys in used.values() for k in keys}
+    ok = {i for i, r in enumerate(rows) if _finite(r.get(label)) and all(_finite(r.get(k)) for k in all_keys)}
+    out: dict[str, dict] = {"_excluded": {"rows": len(rows) - len(ok), "of": len(rows)}}
     preds: dict[str, dict[int, float]] = {}
-    for name, gs in models.items():
-        keys = [k for g in gs for k in groups.get(g, ())]
-        if not keys:
-            continue
+    for name, keys in used.items():
         p: dict[int, float] = {}
         for fold in folds:
-            tr = [i for i in fold.train if rows[i].get(label) is not None]
-            te = [i for i in fold.test if rows[i].get(label) is not None]
+            tr = [i for i in fold.train if i in ok]
+            te = [i for i in fold.test if i in ok]
             if len(tr) <= len(keys) or not te:
                 continue
             m = ridge_fit([[float(rows[i][k]) for k in keys] for i in tr], [float(rows[i][label]) for i in tr], lam)
-            for i, v in zip(te, predict(m, [[float(rows[i][k]) for k in keys] for i in te])):
+            for i, v in zip(te, predict(m, [[float(rows[i][k]) for k in keys] for i in te]), strict=True):
                 p[i] = v
         preds[name] = p
-        idx = sorted(p)
-        ys = [float(rows[i][label]) for i in idx]
-        out[name] = {"n": len(idx), "features": keys, "ic": spearman_ic([p[i] for i in idx], ys)}
+    common = set.intersection(*(set(p) for p in preds.values())) if preds else set()
+    idx = sorted(common)
+    ys = [float(rows[i][label]) for i in idx]
+    for name, keys in used.items():
+        out[name] = {"n": len(idx), "features": keys, "ic": spearman_ic([preds[name][i] for i in idx], ys)}
     base = preds.get("A0_price")
     if base:
         for name, p in preds.items():
-            if name == "A0_price":
-                continue
-            idx = sorted(set(p) & set(base))
-            out[name]["clark_west_t"] = clark_west([float(rows[i][label]) for i in idx],
-                                                   [base[i] for i in idx], [p[i] for i in idx])
+            if name != "A0_price":
+                out[name]["clark_west_t"] = clark_west(ys, [base[i] for i in idx], [p[i] for i in idx])
     return out

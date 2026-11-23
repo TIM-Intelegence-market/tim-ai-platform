@@ -27,6 +27,7 @@ class Bar:
     close: float
     buy: float   # aggressive buy volume
     sell: float  # aggressive sell volume
+    known_ms: int | None = None  # when TIM knew the whole bar (latest recv_ms of its trades)
 
     @property
     def delta(self) -> float:
@@ -37,8 +38,14 @@ class Bar:
         return self.buy + self.sell
 
 
+MISSING_RECV_LATENCY_MS = 2_000  # same fixed delay as historisch.LATENCY_MS for rows without a receive time
+
+
 def bars_from_trades(trades: Iterable[Mapping], bar_ms: int) -> list[Bar]:
-    """Time bars by exchange time; empty intervals produce no bar (gaps stay visible to the caller)."""
+    """Time bars by exchange time; empty intervals produce no bar (gaps stay visible to the caller).
+
+    ``known_ms`` of a bar is the latest receive time of its trades (``ts_ms + 2 s`` where ``recv_ms`` is missing) and
+    never earlier than the bar's end. Entries must not happen before it (see ``walkforward.forward_label``)."""
     if bar_ms <= 0:
         raise ValueError("bar_ms must be positive")
     rows: dict[int, list] = {}
@@ -48,11 +55,14 @@ def bars_from_trades(trades: Iterable[Mapping], bar_ms: int) -> list[Bar]:
         start = t["ts_ms"] - t["ts_ms"] % bar_ms
         b = rows.get(start)
         p, q = float(t["price"]), float(t["qty"])
+        recv = int(t.get("recv_ms", t["ts_ms"] + MISSING_RECV_LATENCY_MS))
         if b is None:
-            rows[start] = [p, p, p, p, q if t["side"] == 1 else 0.0, q if t["side"] == -1 else 0.0]
+            rows[start] = [p, p, p, p, q if t["side"] == 1 else 0.0, q if t["side"] == -1 else 0.0,
+                           max(recv, start + bar_ms)]
         else:
             b[1], b[2], b[3] = max(b[1], p), min(b[2], p), p
             b[4 if t["side"] == 1 else 5] += q
+            b[6] = max(b[6], recv)
     return [Bar(k, *v) for k, v in sorted(rows.items())]
 
 
@@ -233,16 +243,24 @@ def failed_breakout(bars: Sequence[Bar], i: int, *, lookback: int, m: int, min_w
 
 
 # F8 ---------------------------------------------------------------------------------------------------------------
-def stacked_imbalances(levels: Sequence[tuple[float, float, float]], *, ratio: float, run: int) -> int:
+def _dominates(a: float, b: float, ratio: float) -> bool:
+    """a >= ratio * b; a positive volume against zero counts as an imbalance."""
+    return a > 0 and (b == 0 or a / b >= ratio)
+
+
+def stacked_imbalances(levels: Sequence[tuple[float, float, float]], *, ratio: float, run: int, tick: float) -> int:
     """Footprint levels (price, bid_vol=aggr. sells, ask_vol=aggr. buys), any order. Diagonal comparison as in common
-    footprint tools: ask at level k vs bid at level k-1. +1 if ``run`` consecutive buy imbalances, -1 for sells."""
+    footprint tools: ask at level k vs bid at level k-1. +1 if ``run`` consecutive buy imbalances, -1 for sells.
+    Levels further apart than one ``tick`` break a run."""
     lv = sorted(levels)
     buy = sell = best_buy = best_sell = 0
     for k in range(1, len(lv)):
+        if abs(lv[k][0] - lv[k - 1][0] - tick) > 1e-9 * max(1.0, abs(tick)):
+            buy = sell = 0
+            continue
         ask_k, bid_below = lv[k][2], lv[k - 1][1]
-        bid_k, ask_above = lv[k - 1][1], lv[k][2]
-        buy = buy + 1 if bid_below > 0 and ask_k / bid_below >= ratio else 0
-        sell = sell + 1 if ask_above > 0 and bid_k / ask_above >= ratio else 0
+        buy = buy + 1 if _dominates(ask_k, bid_below, ratio) else 0
+        sell = sell + 1 if _dominates(bid_below, ask_k, ratio) else 0
         best_buy, best_sell = max(best_buy, buy), max(best_sell, sell)
     if best_buy >= run and best_sell < run:
         return 1
@@ -264,32 +282,37 @@ def volume_nodes(levels: Sequence[tuple[float, float]], *, hvn_q: float = 0.8, l
 
 
 # F9 ---------------------------------------------------------------------------------------------------------------
-def spoofing_like(snapshots: Sequence[tuple[int, Mapping[float, float]]], executed: Mapping[float, float], *,
-                  k_median: float, max_life_ms: int, max_fill_share: float = 0.1) -> list[dict]:
+def spoofing_like(snapshots: Sequence[tuple[int, Mapping[float, float]]], trades: Sequence[tuple[int, float, float]],
+                  *, k_median: float, max_life_ms: int, max_fill_share: float = 0.1) -> list[dict]:
     """Large resting size that appears and vanishes again within ``max_life_ms`` with little traded at that price.
 
     Aggregated L2 shows quantity per price, not single orders, so this flags a size pattern only. No intent is
-    assigned. ``snapshots`` = (ts_ms, {price: qty}) of one side, oldest first."""
+    assigned. ``snapshots`` = (ts_ms, {price: qty}) of one side, oldest first; ``trades`` = (ts_ms, price, qty).
+    Only trades between appearance and disappearance count as filled. The size may vanish over several snapshots;
+    a pattern still open after ``max_life_ms`` is dropped."""
     events = []
-    open_: dict[float, tuple[int, float]] = {}
+    open_: dict[float, tuple[int, float, float]] = {}  # price -> (start, size, quantity before it appeared)
     for idx in range(1, len(snapshots)):
-        _t0, prev = snapshots[idx - 1]
+        prev = snapshots[idx - 1][1]
         t1, cur = snapshots[idx]
+        for p in [p for p, (start, _, _) in open_.items() if t1 - start > max_life_ms]:
+            del open_[p]
         depth = [q for q in prev.values() if q > 0]
         med = statistics.median(depth) if depth else 0.0
         for p in set(prev) | set(cur):
-            add = cur.get(p, 0.0) - prev.get(p, 0.0)
-            if med > 0 and add >= k_median * med and p not in open_:
-                open_[p] = (t1, add)
-            elif p in open_ and add < 0:
-                start, size = open_[p]
-                if cur.get(p, 0.0) <= prev.get(p, 0.0) - 0.9 * size:
-                    life = t1 - start
-                    filled = executed.get(p, 0.0)
-                    if life <= max_life_ms and filled <= max_fill_share * size:
-                        events.append({"price": p, "size": size, "life_ms": life, "filled": filled,
-                                       "label": "spoofing-like (pattern only)"})
-                    del open_[p]
+            now = cur.get(p, 0.0)
+            add = now - prev.get(p, 0.0)
+            if p not in open_:
+                if med > 0 and add >= k_median * med:
+                    open_[p] = (t1, add, prev.get(p, 0.0))
+                continue
+            start, size, base = open_[p]
+            if now <= base + 0.1 * size:
+                filled = sum(q for ts, px, q in trades if px == p and start <= ts <= t1)
+                if filled <= max_fill_share * size:
+                    events.append({"price": p, "size": size, "life_ms": t1 - start, "filled": filled,
+                                   "label": "spoofing-like (pattern only)"})
+                del open_[p]
     return events
 
 

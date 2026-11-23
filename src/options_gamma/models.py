@@ -23,6 +23,7 @@ Standard library only. No data is fetched here.
 """
 from __future__ import annotations
 
+import itertools
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -136,6 +137,8 @@ def _sign_and_size(model: DealerModel, q: OptionQuote, pos: Positioning) -> tupl
         if pos.taker_net is None or pos.complete is None or key not in pos.complete:
             return None
         net = pos.taker_net.get(key, 0.0)
+        if net == 0:
+            return None  # no net flow: the model says nothing about this contract
         return (-1.0 if net > 0 else 1.0), abs(net)
     if pos.oi_side is None or key not in pos.oi_side or pos.oi_side[key] == 0:
         return None
@@ -171,17 +174,15 @@ def _total(live, price: float, variant: str, forwards, spot_ref: float) -> float
 
 
 def _flip(live, spot: float, variant: str, forwards) -> float | None:
+    """Sign change of total GEX closest to spot within spot * (1 +- FLIP_RANGE); None if there is none."""
     steps = round(FLIP_RANGE / FLIP_STEP)
     grid = [spot * (1.0 + FLIP_STEP * i) for i in range(-steps, steps + 1)]
-    prev_s, prev_v = grid[0], _total(live, grid[0], variant, forwards, spot)
-    for s in grid[1:]:
-        v = _total(live, s, variant, forwards, spot)
-        if prev_v == 0:
-            return prev_s
-        if (prev_v < 0) != (v < 0):
-            return prev_s + (s - prev_s) * (-prev_v) / (v - prev_v)
-        prev_s, prev_v = s, v
-    return None
+    vals = [_total(live, s, variant, forwards, spot) for s in grid]
+    found: list[float] = [s for s, v in zip(grid, vals, strict=True) if v == 0]
+    for (s0, v0), (s1, v1) in itertools.pairwise(zip(grid, vals, strict=True)):
+        if v0 != 0 and v1 != 0 and (v0 < 0) != (v1 < 0):
+            found.append(s0 + (s1 - s0) * (-v0) / (v1 - v0))
+    return min(found, key=lambda s: abs(s - spot)) if found else None
 
 
 def model_profile(chain: Sequence[OptionQuote], spot: float, as_of: datetime, model: DealerModel, *,
@@ -201,9 +202,10 @@ def model_profile(chain: Sequence[OptionQuote], spot: float, as_of: datetime, mo
         g = sign * size * _quote_gamma_usd(q, spot, years, variant, forwards, spot)
         bucket = per_strike.setdefault(q.strike, [0.0, 0.0])
         bucket[0 if q.is_call else 1] += g
+        # USD delta = delta * underlying; in the forward variant the hedge delta is on the forward (as for gamma)
         underlying = spot if variant == "spot" else forwards[q.expiry]  # type: ignore[index]
-        vanna_x += sign * size * vanna(underlying, q.strike, years, q.implied_vol) * q.multiplier * spot * 0.01
-        charm_x += sign * size * charm(underlying, q.strike, years, q.implied_vol) / 365.0 * q.multiplier * spot
+        vanna_x += sign * size * vanna(underlying, q.strike, years, q.implied_vol) * q.multiplier * underlying * 0.01
+        charm_x += sign * size * charm(underlying, q.strike, years, q.implied_vol) / 365.0 * q.multiplier * underlying
     net = sum(c + p for c, p in per_strike.values())
     abs_gex = sum(abs(c) + abs(p) for c, p in per_strike.values())
     calls = [(k, c) for k, (c, _) in per_strike.items() if c != 0]

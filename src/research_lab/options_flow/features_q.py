@@ -93,6 +93,7 @@ def volume_to_oi(trades: Iterable[Mapping[str, Any]], summary: Sequence[Mapping[
 
     High values mean new positioning **or** turnover; which of the two cannot be told from these data.
     """
+    summary = known(summary, t_ms)
     vol: dict[str, float] = {}
     for r in visible(trades, t_ms, span_ms):
         vol[str(r["instrument"])] = vol.get(str(r["instrument"]), 0.0) + float(r["amount"])
@@ -103,6 +104,13 @@ def volume_to_oi(trades: Iterable[Mapping[str, Any]], summary: Sequence[Mapping[
     total_oi = sum(oi.values())
     return {"per_instrument": per, "total": (sum(vol.values()) / total_oi) if total_oi > 0 else None,
             "max": max(per.values()) if per else None, "without_oi": sorted(k for k in vol if k not in oi)}
+
+
+def known(summary: Sequence[Mapping[str, Any]], t_ms: int) -> list[Mapping[str, Any]]:
+    """Summary rows TIM had received by ``t_ms``. Rows without ``recv_ms`` are refused (no silent look-ahead)."""
+    if any("recv_ms" not in r for r in summary):
+        raise ValueError("summary rows need recv_ms")
+    return [r for r in summary if int(r["recv_ms"]) <= t_ms]
 
 
 def realized_vol(closes: Sequence[float], periods_per_year: float) -> float | None:
@@ -162,6 +170,7 @@ def expiry_features(summary: Sequence[Mapping[str, Any]], spot: float, t_ms: int
     """Q10 at time ``t_ms``: hours to the next 08:00 UTC, share of OI that expires within 24 h, ATM OI of that expiry,
     and its percentile **only among earlier expiries** (``past_atm_oi`` = (expiry_ms, atm_oi), anything at or after
     ``t_ms`` is ignored). Rows need ``expiry_ms``, ``strike``, ``open_interest``."""
+    summary = known(summary, t_ms)
     nxt = next_expiry(t_ms)
     nxt_ms = int(nxt.timestamp() * 1000)
     total = soon = atm = 0.0
@@ -170,7 +179,7 @@ def expiry_features(summary: Sequence[Mapping[str, Any]], spot: float, t_ms: int
         if not isinstance(oi, (int, float)) or isinstance(oi, bool) or oi <= 0:
             continue
         total += oi
-        if r["expiry_ms"] - t_ms <= DAY_MS:
+        if 0 < r["expiry_ms"] - t_ms <= DAY_MS:
             soon += oi
         if r["expiry_ms"] == nxt_ms and abs(float(r["strike"]) / spot - 1.0) <= atm_band:
             atm += oi

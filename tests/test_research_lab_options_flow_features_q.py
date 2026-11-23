@@ -56,7 +56,9 @@ def test_contract_keeps_group_id():
 
 def test_volume_to_oi():
     trades = [row(amount=5, inst="A"), row(amount=5, inst="A"), row(amount=1, inst="B")]
-    summary = [{"instrument_name": "A", "open_interest": 100.0}, {"instrument_name": "C", "open_interest": 50.0}]
+    summary = [{"instrument_name": "A", "open_interest": 100.0, "recv_ms": T},
+               {"instrument_name": "C", "open_interest": 50.0, "recv_ms": T},
+               {"instrument_name": "B", "open_interest": 1.0, "recv_ms": T + 1}]  # arrived later: not used
     x = q.volume_to_oi(trades, summary, T)
     assert x["per_instrument"] == {"A": 0.1} and x["without_oi"] == ["B"]
     assert x["total"] == pytest.approx(11 / 150)
@@ -86,9 +88,12 @@ def test_next_expiry_is_0800_utc():
 def test_expiry_percentile_uses_only_the_past():
     t = int(datetime(2026, 11, 23, 6, 0, tzinfo=timezone.utc).timestamp() * 1000)
     e = int(datetime(2026, 11, 23, 8, 0, tzinfo=timezone.utc).timestamp() * 1000)
-    summary = [{"expiry_ms": e, "strike": 67000.0, "open_interest": 50.0},
-               {"expiry_ms": e + 30 * DAY, "strike": 80000.0, "open_interest": 150.0}]
+    summary = [{"expiry_ms": e, "strike": 67000.0, "open_interest": 50.0, "recv_ms": t},
+               {"expiry_ms": e + 30 * DAY, "strike": 80000.0, "open_interest": 150.0, "recv_ms": t},
+               {"expiry_ms": t - DAY, "strike": 67000.0, "open_interest": 0.0001, "recv_ms": t}]  # expired
     past = [(t - 3 * DAY, 10.0), (t - 2 * DAY, 100.0), (t + DAY, 1.0)]  # last one lies in the future
     x = q.expiry_features(summary, 67000.0, t, past_atm_oi=past)
-    assert x["hours_to_expiry"] == 2 and x["share_oi_24h"] == 0.25 and x["atm_oi_next"] == 50.0
+    assert x["hours_to_expiry"] == 2 and x["share_oi_24h"] == pytest.approx(50 / 200.0001) and x["atm_oi_next"] == 50.0
     assert x["past_n"] == 2 and x["atm_oi_percentile"] == 0.5
+    with pytest.raises(ValueError):
+        q.expiry_features([{"expiry_ms": e, "strike": 1.0, "open_interest": 1.0}], 67000.0, t)
