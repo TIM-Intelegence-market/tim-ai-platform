@@ -1,0 +1,29 @@
+{
+  "studie": "S23",
+  "version": "0.1",
+  "seed": 23,
+  "datensatz_sha256": "a9f525df83b3c5b8681fabd43b1e0fa87af4010e69c55f4174d0ea83f4826fa9",
+  "kerzen": 64525,
+  "oi_datensatz_sha256": "ed361a678cb5a2fd0835373dc64925b13fc461641123c431c3411925a5d43292",
+  "oi_schnappschuesse": 455273,
+  "zaehllauf": {
+    "verworfen": {
+      "entprellt": 313,
+      "luecke_oder_rand": 21,
+      "mitgenommen": 325
+    },
+    "ereignisse": {
+      "training": {
+        "ab_start": 242,
+        "mit_merkmalen": 241
+      },
+      "validierung": {
+        "ab_start": 216,
+        "mit_merkmalen": 211
+      }
+    },
+    "training_ab_2021_12": 116,
+    "gate": true,
+    "naht_pruefbar": true
+  }
+}
