@@ -7,6 +7,7 @@ Subcommands:
   run    Read the feed, check every call against the snapshot, update the diary and write the report.
 
 Example:
+  python3 scripts/signalgruppe_paper_diary.py cycle --feed-dir FEED --workdir WORKDIR   (fetch + run, used by the schedule)
   python3 scripts/signalgruppe_paper_diary.py fetch --feed-dir /mnt/project-files/signalgruppe --out snapshot.json
   python3 scripts/signalgruppe_paper_diary.py run --feed-dir /mnt/project-files/signalgruppe --snapshot snapshot.json \
       --diary diary.json --report papier-tagebuch.md
@@ -119,6 +120,18 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_cycle(args: argparse.Namespace) -> int:
+    """fetch and run in one step, for a schedule: files live in --workdir (snapshot, diary, report)."""
+    workdir = Path(args.workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    snapshot = workdir / "snapshot.json"
+    status = cmd_fetch(argparse.Namespace(feed_dir=args.feed_dir, out=snapshot))
+    if status:
+        return status
+    return cmd_run(argparse.Namespace(feed_dir=args.feed_dir, snapshot=snapshot, diary=workdir / "diary.json",
+                                      report=workdir / "papier-tagebuch.md"))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -132,6 +145,10 @@ def build_parser() -> argparse.ArgumentParser:
             command.add_argument("--snapshot", type=Path, required=True)
             command.add_argument("--diary", type=Path, required=True, help="JSON diary, created if missing and updated in place")
             command.add_argument("--report", type=Path, help="write the German report here")
+    cycle = sub.add_parser("cycle", help="fetch and run in one step (for the 15-minute schedule)")
+    cycle.add_argument("--feed-dir", type=Path, default=None)
+    cycle.add_argument("--workdir", type=Path, required=True, help="folder for snapshot.json, diary.json and the report")
+    cycle.set_defaults(handler=cmd_cycle)
     return parser
 
 
