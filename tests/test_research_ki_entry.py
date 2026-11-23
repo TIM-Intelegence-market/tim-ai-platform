@@ -24,6 +24,7 @@ def model(candles: list[dict], extra: list[dict] | None = None) -> dict:
         {"group": "day", "label": "1D VAH", "price": 61500.0},
         {"group": "trend", "label": "30m Trend", "price": 60500.0},
         {"group": "day", "label": "alt", "price": 60400.0, "finished": True},
+        {"group": "structure", "label": "30m BOS ↓", "price": 60700.0, "finished": True, "start": "2026-11-20T18:15:00+00:00"},
     ] + (extra or [])
     bars = [{"time": c["time"], "delta": -20.0, "levels": [[60600.0, 5.0, 5.0], [60700.0, 1.0, 1.0]]} for c in candles]
     return {"candles": candles, "drawings": drawings, "footprint": {"step": 10.0, "bars": bars},
@@ -111,7 +112,7 @@ def test_run_writes_decision_before_result_and_never_twice(tmp_path: Path):
 
     out = decide.run(model(c), log, ask, "test", now=now_after(c))
     assert out["decision"]["action"] == "LONG" and len(prompts) == 1
-    assert "Opt Put Wall" in prompts[0] and "210.0" in prompts[0] and "von oben" in prompts[0]
+    assert "Opt Put Wall" in prompts[0] and "210.0" in prompts[0] and "von oben" in prompts[0] and "BOS" in prompts[0]
     again = decide.run(model(c), log, ask, "test", now=now_after(c) + 60)
     assert again["decision"] is None and len(prompts) == 1
     later = c + [candle(30, 60100, 60120, 60080, 60100), candle(31, 60100, 60600, 60090, 60550)]

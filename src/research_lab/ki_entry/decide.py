@@ -70,6 +70,16 @@ def _local(epoch: float) -> str:
     return datetime.fromtimestamp(epoch, UTC).astimezone(LOCAL).strftime("%d.%m. %H:%M")
 
 
+def _epoch(value: Any) -> float | None:
+    """Chart times come as epoch seconds or ISO text."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
 def closed_candles(model: Mapping[str, Any]) -> list[dict[str, Any]]:
     return [c for c in model.get("candles") or [] if c.get("closed", True)]
 
@@ -142,8 +152,8 @@ def build_context(model: Mapping[str, Any], zone: Mapping[str, Any], now: float)
            for b in (model.get("bubbles") or {}).get("items") or []
            if float(b.get("quantity") or 0) >= BIG_BTC and end - 3 * 3600 <= float(b["time"]) < end]
     structure = [d for d in model.get("drawings") or [] if d.get("group") == "structure" and ("BOS" in str(d.get("label")) or "MSS" in str(d.get("label")))
-                 and "Ziel" not in str(d.get("label")) and d.get("start") is not None and float(d["start"]) < end]
-    last_break = max(structure, key=lambda d: float(d["start"]), default=None)
+                 and "Ziel" not in str(d.get("label")) and _epoch(d.get("start")) is not None and _epoch(d.get("start")) < end]
+    last_break = max(structure, key=lambda d: _epoch(d.get("start")), default=None)
     funding = ((model.get("funding") or {}).get("points") or [])
     oi = [p for p in (model.get("oi") or {}).get("points") or [] if float(p[0]) < end]
     oi_change = round((oi[-1][1] - oi[-25][1]) / oi[-25][1] * 100, 2) if len(oi) >= 25 and oi[-25][1] else None

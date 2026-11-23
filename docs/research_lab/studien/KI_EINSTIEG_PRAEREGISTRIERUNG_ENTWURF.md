@@ -16,7 +16,7 @@ Kosten bessere Papier-Entscheidungen als die festen Kreis-Regeln R-ABS-2 0.6 (mi
    erwartete Spanne 1; Jahr/Quartal/Monat 3; Woche 2; naked POC 2; Tag 1,5; Liquidations-Cluster 1,5;
    Strong/Weak High/Low 1,5; laufender POC, Session, IB, VWAP je 1; meistgehandelter Preis der letzten
    48 Footprint-Kerzen 2. Marken innerhalb 0,4 % bilden eine Zone. Früheres Abprallen (Docht in die Zone,
-   Schluss zurück; letzte 96 Kerzen) +0,5 je Mal, höchstens +2. **Stark ab 5.**
+   Schluss zurück; letzte 96 Kerzen) +0,5 je Mal, höchstens +1,5. **Stark ab 6.**
 2. **Auslöser**: die neueste geschlossene 15m-Perp-Kerze berührt eine starke Zone; kein Papier-Trade offen;
    dieselbe Zone (auf 100 USD gerundet) nicht in den letzten 6 Stunden gefragt; jede Kerze höchstens einmal.
 3. **KI-Entscheidung**: die KI sieht Zone (Marken, Stärke, Annäherung von oben/unten, frühere Abpraller),
