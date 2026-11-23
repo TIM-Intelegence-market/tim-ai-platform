@@ -76,6 +76,8 @@ def normalize_trade(raw: Mapping[str, Any], recv_ms: int) -> dict[str, Any]:
         "notional_usd": amount * index_price,
         "iv": iv,
         "block": bool(raw.get("block_trade_id")),
+        # legs of one block or combo share an id; used to judge a structure as a whole (plan Q4)
+        "group_id": str(raw.get("block_trade_id") or raw.get("combo_trade_id") or raw.get("combo_id") or "") or None,
         "liquidation": bool(raw.get("liquidation")),
     }
 
