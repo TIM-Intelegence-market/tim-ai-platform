@@ -198,3 +198,51 @@ def test_zone_cooldown(tmp_path: Path):
     decide.run(model(c), log, nothing, "test", now=now_after(c))
     nxt = c + [candle(30, 60100, 60120, 60010, 60050)]
     assert decide.run(model(nxt), log, nothing, "test", now=now_after(nxt))["waiting"] == "Zone kürzlich gefragt"
+
+
+def test_hermes_opinion_once_public_numbers_only(tmp_path: Path):
+    from src.research_lab.ki_entry import hermes
+    log = tmp_path / "ki.jsonl"
+    c = falling_into_zone()
+    decide.run(model(c), log, lambda p: {"aktion": "LONG", "einstieg": 60100, "stop": 59880, "ziel": 60560,
+                                          "vertrauen": 0.6, "grund": "Verkäufer absorbiert"}, "test", now=now_after(c))
+    asked: list[str] = []
+
+    def ask(text: str):
+        asked.append(text)
+        return {"ok": True, "answer": "DAFÜR: Zone hält.\nDAGEGEN: Trend fällt.\nURTEIL: DAFÜR", "seconds": 9.0}
+
+    out = hermes.opinions(read_log(log), log, ask, now_after(c) + 30, "t")
+    assert out[0]["verdict"] == "DAFÜR" and "LONG, Einstieg 60100" in asked[0] and "Opt Put Wall" in asked[0]
+    assert "hash" not in asked[0] and "key" not in asked[0].lower()
+    assert hermes.opinions(read_log(log), log, ask, now_after(c) + 60, "t") == [] and len(asked) == 1   # only once
+    assert hermes.hermes_summary(read_log(log))["by_verdict"]["DAFÜR"]["n"] == 1
+
+
+def test_hermes_failure_writes_nothing_and_window_ends(tmp_path: Path):
+    from src.research_lab.ki_entry import hermes
+    log = tmp_path / "ki.jsonl"
+    c = falling_into_zone()
+    decide.run(model(c), log, lambda p: {"aktion": "NICHTS", "einstieg": 0, "stop": 0, "ziel": 0, "vertrauen": 0.2, "grund": "unklar"},
+               "test", now=now_after(c))
+    down = lambda t: {"ok": False, "error": "Keine Antwort"}
+    assert hermes.opinions(read_log(log), log, down, now_after(c) + 30, "t")[0]["failed"]
+    assert all(r["kind"] != "hermes" for r in read_log(log))
+    late = now_after(c) + hermes.OPINION_WINDOW_S + 120
+    assert hermes.opinions(read_log(log), log, lambda t: {"ok": True, "answer": "URTEIL: NEUTRAL"}, late, "t") == []
+
+
+def test_bitunix_paper_account():
+    from src.research_lab.ki_entry import hermes
+    d = {"id": "a", "kind": "decision", "action": "LONG", "plan": {"entry": 60000.0, "stop": 59800.0, "target": 60400.0}}
+    win = {"kind": "result", "decision_id": "a", "outcome": "Ziel", "fill": 60000.0, "exit": 60400.0, "r": 1.9}
+    row = hermes.bitunix_fill(d, win)
+    assert row["qty_btc"] == pytest.approx(0.05)                         # 10 USDT risk / 200 USD stop
+    assert row["notional_usdt"] == pytest.approx(3000.0) and row["leverage"] == 60 and row["allowed"]
+    fees = 3000 * 0.0002 + 0.05 * 60400 * 0.0006
+    assert row["pnl_usdt"] == pytest.approx(20.0 - fees, abs=1e-3)
+    loss = hermes.bitunix_fill(d, {**win, "outcome": "Stop", "exit": 59800.0})
+    assert loss["pnl_usdt"] < -10.0                                       # stop slippage and fees on top of 1 %
+    assert hermes.bitunix_fill(d, {"outcome": "nicht gefüllt", "r": 0.0}) is None
+    account = hermes.bitunix([d, win])
+    assert account["trades"] == 1 and account["balance_usdt"] == pytest.approx(1000 + row["pnl_usdt"], abs=1e-3)

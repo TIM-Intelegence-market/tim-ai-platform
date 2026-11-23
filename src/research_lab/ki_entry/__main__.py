@@ -6,6 +6,8 @@
 ``run`` reads the chart model from the local dashboard (BTCUSDT, 15m, perp), plays open paper trades forward and
 asks the local Ollama model when the newest closed candle touched a strong zone. ``--dry-run`` prints the
 prompt and writes nothing.
+After the KI step, Hermes (DeepSeek) gives a second opinion on a fresh decision (``hermes.py``; public numbers only,
+``--no-hermes`` switches it off). ``report`` adds Hermes' verdicts and the Bitunix paper account.
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
-from src.research_lab.ki_entry import decide
+from src.research_lab.ki_entry import decide, hermes
 from src.research_lab.ki_filter.decide import read_log
 
 DEFAULT_API = "http://127.0.0.1:8765/api/chart/live?symbol=BTCUSDT&tf=15m&market=perp"
@@ -35,6 +37,11 @@ def _ask(url: str, model: str):
     return lambda prompt: asyncio.run(client.generate_json(prompt, schema=decide.ANSWER_SCHEMA))
 
 
+def _hermes(text: str):
+    from src.dashboard import hermes_bridge
+    return hermes_bridge.ask(text, limit=hermes.MAX_PROMPT, record=False)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m src.research_lab.ki_entry")
     parser.add_argument("command", choices=("run", "report"))
@@ -43,9 +50,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--ollama-url", default=os.environ.get("TIM_OLLAMA_URL", "http://127.0.0.1:11434"))
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--no-hermes", action="store_true", help="no second opinion from Hermes (DeepSeek)")
     args = parser.parse_args(argv)
     if args.command == "report":
-        print(json.dumps(decide.report(read_log(args.log)), indent=2, ensure_ascii=False))
+        records = read_log(args.log)
+        print(json.dumps({**decide.report(records), "hermes": hermes.hermes_summary(records), "bitunix": hermes.bitunix(records)},
+                         indent=2, ensure_ascii=False))
         return 0
     if urlparse(args.api).hostname not in ("127.0.0.1", "localhost"):
         parser.error("--api must point to the local dashboard (127.0.0.1)")
@@ -64,6 +74,10 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({"status": "busy"}))
             return 0
         summary = decide.run(model, args.log, _ask(args.ollama_url, args.model), args.model)
+        if not args.no_hermes:
+            now = time.time()
+            stamp = decide._iso(now)
+            summary["hermes"] = hermes.opinions(read_log(args.log), args.log, _hermes, now, stamp)
     print(json.dumps(summary, ensure_ascii=False, default=str))
     return 0
 
