@@ -1,4 +1,4 @@
-# S40 – Hilft Orderflow oder Optionsflow über den Preis hinaus? (Präregistrierung, ENTWURF 0.2, 23.11.2026)
+# S40 – Hilft Orderflow oder Optionsflow über den Preis hinaus? (Präregistrierung, ENTWURF 0.3, 23.11.2026)
 
 Auftrag Uzi 23.11.2026: "Go P0-P4, historisch ja" (Weg H erlaubt), dann "s40 go". Grundlage: Forschungsplan
 `docs/research_lab/of_optionen_gamma/FORSCHUNGSPLAN.md` (Abschnitte 4, 5, 7, 8, 11) und die Bausteine aus PR #352.
@@ -45,10 +45,11 @@ andere Teilung wäre eine Entscheidung von Uzi vor dem Einfrieren.)
 - 5-Minuten-Bars aus Trades (`of_features.bars_from_trades`): `known_ms` = max(Empfang des letzten Trades, Bar-Ende).
 - **Prognosezeitpunkt t:** jede volle Stunde (h = 1 h) bzw. 00/04/08/12/16/20 UTC (h = 4 h). Merkmale nutzen nur
   Bars, die bis t bekannt sind (`known_ms ≤ t`), und nur Optionstrades mit `recv_ms ≤ t`. Die Ziele überlappen nicht.
-- **Ziel:** Log-Rendite vom Eröffnungskurs der ersten Bar mit `open_ms ≥ known_ms` der letzten Merkmals-Bar bis zum
-  Eröffnungskurs h später (`walkforward.forward_label`, h = 12 bzw. 48 Bars). Gewollt und dokumentiert: kam in den
-  letzten 2 s einer Bar noch ein Trade, verschiebt sich der Einstieg um eine Bar (5 min). Fehlende Bars verlängern den
-  Horizont; Zeilen, deren Ziel mehr als 10 % länger dauert als h, fallen heraus (gezählt).
+- **Ziel:** Log-Rendite vom Eröffnungskurs der ersten Bar, die **zu oder nach t** öffnet, bis zum Eröffnungskurs
+  h Stunden an Bars später (h = 12 bzw. 48 Bars; `studies/s40.label`). Da alle Merkmale bis t bekannt sind, liegt der
+  Einstieg nie vor dem Wissen. (0.2 nannte `forward_label` mit Einstieg nach `known_ms`; in 0.3 strenger und einfacher:
+  Einstieg ab t.) Fehlende Bars verlängern den Horizont; Zeilen, deren Ziel mehr als 10 % länger dauert als h, fallen
+  heraus (gezählt).
 
 ## 6. Merkmale (fest, nur Vergangenheit)
 **Normierung:** Stetige Merkmale (in der Tabelle mit z markiert) werden als z-Wert gegen die eigenen Werte der
@@ -180,3 +181,8 @@ je Test, A3/A4/A6 nicht aufgerufen (3); z-Wert-Regel eindeutig (4); Purge an der
 Jahresregel, n-Basis und `min_train` in Zeilen (7); Stichprobe auf OOS-Basis mit Holm (8); Kosten, Stress und Funding
 (9); feste Versuchszahl (10); Optionsflow-Regeln (11); Einstiegsversatz dokumentiert, Abschnittsteilung benannt (12).
 Offen bis 1.0: Deribit-Abdeckung 2020 (Paket 1).
+
+**0.3 (23.11.):** Rechencode `src/research_lab/studies/s40.py` mit Tests `tests/test_s40.py` (schnelle Merkmale gleich
+den Bausteinen, Look-ahead, z-Werte nur aus Vorstunden, HAC-Clark-West gegen Handrechnung, Holm, Jahresregel,
+Monatsausschluss und Holdout, Kosten und Funding, Wiederfinden eines eingepflanzten Effekts). Einstiegsregel in
+Abschnitt 5 präzisiert. Datenlauf (Paket 1) läuft seit 23.11. 21:18 auf dem Mac.
