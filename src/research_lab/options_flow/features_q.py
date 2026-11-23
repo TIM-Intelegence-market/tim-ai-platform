@@ -93,7 +93,7 @@ def volume_to_oi(trades: Iterable[Mapping[str, Any]], summary: Sequence[Mapping[
 
     High values mean new positioning **or** turnover; which of the two cannot be told from these data.
     """
-    summary = known(summary, t_ms)
+    summary = [r for r in known(summary, t_ms) if r.get("expiry_ms") is None or r["expiry_ms"] > t_ms]
     vol: dict[str, float] = {}
     for r in visible(trades, t_ms, span_ms):
         vol[str(r["instrument"])] = vol.get(str(r["instrument"]), 0.0) + float(r["amount"])
@@ -107,10 +107,21 @@ def volume_to_oi(trades: Iterable[Mapping[str, Any]], summary: Sequence[Mapping[
 
 
 def known(summary: Sequence[Mapping[str, Any]], t_ms: int) -> list[Mapping[str, Any]]:
-    """Summary rows TIM had received by ``t_ms``. Rows without ``recv_ms`` are refused (no silent look-ahead)."""
+    """Summary rows TIM had received by ``t_ms``, newest snapshot per ``instrument_name``.
+
+    Rows without ``recv_ms`` are refused (no silent look-ahead)."""
     if any("recv_ms" not in r for r in summary):
         raise ValueError("summary rows need recv_ms")
-    return [r for r in summary if int(r["recv_ms"]) <= t_ms]
+    seen = [r for r in summary if int(r["recv_ms"]) <= t_ms]
+    latest: dict[Any, Mapping[str, Any]] = {}
+    rest: list[Mapping[str, Any]] = []
+    for r in seen:  # several snapshots of one instrument: keep only the newest one TIM had received
+        k = r.get("instrument_name")
+        if k is None:
+            rest.append(r)
+        elif k not in latest or int(r["recv_ms"]) >= int(latest[k]["recv_ms"]):
+            latest[k] = r
+    return [*latest.values(), *rest]
 
 
 def realized_vol(closes: Sequence[float], periods_per_year: float) -> float | None:
@@ -177,6 +188,8 @@ def expiry_features(summary: Sequence[Mapping[str, Any]], spot: float, t_ms: int
     for r in summary:
         oi = r.get("open_interest")
         if not isinstance(oi, (int, float)) or isinstance(oi, bool) or oi <= 0:
+            continue
+        if r["expiry_ms"] <= t_ms:  # expired: no longer open interest
             continue
         total += oi
         if 0 < r["expiry_ms"] - t_ms <= DAY_MS:

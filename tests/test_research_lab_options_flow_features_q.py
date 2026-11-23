@@ -62,6 +62,10 @@ def test_volume_to_oi():
     x = q.volume_to_oi(trades, summary, T)
     assert x["per_instrument"] == {"A": 0.1} and x["without_oi"] == ["B"]
     assert x["total"] == pytest.approx(11 / 150)
+    older = [{"instrument_name": "A", "open_interest": 200.0, "recv_ms": T - 5},  # older snapshot of A: ignored
+             summary[0], {"instrument_name": "C", "open_interest": 50.0, "recv_ms": T, "expiry_ms": T - 1}]  # expired
+    y = q.volume_to_oi(trades, older, T)
+    assert y["per_instrument"] == {"A": 0.1} and y["total"] == pytest.approx(11 / 100)
 
 
 def test_vol_helpers():
@@ -93,7 +97,7 @@ def test_expiry_percentile_uses_only_the_past():
                {"expiry_ms": t - DAY, "strike": 67000.0, "open_interest": 0.0001, "recv_ms": t}]  # expired
     past = [(t - 3 * DAY, 10.0), (t - 2 * DAY, 100.0), (t + DAY, 1.0)]  # last one lies in the future
     x = q.expiry_features(summary, 67000.0, t, past_atm_oi=past)
-    assert x["hours_to_expiry"] == 2 and x["share_oi_24h"] == pytest.approx(50 / 200.0001) and x["atm_oi_next"] == 50.0
+    assert x["hours_to_expiry"] == 2 and x["share_oi_24h"] == pytest.approx(0.25) and x["atm_oi_next"] == 50.0
     assert x["past_n"] == 2 and x["atm_oi_percentile"] == 0.5
     with pytest.raises(ValueError):
         q.expiry_features([{"expiry_ms": e, "strike": 1.0, "open_interest": 1.0}], 67000.0, t)

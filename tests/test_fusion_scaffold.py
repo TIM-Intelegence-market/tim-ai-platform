@@ -185,3 +185,12 @@ def test_clark_west_numbers():
     import statistics as st
     assert wf.clark_west(y, small, big) == pytest.approx(st.fmean(f) / (st.stdev(f) / math.sqrt(4)))
     assert wf.clark_west(y, small, big) > 1.645
+
+
+def test_compare_refuses_unpurged_or_foreign_folds():
+    rows = _synthetic_rows(50)
+    groups = {"price": ["mom"]}
+    with pytest.raises(ValueError):  # train row 20 labels into the test span 20..29
+        wf.compare(rows, groups, label="y", folds=[wf.Fold(train=tuple(range(21)), test=tuple(range(20, 30)))])
+    with pytest.raises(ValueError):
+        wf.compare(rows, groups, label="y", folds=[wf.Fold(train=(0, 1), test=(99,))])

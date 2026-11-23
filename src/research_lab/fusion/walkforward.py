@@ -35,7 +35,11 @@ MODELS: dict[str, tuple[str, ...]] = {
 
 def forward_label(bars: Sequence, i: int, h: int) -> tuple[float, int] | None:
     """(log return, end_ms) from the open of the first bar j > i with ``open_ms >= bars[i].known_ms`` to the open of
-    bar j+h. None at the end of the series. Bars come from ``of_features.bars_from_trades``."""
+    bar j+h. None at the end of the series. Bars come from ``of_features.bars_from_trades``.
+
+    ``h`` counts bars, not time: empty intervals make no bar, so the horizon in time can be longer than ``h`` bar
+    lengths. ``end_ms`` is the open time of bar j+h; its price is known only after that bar's first trade plus the
+    receive latency, so callers add at least ``LATENCY_MS`` to the embargo of ``purged_splits``."""
     known = bars[i].known_ms
     if known is None:
         raise ValueError("bar has no known_ms; build bars with bars_from_trades")
@@ -169,6 +173,14 @@ def compare(rows: Sequence[Mapping], groups: Mapping[str, Sequence[str]], *, lab
     for r in rows:
         if to_ms(r["t_ms"]) >= HOLDOUT_START_MS or to_ms(r["label_end_ms"]) >= HOLDOUT_START_MS:
             raise ValueError("holdout rows must never reach the comparison")
+    for fold in folds:  # folds must fit the rows and be purged: no train label may overlap the test span
+        if any(not 0 <= i < len(rows) for i in (*fold.train, *fold.test)):
+            raise ValueError("fold index outside rows")
+        if fold.test:
+            lo = min(to_ms(rows[i]["t_ms"]) for i in fold.test)
+            hi = max(to_ms(rows[i]["label_end_ms"]) for i in fold.test)
+            if any(to_ms(rows[i]["t_ms"]) <= hi and to_ms(rows[i]["label_end_ms"]) >= lo for i in fold.train):
+                raise ValueError("fold is not purged: a train label overlaps the test span")
     used = {name: [k for g in gs for k in groups.get(g, ())] for name, gs in models.items()}
     used = {name: keys for name, keys in used.items() if keys}
     all_keys = {k for keys in used.values() for k in keys}
