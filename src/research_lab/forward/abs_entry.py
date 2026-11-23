@@ -36,6 +36,7 @@ from src.research_lab.orderflow_ml.bars import (
 )
 
 RULE = "R-ABS-2/0.6-entwurf"
+RULE_07 = "R-ABS-2/0.7-entwurf"   # Uzi 23.11.2026 "go nachladen": reloaded absorption and false break (see reload_hit)
 FOLDER = Path("data/research/forward/ABS_ENTRY")
 WARMUP_DAYS = 2
 
@@ -79,6 +80,13 @@ class Params:
     circle_min_btc: float = 200.0    # Uzi 22.11. ("Kreise"): a chart circle = one perp taker order of at least this size
     circle_wait_min: int = 15        # the turn against the order must show within 15 minutes ...
     turn_pct: float = 0.10           # ... as a 5m close at least 0.10 % beyond the price at the order
+    reload_need: bool = False        # 0.7 (Uzi 23.11. "go nachladen"): the event is a reloaded absorption, not a circle
+    reload_lookback_min: int = 30    # reload and false break are read over the last 30 minutes up to the window close
+    reload_min_btc: float = 5.0      # a reload minute: at least this much aggressive selling (buying) in the absorption bins ...
+    reload_factor: float = 3.0       # ... and at least 3x the median minute of selling (buying) over the last 24 h ("groß")
+    reload_min_minutes: int = 3      # ... in at least this many separate minutes
+    reload_back_min: int = 3         # a close beyond the absorption bin must be undone within 3 minutes (false break), else it broke
+    reload_cooldown_min: int = 30    # no second reload event of the same side at the same bin within 30 minutes
     min_trades: int = 30
     min_mean_r: float = 0.10
     bootstrap_draws: int = 10_000
@@ -88,7 +96,14 @@ class Params:
         values = asdict(self)
         if values["need_zone"]:   # the default leaves the digest of the running 0.6 journal untouched
             del values["need_zone"]
+        if not values["reload_need"]:   # same for the 0.7 fields: 0.6 runs keep their digest
+            for key in [k for k in values if k.startswith("reload_")]:
+                del values[key]
         return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()[:16]
+
+    @property
+    def rule(self) -> str:
+        return RULE_07 if self.reload_need else RULE
 
 
 PARAMS = Params()
@@ -306,6 +321,7 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
     exit_next: str | None = None
     follow: list[dict[str, Any]] = []
     cands: list[dict[str, Any]] = []   # circles waiting for the turn
+    reload_seen: dict[tuple[int, int], int] = {}   # (side, bin) -> last reload event (cooldown)
     current_day = None
     for idx, bar in enumerate(bars):
         day_start = bar.window_start_ms // DAY_MS * DAY_MS
@@ -387,7 +403,16 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
                         "at": _iso(end_ms), "vol_anteil": round(win.volume / f["vol"], 3) if f["vol"] else None,
                         "weniger_volumen": win.volume < f["vol"],
                         "gehalten": win.close > f["extreme"] if f["long"] else win.close < f["extreme"]}
-        if circles is None:
+        if p.reload_need:
+            look = [b for b in bars[max(0, idx - p.reload_lookback_min + 1):idx + 1]
+                    if b.window_start_ms > bar.window_start_ms - p.reload_lookback_min * MINUTE_MS]
+            day_bars = [b for b in bars[max(0, idx - 1439):idx + 1] if b.has_trades]
+            typical = {-1: median(b.sell_sats for b in day_bars) / E8, 1: median(b.buy_sats for b in day_bars) / E8} if day_bars else {}
+            hit = reload_hit(look, profiles, win, windows, reload_seen, p, typical)
+            if hit is not None and circles is not None:   # context only: big perp orders in the lookback
+                big = [o for o in circles(look[0].window_start_ms, end_ms) if o["btc"] >= p.circle_min_btc]
+                hit["kreise_im_fenster"] = [{"at": _iso(o["ms"]), "btc": round(o["btc"], 1), "side": int(o["side"])} for o in big][:5]
+        elif circles is None:
             hit = detect(win, windows, p)
         else:
             hit = _circle_hit(circles(win.start_ms, end_ms), cands, chunk, win, windows, end_ms, events, started_ms, p)
@@ -395,7 +420,7 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
             hours = _hours([b for b in bars[max(0, idx - p.swing_keep_h * 60 - 60):idx + 1]])
             zones.swings = _swings(hours, p.swing_side)
             drawn = chart(end_ms) if chart is not None else None   # TIM chart zones as seen at that moment
-            at_price = hit.get("kreis", {}).get("spot", hit["extreme"])   # a circle counts where the order hit
+            at_price = hit.get("kreis", {}).get("spot", hit.get("nachladen", {}).get("preis", hit["extreme"]))   # where it was absorbed
             zone = (_chart_zone(drawn, at_price, p) or _chart_zone(drawn, hit["extreme"], p)) if drawn is not None else None
             if drawn is None and (own := zones.near(at_price, end_ms, p) or zones.near(hit["extreme"], end_ms, p)):
                 zone = {"name": own[0], "price": round(own[1], 2), "quelle": "eigen"}
@@ -418,10 +443,10 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
             elif (zone or not p.need_zone) and pos is None and pending is None and atr and event["zaehlt"]:
                 pending = {"event": event, "direction": hit["direction"], "extreme": hit["extreme"], "close": hit["close"],
                            "atr": atr, "waited": 0, "zone": event["zone"], "kontext": event["kontext"],
-                           **({"fill_next": True} if "kreis" in hit else {}),   # the turn is the trigger: limit at this close
+                           **({"fill_next": True} if ("kreis" in hit or "nachladen" in hit) else {}),   # the turn is the trigger: limit at this close
                            "levels": sorted({round(lv, 2) for _, lv in zones.all(end_ms, p.swing_keep_h)}
                                             | {z["mid"] for z in drawn or [] if z["weight"] >= p.chart_min_weight})}
-                event["ergebnis"] = "ausgelöst, Limit am Schluss" if "kreis" in hit else "wartet auf Auslöser"
+                event["ergebnis"] = "ausgelöst, Limit am Schluss" if ("kreis" in hit or "nachladen" in hit) else "wartet auf Auslöser"
             else:
                 event["ergebnis"] = ("ohne Zone" if not zone and p.need_zone else "Position offen" if pos is not None
                                      else "vor Start" if not event["zaehlt"] else "kein ATR")
@@ -492,6 +517,100 @@ def _circle_hit(new: Sequence[dict[str, Any]], cands: list[dict[str, Any]], chun
             **_stats(win, history, p)}
 
 
+def _cells(look: Sequence[MinuteBar], profiles: dict[int, DayProfile | None]) -> dict[int, list[tuple[int, int, float, float]]]:
+    """Per minute of ``look``: (bin, width_e8, buy BTC, sell BTC) of the day profile (a lookback may cross midnight)."""
+    out: dict[int, list[tuple[int, int, float, float]]] = {}
+    wanted = {b.window_start_ms for b in look}
+    for day_start in {ms // DAY_MS * DAY_MS for ms in wanted}:
+        prof = profiles.get(day_start)
+        if prof is None:
+            continue
+        for minute, bin_, buy, sell in prof.entries:
+            ms = day_start + minute * MINUTE_MS
+            if ms in wanted:
+                out.setdefault(ms, []).append((bin_, prof.width_e8, buy / E8, sell / E8))
+    return out
+
+
+def reload_hit(look: Sequence[MinuteBar], profiles: dict[int, DayProfile | None], win: Window, history: Sequence[Window],
+               seen: dict[tuple[int, int], int], p: Params, typical: dict[int, float] | None = None) -> dict[str, Any] | None:
+    """0.7 event (Uzi 23.11. "go nachladen", sources: /mnt/project-files/analysen/absorption-quellen-2026-11-23/notizen.md).
+
+    Sell absorption (LONG) over the last ``reload_lookback_min`` closed minutes:
+
+    - absorption bin = the day-profile price bin (~0,1 %) with the most aggressive selling among the bins at or one
+      above the lookback low;
+    - reloaded = in at least ``reload_min_minutes`` separate minutes at least ``reload_min_btc`` and ``reload_factor``
+      x the typical minute (``typical``: median aggressive selling/buying per minute over 24 h) was sold into that bin
+      or its neighbours, without the price breaking away: a 1m close below the bin that is not undone within
+      ``reload_back_min`` minutes means the absorption broke (no event); one that is undone is a false break (flag);
+    - the switch to aggressive buying = this 5m window closes at least ``turn_pct`` above the bin top with positive delta.
+
+    Buy absorption (SHORT) mirrors it. Uses only minutes closed at the window close.
+    """
+    if len(history) < p.min_history or len(look) < p.reload_lookback_min // 2:
+        return None
+    cells = _cells(look, profiles)
+    if not cells:
+        return None
+    live = [b for b in look if b.has_trades]
+    if not live:
+        return None
+    width = next(iter(cells.values()))[0][1]
+    for side in (-1, 1):   # -1: sellers absorbed -> LONG, +1: buyers absorbed -> SHORT
+        totals: dict[int, float] = {}
+        for rows in cells.values():
+            for bin_, w, buy, sell in rows:
+                if w == width:
+                    totals[bin_] = totals.get(bin_, 0.0) + (sell if side < 0 else buy)
+        if not totals:
+            continue
+        extreme = min(_px(b.low_price_e8) for b in live) if side < 0 else max(_px(b.high_price_e8) for b in live)
+        edge_bin = int(extreme * E8) // width
+        span = (edge_bin, edge_bin + 1) if side < 0 else (edge_bin - 1, edge_bin)
+        near = [b for b in totals if span[0] <= b <= span[1]]
+        if not near:
+            continue
+        absorb = max(near, key=lambda b: totals[b])
+        bins = {absorb - 1, absorb, absorb + 1}
+        floor = max(p.reload_min_btc, p.reload_factor * (typical or {}).get(side, 0.0))
+        minutes = sum(1 for rows in cells.values()
+                      if sum((sell if side < 0 else buy) for bin_, w, buy, sell in rows if w == width and bin_ in bins) >= floor)
+        if minutes < p.reload_min_minutes:
+            continue
+        low_edge, high_edge = absorb * width / E8, (absorb + 1) * width / E8
+        level = low_edge if side < 0 else high_edge
+        broke, false_break, outside = False, False, 0
+        for b in live:
+            close = _px(b.last_price_e8)
+            beyond = close < level if side < 0 else close > level
+            if beyond:
+                outside += 1
+                if outside > p.reload_back_min:
+                    broke = True
+            elif outside:
+                false_break, outside = True, 0
+        if broke or outside:   # still outside at the window close counts as not undone
+            continue
+        if not false_break:    # a wick beyond the bin that closed back inside the same minute is a false break too
+            false_break = any((_px(b.low_price_e8) < level) if side < 0 else (_px(b.high_price_e8) > level) for b in live)
+        turn = (win.close >= high_edge * (1 + p.turn_pct / 100) and win.delta > 0) if side < 0 else \
+            (win.close <= low_edge * (1 - p.turn_pct / 100) and win.delta < 0)
+        if not turn:
+            continue
+        last = seen.get((side, absorb))
+        if last is not None and win.end_ms - last < p.reload_cooldown_min * MINUTE_MS:
+            continue
+        seen[(side, absorb)] = win.end_ms
+        sold = sum((sell if side < 0 else buy) for rows in cells.values() for bin_, w, buy, sell in rows if w == width and bin_ in bins)
+        return {"side": "VERKAUF" if side < 0 else "KAUF", "direction": "LONG" if side < 0 else "SHORT",
+                "extreme": extreme, "close": win.close,
+                "nachladen": {"preis": round((low_edge + high_edge) / 2, 2), "von": round(low_edge, 2), "bis": round(high_edge, 2),
+                              "minuten": minutes, "btc": round(sold, 3), "schwelle_btc": round(floor, 3), "falscher_bruch": false_break},
+                **_stats(win, history, p)}
+    return None
+
+
 def _chart_zone(drawn: Sequence[dict[str, Any]], extreme: float, p: Params) -> dict[str, Any] | None:
     """The heaviest TIM chart zone (weight >= mittel) the absorbed extreme lies in, with the usual tolerance."""
     near = extreme * p.zone_pct / 100
@@ -522,7 +641,7 @@ def _open(pending: dict[str, Any], fill: float, entry_fee: float, at_ms: int, p:
              "filled_at": _iso(at_ms), "fill": round(fill, 2), "entry_fee": entry_fee, "stop": round(stop, 2), "stop_start": round(stop, 2),
              "risk_pct": round(risk / fill * 100, 4), "cost_r": round(cost_r, 4),
              "kostenblockiert": cost_r > p.max_cost_r, "breakeven": False,
-             "kreis": event.get("kreis"),
+             "kreis": event.get("kreis"), "nachladen": event.get("nachladen"),
              "event": {k: event[k] for k in ("vol_ratio", "delta_btc", "delta_share", "large_trades", "largest_btc",
                                              "tempo", "cvd_60m_btc", "cvd_divergenz", "footprint_extrem")},
              "futures": event.get("futures"),
@@ -690,7 +809,7 @@ def step(folder: Path | str, load_day: Loader, today: date, *, now: datetime | N
         if start.get("digest") != p.digest():
             raise RuntimeError("Regel-Parameter geändert: neuer Ordner nötig, alte Trades zählen nicht für die neue Version")
     else:
-        start = {"rule": RULE, "digest": p.digest(), "started_at": now.isoformat(), "params": asdict(p),
+        start = {"rule": p.rule, "digest": p.digest(), "started_at": now.isoformat(), "params": asdict(p),
                  "status": "ENTWURF (nicht eingefroren)"}
         _write(start_path, start)
     started = datetime.fromisoformat(start["started_at"])
@@ -716,7 +835,7 @@ def step(folder: Path | str, load_day: Loader, today: date, *, now: datetime | N
     journal_path = folder / "journal.json"
     old = json.loads(journal_path.read_text(encoding="utf-8")) if journal_path.exists() else {}
     closed, deviations = chain(old.get("trades", []), result["trades"])
-    journal = {"rule": RULE, "digest": p.digest(), "started_at": start["started_at"], "checked_at": now.isoformat(),
+    journal = {"rule": p.rule, "digest": p.digest(), "started_at": start["started_at"], "checked_at": now.isoformat(),
                "letzte_minute": result["last_minute"], "fehlender_tag": missing, "trades": closed,
                "offen": result["open"], "ereignisse": result["events"][-500:],
                "abweichungen": sorted(set(old.get("abweichungen", [])) | set(deviations)),

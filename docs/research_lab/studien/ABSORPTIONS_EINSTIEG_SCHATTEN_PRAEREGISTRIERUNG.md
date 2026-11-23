@@ -95,3 +95,26 @@ Der Orderflow-Schatten speichert nur 3 nächste Level. R-ABS-2 braucht je Ereign
 
 ## Offen vor dem Einfrieren
 Schwellen wie in Stand 0.3, ob Kosten > 0,15 R wirklich ausgeschlossen bleiben (enge Docht-Stops sind oft teurer), Live-Quelle für Perp/OI/Funding/Liquidationen, Bitunix-Kostensätze, Chart-Definition des Kreises, Akkumulations-Parameter, Ort der Ausführung (PS5-Dienst neben `OF_LIVE` vs. Mac). Alles Uzis Entscheidung bzw. aus Code zu belegen.
+
+## Änderung 0.7 (Uzi 23.11.2026 "go nachladen"), eigener Papier-Lauf neben 0.6
+
+Quelle: Auswertung von Kurs-Transkripten zur Absorption (Futex Price Ladder Modul 3, Axia Footprint Unit 6,
+Peter Davies), eigene Zusammenfassung in den Projektdateien (nicht im Repo, gekaufte Inhalte). Lehrer-Aussagen,
+keine belegten Zahlen. Absorption hält, wenn an einer Zone wiederholt groß in denselben Preis gehandelt wird, ohne
+dass der Preis wegbricht ("Nachladen"), oft mit kurzem falschem Bruch und schnellem Zurück, danach Wechsel zur
+aggressiven Gegenseite. Sie bricht, wenn der Handel jenseits des Absorptionspreises bleibt.
+
+Ereignis 0.7 statt Kreis (`reload_hit`, Spot-Minuten und Tagesprofil der PS5, ~0,1-%-Preisstufen):
+- Absorptionsstufe = Preisstufe mit dem meisten aggressiven Verkauf (Kauf) am Tief (Hoch) der letzten 30 Minuten.
+- **Nachladen**: in mindestens 3 verschiedenen Minuten je mindestens 5 BTC und mindestens das 3-Fache der typischen
+  Minute (Median des aggressiven Verkaufs bzw. Kaufs je Minute über 24 h) in diese Stufe oder ihre Nachbarn.
+- **Bruch**: ein 1m-Schluss jenseits der Stufe, der nicht binnen 3 Minuten zurückgenommen wird, macht das Ereignis
+  ungültig. Zurückgenommen (oder nur Docht) = **falscher Bruch**, als Merkmal gespeichert und getrennt berichtet.
+- **Wechsel**: das 5m-Fenster schließt mindestens 0,10 % jenseits der Stufe mit Delta in Gegenrichtung.
+- Gleiche Seite und Stufe höchstens alle 30 Minuten. Große Perp-Orders (Kreise) im Fenster nur als Merkmal.
+Zone, Limit-Einstieg am Fensterschluss, Stop, Ziele (+2 R / +3 R), Gegen-Absorption, Kosten und Urteil wie 0.6.
+Eigener Ordner, eigener Digest; 0.6 (mit Zone / ohne Zone) läuft unverändert weiter. Drei Läufe = Mehrfachtest.
+Schwellen (5 BTC, 3-Fach, 3 Minuten, 3 Minuten Rücknahme) sind gesetzt. Ein Probelauf über 21.–23.11. nur mit der
+festen 5-BTC-Grenze gab rund 50 Trades in drei Tagen (fast jedes Hin und Her, meist früh per Gegen-Absorption beendet,
+in Summe negativ). Daraufhin kam das 3-Fache der typischen Minute dazu ("groß" wie der Volumenfaktor 3 der früheren
+Erkennung). Diese eine Anpassung an drei Rückblick-Tagen ist hier festgehalten; gezählt wird nur vorwärts ab Start.

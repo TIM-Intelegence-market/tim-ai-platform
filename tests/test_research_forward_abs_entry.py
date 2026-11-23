@@ -315,3 +315,85 @@ def test_without_zone_run_trades_a_turned_circle_anywhere_and_keeps_the_old_dige
     trade = abs_entry.simulate(far, STARTED, free, circles=circles)["open"]
     assert trade["direction"] == "LONG" and trade["zone"] is None
     assert abs_entry.PARAMS.digest() == "230d890f9a3ddd02" and free.digest() != abs_entry.PARAMS.digest()
+
+
+# -- 0.7: reloaded absorption and false break (Uzi 23.11. "go nachladen") ------------------------------------------
+P07 = abs_entry.Params(reload_need=True)
+WIDTH = 50 * E8   # 50 USD bins: 64 000 - 64 050 is bin 1280
+
+
+def reload_minutes(start: int, broke: bool = False, reloads: tuple[int, ...] = (3, 8, 13, 19), false_break: bool = True):
+    """30 minutes at the 64 000 bin: sellers hit it again and again, price holds; the last 5 minutes turn up."""
+    bars, cells = [], []
+    for m in range(30):
+        t = start + m * MINUTE_MS
+        if m >= 25:   # the turn window: buyers lift price to 64 200
+            p = 64_060 + (m - 25) * 30
+            bars.append(bar(t, p, p + 20, p - 10, p + 20, buy=6.0, sell=1.0))
+            continue
+        c = 64_030.0
+        low = 64_005.0
+        if false_break and m == 16:
+            c, low = 63_990.0, 63_980.0   # a close below the bin ...
+        if broke and m >= 16:
+            c, low = 63_960.0, 63_940.0   # ... that is never undone
+        bars.append(bar(t, 64_030, 64_060, low, c, buy=1.0, sell=9.0 if m in reloads else 2.0))
+        cells.append((m, 1280, 1 * E8, (9 if m in reloads else 2) * E8))
+    return bars, cells
+
+
+def history_windows(n: int = 100):
+    return [abs_entry.Window(0, 0, 64_000, 64_010, 63_990, 64_000, 1, 1, 10, 0, 0.1) for _ in range(n)]
+
+
+def profile_for(start: int, cells) -> dict:
+    day0 = start // abs_entry.DAY_MS * abs_entry.DAY_MS
+    first = (start - day0) // MINUTE_MS
+    entries = tuple(sorted((first + m, b, buy, sell) for m, b, buy, sell in cells))
+    return {day0: DayProfile(day0, WIDTH, entries)}
+
+
+def test_reload_with_false_break_and_turn_is_a_long():
+    start = ms(DAY1) + 600 * MINUTE_MS
+    look, cells = reload_minutes(start)
+    win = abs_entry.window_of(look[-5:])
+    hit = abs_entry.reload_hit(look, profile_for(start, cells), win, history_windows(), {}, P07)
+    assert hit["direction"] == "LONG" and hit["nachladen"]["minuten"] == 4
+    assert hit["nachladen"]["von"] == 64_000.0 and hit["nachladen"]["falscher_bruch"] is True
+    assert hit["extreme"] == 63_980.0
+
+
+def test_reload_fails_when_broken_too_few_reloads_or_in_cooldown():
+    start = ms(DAY1) + 600 * MINUTE_MS
+    look, cells = reload_minutes(start, broke=True)
+    win = abs_entry.window_of(look[-5:])
+    assert abs_entry.reload_hit(look, profile_for(start, cells), win, history_windows(), {}, P07) is None
+    look, cells = reload_minutes(start, reloads=(3, 8))
+    assert abs_entry.reload_hit(look, profile_for(start, cells), abs_entry.window_of(look[-5:]), history_windows(), {}, P07) is None
+    look, cells = reload_minutes(start, false_break=False)
+    seen: dict = {}
+    first = abs_entry.reload_hit(look, profile_for(start, cells), abs_entry.window_of(look[-5:]), history_windows(), seen, P07)
+    assert first is not None and first["nachladen"]["falscher_bruch"] is False
+    assert abs_entry.reload_hit(look, profile_for(start, cells), abs_entry.window_of(look[-5:]), history_windows(), seen, P07) is None
+
+
+def test_reload_run_trades_at_the_zone_with_a_limit_and_keeps_06_digest():
+    day3 = DAY1 + timedelta(days=2)
+    start = ms(day3)
+    bars = flat_day(day3)[:570]
+    look, cells = reload_minutes(start + 570 * MINUTE_MS)
+    bars += look
+    price = 64_200.0
+    for k in range(60):
+        bars.append(bar(start + (600 + k) * MINUTE_MS, price, price + 10, (price - 50 if k == 0 else price - 5), price + 8))
+        price += 8
+    profile = DayProfile(start, WIDTH, tuple(sorted((570 + m, b, buy, sell) for m, b, buy, sell in cells)))
+    run = [(DAY1, flat_day(DAY1), None), (DAY1 + timedelta(days=1), flat_day(DAY1 + timedelta(days=1), low=64_000.0), None),
+           (day3, bars, profile)]
+    out = abs_entry.simulate(run, STARTED, P07)
+    hits = [e for e in out["events"] if e.get("nachladen")]
+    assert hits and hits[0]["zone"]["name"] == "VT Tief" and hits[0]["ergebnis"] in ("Einstieg", "ausgelöst, Limit am Schluss")
+    trade = out["open"] or out["trades"][0]
+    assert trade["direction"] == "LONG" and trade["nachladen"]["minuten"] == 4
+    assert abs_entry.PARAMS.digest() == "230d890f9a3ddd02" and P07.digest() != abs_entry.PARAMS.digest()
+    assert P07.rule == "R-ABS-2/0.7-entwurf" and abs_entry.PARAMS.rule == "R-ABS-2/0.6-entwurf"
