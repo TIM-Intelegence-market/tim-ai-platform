@@ -156,9 +156,7 @@ def fetch_headlines(fetch: Fetch | None = None) -> list[dict[str, Any]]:
 
 
 def append_log(items: Sequence[Mapping[str, Any]], path: Path = HEADLINE_LOG, now: datetime | None = None) -> int:
-    """Append items not yet in the log; returns how many were new (ids of the last ``LOG_READ_DAYS`` days count).
-
-    ``now`` fixes that window (tests); by default it is the current time."""
+    """Append items not yet in the log; returns how many were new (ids of the last ``LOG_READ_DAYS`` days count)."""
     known = {row["id"] for row in read_log(path, now=now)}
     new = [dict(item) for item in items if item.get("id") not in known]
     if new:

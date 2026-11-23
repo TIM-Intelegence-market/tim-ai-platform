@@ -46,7 +46,7 @@ def test_one_broken_feed_is_skipped_and_none_answering_raises():
 def test_log_appends_only_new_items(tmp_path):
     path = tmp_path / "h.jsonl"
     items = W.parse_feed(RSS, "CoinDesk")
-    now = datetime(2026, 11, 14, tzinfo=timezone.utc)  # fixed: the feed items are from 13.11.2026 (the window is 10 days)
+    now = datetime(2026, 11, 14, tzinfo=timezone.utc)
     assert W.append_log(items, path, now=now) == 2
     assert W.append_log(items, path, now=now) == 0
     assert len(W.read_log(path, now=now)) == 2
