@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.tim.signalgruppe-diary</string>
+  <key>ProgramArguments</key><array>
+    <string>__PYTHON__</string><string>scripts/signalgruppe_paper_diary.py</string><string>cycle</string>
+    <string>--feed-dir</string><string>__FEED_DIR__</string>
+    <string>--workdir</string><string>__WORKDIR__</string>
+  </array>
+  <key>WorkingDirectory</key><string>__REPO__</string>
+  <key>EnvironmentVariables</key><dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PYTHONDONTWRITEBYTECODE</key><string>1</string>
+  </dict>
+  <key>StartInterval</key><integer>900</integer>
+  <key>RunAtLoad</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>Nice</key><integer>10</integer>
+  <key>StandardOutPath</key><string>__LOG_DIR__/signalgruppe-diary.out.log</string>
+  <key>StandardErrorPath</key><string>__LOG_DIR__/signalgruppe-diary.err.log</string>
+</dict></plist>
