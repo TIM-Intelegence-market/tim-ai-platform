@@ -106,12 +106,15 @@ aggressiven Gegenseite. Sie bricht, wenn der Handel jenseits des Absorptionsprei
 
 Ereignis 0.7 statt Kreis (`reload_hit`, Spot-Minuten und Tagesprofil der PS5, ~0,1-%-Preisstufen):
 - Absorptionsstufe = Preisstufe mit dem meisten aggressiven Verkauf (Kauf) am Tief (Hoch) der letzten 30 Minuten.
-- **Nachladen**: in mindestens 3 verschiedenen Minuten je mindestens 5 BTC aggressiver Verkauf (Kauf) in diese Stufe
-  oder ihre Nachbarn.
+- **Nachladen**: in mindestens 3 verschiedenen Minuten je mindestens 5 BTC und mindestens das 3-Fache der typischen
+  Minute (Median des aggressiven Verkaufs bzw. Kaufs je Minute über 24 h) in diese Stufe oder ihre Nachbarn.
 - **Bruch**: ein 1m-Schluss jenseits der Stufe, der nicht binnen 3 Minuten zurückgenommen wird, macht das Ereignis
   ungültig. Zurückgenommen (oder nur Docht) = **falscher Bruch**, als Merkmal gespeichert und getrennt berichtet.
 - **Wechsel**: das 5m-Fenster schließt mindestens 0,10 % jenseits der Stufe mit Delta in Gegenrichtung.
 - Gleiche Seite und Stufe höchstens alle 30 Minuten. Große Perp-Orders (Kreise) im Fenster nur als Merkmal.
 Zone, Limit-Einstieg am Fensterschluss, Stop, Ziele (+2 R / +3 R), Gegen-Absorption, Kosten und Urteil wie 0.6.
 Eigener Ordner, eigener Digest; 0.6 (mit Zone / ohne Zone) läuft unverändert weiter. Drei Läufe = Mehrfachtest.
-Schwellen (5 BTC, 3 Minuten, 3 Minuten Rücknahme) sind gesetzt, nicht angepasst.
+Schwellen (5 BTC, 3-Fach, 3 Minuten, 3 Minuten Rücknahme) sind gesetzt. Ein Probelauf über 21.–23.11. nur mit der
+festen 5-BTC-Grenze gab rund 50 Trades in drei Tagen (fast jedes Hin und Her, meist früh per Gegen-Absorption beendet,
+in Summe negativ). Daraufhin kam das 3-Fache der typischen Minute dazu ("groß" wie der Volumenfaktor 3 der früheren
+Erkennung). Diese eine Anpassung an drei Rückblick-Tagen ist hier festgehalten; gezählt wird nur vorwärts ab Start.

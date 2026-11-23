@@ -82,7 +82,8 @@ class Params:
     turn_pct: float = 0.10           # ... as a 5m close at least 0.10 % beyond the price at the order
     reload_need: bool = False        # 0.7 (Uzi 23.11. "go nachladen"): the event is a reloaded absorption, not a circle
     reload_lookback_min: int = 30    # reload and false break are read over the last 30 minutes up to the window close
-    reload_min_btc: float = 5.0      # a reload minute: at least this much aggressive selling (buying) in the absorption bins
+    reload_min_btc: float = 5.0      # a reload minute: at least this much aggressive selling (buying) in the absorption bins ...
+    reload_factor: float = 3.0       # ... and at least 3x the median minute of selling (buying) over the last 24 h ("groß")
     reload_min_minutes: int = 3      # ... in at least this many separate minutes
     reload_back_min: int = 3         # a close beyond the absorption bin must be undone within 3 minutes (false break), else it broke
     reload_cooldown_min: int = 30    # no second reload event of the same side at the same bin within 30 minutes
@@ -405,7 +406,9 @@ def simulate(days: Sequence[tuple[date, Sequence[MinuteBar], DayProfile | None]]
         if p.reload_need:
             look = [b for b in bars[max(0, idx - p.reload_lookback_min + 1):idx + 1]
                     if b.window_start_ms > bar.window_start_ms - p.reload_lookback_min * MINUTE_MS]
-            hit = reload_hit(look, profiles, win, windows, reload_seen, p)
+            day_bars = [b for b in bars[max(0, idx - 1439):idx + 1] if b.has_trades]
+            typical = {-1: median(b.sell_sats for b in day_bars) / E8, 1: median(b.buy_sats for b in day_bars) / E8} if day_bars else {}
+            hit = reload_hit(look, profiles, win, windows, reload_seen, p, typical)
             if hit is not None and circles is not None:   # context only: big perp orders in the lookback
                 big = [o for o in circles(look[0].window_start_ms, end_ms) if o["btc"] >= p.circle_min_btc]
                 hit["kreise_im_fenster"] = [{"at": _iso(o["ms"]), "btc": round(o["btc"], 1), "side": int(o["side"])} for o in big][:5]
@@ -530,14 +533,15 @@ def _cells(look: Sequence[MinuteBar], profiles: dict[int, DayProfile | None]) ->
 
 
 def reload_hit(look: Sequence[MinuteBar], profiles: dict[int, DayProfile | None], win: Window, history: Sequence[Window],
-               seen: dict[tuple[int, int], int], p: Params) -> dict[str, Any] | None:
+               seen: dict[tuple[int, int], int], p: Params, typical: dict[int, float] | None = None) -> dict[str, Any] | None:
     """0.7 event (Uzi 23.11. "go nachladen", sources: /mnt/project-files/analysen/absorption-quellen-2026-11-23/notizen.md).
 
     Sell absorption (LONG) over the last ``reload_lookback_min`` closed minutes:
 
     - absorption bin = the day-profile price bin (~0,1 %) with the most aggressive selling among the bins at or one
       above the lookback low;
-    - reloaded = in at least ``reload_min_minutes`` separate minutes at least ``reload_min_btc`` was sold into that bin
+    - reloaded = in at least ``reload_min_minutes`` separate minutes at least ``reload_min_btc`` and ``reload_factor``
+      x the typical minute (``typical``: median aggressive selling/buying per minute over 24 h) was sold into that bin
       or its neighbours, without the price breaking away: a 1m close below the bin that is not undone within
       ``reload_back_min`` minutes means the absorption broke (no event); one that is undone is a false break (flag);
     - the switch to aggressive buying = this 5m window closes at least ``turn_pct`` above the bin top with positive delta.
@@ -569,8 +573,9 @@ def reload_hit(look: Sequence[MinuteBar], profiles: dict[int, DayProfile | None]
             continue
         absorb = max(near, key=lambda b: totals[b])
         bins = {absorb - 1, absorb, absorb + 1}
+        floor = max(p.reload_min_btc, p.reload_factor * (typical or {}).get(side, 0.0))
         minutes = sum(1 for rows in cells.values()
-                      if sum((sell if side < 0 else buy) for bin_, w, buy, sell in rows if w == width and bin_ in bins) >= p.reload_min_btc)
+                      if sum((sell if side < 0 else buy) for bin_, w, buy, sell in rows if w == width and bin_ in bins) >= floor)
         if minutes < p.reload_min_minutes:
             continue
         low_edge, high_edge = absorb * width / E8, (absorb + 1) * width / E8
@@ -601,7 +606,7 @@ def reload_hit(look: Sequence[MinuteBar], profiles: dict[int, DayProfile | None]
         return {"side": "VERKAUF" if side < 0 else "KAUF", "direction": "LONG" if side < 0 else "SHORT",
                 "extreme": extreme, "close": win.close,
                 "nachladen": {"preis": round((low_edge + high_edge) / 2, 2), "von": round(low_edge, 2), "bis": round(high_edge, 2),
-                              "minuten": minutes, "btc": round(sold, 3), "falscher_bruch": false_break},
+                              "minuten": minutes, "btc": round(sold, 3), "schwelle_btc": round(floor, 3), "falscher_bruch": false_break},
                 **_stats(win, history, p)}
     return None
 
