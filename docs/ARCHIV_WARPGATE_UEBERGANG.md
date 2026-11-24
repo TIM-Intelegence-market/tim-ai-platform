@@ -225,7 +225,8 @@ IMG_DIR=/var/lib/warpgate/tim-archive-img; IMG=$IMG_DIR/archive.img; MNT=/srv/ti
 # 0  Vorbedingungen: Warpgate-Platte eingehängt, genug frei, Ziele noch nicht vorhanden
 findmnt -no TARGET /var/lib/warpgate >/dev/null
 test "$(df -B1 --output=avail /var/lib/warpgate | tail -1)" -ge 300000000000
-test ! -e "$IMG_DIR" && test ! -e "$MNT"
+test ! -e "$IMG_DIR"
+test ! -e "$MNT"
 
 # 1  Dienstkonto ohne Login-Shell und ohne sudo (der Import-Login aus E4 wird ihm zugeordnet)
 adduser --system --group --no-create-home --shell /usr/sbin/nologin tim-archive
@@ -243,10 +244,12 @@ install -d -m 0000 -o root -g root "$MNT"; chattr +i "$MNT"
 
 # 5  fstab: Loop, nicht trimmen, kein exec/dev/suid, abhängig von der Warpgate-Platte
 echo "$IMG $MNT ext4 loop,nofail,noatime,nodev,nosuid,noexec,X-fstrim.notrim,x-systemd.requires-mounts-for=/var/lib/warpgate 0 2" >> /etc/fstab
-systemctl daemon-reload && mount "$MNT"
+systemctl daemon-reload
+mount "$MNT"
 findmnt -no SOURCE,FSTYPE,OPTIONS "$MNT"
 
 # 6  Bereiche und Rechte im eingehängten Dateisystem
+chown tim-archive:tim-archive "$MNT"; chmod 0750 "$MNT"   # Wurzel des eingehängten Archivs, nicht der Einhängepunkt darunter
 install -d -m 0750 -o tim-archive -g tim-archive "$MNT/inbox" "$MNT/store-root"
 
 # 7  Store anlegen und binden (als tim-archive, einmal von Hand)
@@ -273,10 +276,8 @@ Deshalb prüft der Store selbst Einhängung, Markierungsdatei, Gerät und die 15
 Schritt 8. Die Option `--image` des Stores ist für Aufbauten gedacht, in denen das Konto das Image
 erreichen kann.
 
-Für Schritt 7 muss `$MNT` selbst für tim-archive beschreibbar sein, damit die Markierungsdatei
-angelegt werden kann. Deshalb einmalig vor Schritt 7 `chown tim-archive "$MNT"` auf das
-**eingehängte** Wurzelverzeichnis. Der darunterliegende Einhängepunkt bleibt 0000 und
-unveränderlich.
+Die Rechte in Schritt 6 gelten für das **eingehängte** Wurzelverzeichnis. Dort legt `cold-init`
+die Markierungsdatei an. Der Einhängepunkt darunter bleibt leer, 0000 und unveränderlich.
 
 Nachprüfung nach der Einrichtung, nur lesend:
 
