@@ -433,9 +433,12 @@ def test_invalid_volumes_are_unknown_downstream(volume, unknown):
     assert shadow.gate("LONG", v) == shadow.UNBEKANNT and shadow.should_exit("SHORT", v) is None
 
 
-def test_empty_volume_has_no_side_verdict_and_old_views_still_work():
+def test_empty_volume_is_no_evidence_and_old_views_still_work():
     from src.dashboard import orderflow_shadow as shadow
 
-    empty = shadow.lage_view({"price": 100.0, "wave": {"direction": "keine"}, "windows": {"1m": {"volume": 0.0}}})
-    assert empty["side_ok"] is None and shadow.gate("LONG", empty) == shadow.NEUTRAL
+    # Codex Mission 07: volume 0 (or none) is no evidence, so even a forced wave "auf" is UNBEKANNT, never BESTÄTIGT.
+    empty = shadow.lage_view({"price": 100.0, "wave": {"direction": "auf", "strength": 2}, "windows": {"5m": {"volume": 0.0, "unknown_volume": 0.0}}})
+    assert empty["side_ok"] is False and empty["side_status"] == "EMPTY" and shadow.gate("LONG", empty) == shadow.UNBEKANNT
+    no_windows = shadow.lage_view({"price": 100.0, "wave": {"direction": "auf", "strength": 2}})
+    assert shadow.gate("LONG", no_windows) == shadow.UNBEKANNT
     assert shadow.side_unknown({"known_share": 0.9}) and not shadow.side_unknown({"known_share": 0.95})  # pre-07 views
