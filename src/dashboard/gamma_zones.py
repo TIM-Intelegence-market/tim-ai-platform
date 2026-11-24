@@ -51,8 +51,9 @@ GAMMA_STALE_AFTER = gamma_data.STALE_AFTER  # gamma snapshot older than this: no
 FUTURE_SKEW = timedelta(seconds=60)  # diagnosis: a source time more than this ahead of now is a clock error
 # Statuses with a fresh book: the price is known, so the runtime may advance the shadow log (open visits close by
 # price). Only "OK" ever opens a visit (``track``).
-WATCH_STATUSES = ("OK", "NO_GAMMA", "STALE_GAMMA", "FUTURE_GAMMA")
-VERDICT_FROM = 30       # closed visits before the first verdict
+WATCH_STATUSES = ("OK", "NO_GAMMA", "STALE_GAMMA", "FUTURE_GAMMA", "UNKNOWN_GAMMA_TIME")
+VERDICT_FROM = 30       # closed visits (gehalten + gebrochen, censored ones not) before the first verdict
+CENSORED = "zensiert"   # visit interrupted by a gap or a version switch: no outcome observed
 MAX_VISITS = 500
 DEFAULT_PATH = Path("data/journal/tim_gamma_zone_watch.json")
 ROOT_ENV = "TIM_ORDERBOOK_ROOT"
@@ -109,18 +110,27 @@ def _parse_time(value: Any) -> datetime | None:
 
 
 def gamma_check(gamma: Mapping[str, Any] | None, now: datetime) -> tuple[str, str | None, dict[str, Any]]:
-    """Status of the gamma snapshot for the zones: OK, NO_GAMMA, STALE_GAMMA or FUTURE_GAMMA, a note and its times."""
-    times: dict[str, Any] = {"gamma_as_of": None, "gamma_age_seconds": None, "gamma_clock_skew_suspect": False}
+    """Status of the gamma snapshot for the zones: OK, NO_GAMMA, STALE_GAMMA, FUTURE_GAMMA or UNKNOWN_GAMMA_TIME.
+
+    Two times (Mission 07): ``as_of`` is when TIM received the snapshot (availability, must be <= now) and
+    ``source_as_of`` the oldest source time of the rows (freshness). Freshness is never inferred from the receipt:
+    without a source time the status is UNKNOWN_GAMMA_TIME and no zone is shown."""
+    times: dict[str, Any] = {"gamma_as_of": None, "gamma_age_seconds": None, "gamma_source_as_of": None,
+                             "gamma_clock_skew_suspect": False}
     if not gamma or not gamma.get("levels"):
         return "NO_GAMMA", "kein Gamma-Stand", times
     moment = _parse_time(gamma.get("as_of"))
     if moment is None:
         return "NO_GAMMA", "Gamma-Stand ohne gültige Zeit, Zonen ausgeblendet", times
-    age = now - moment
-    times = {"gamma_as_of": moment.isoformat(), "gamma_age_seconds": int(age.total_seconds()),
-             "gamma_clock_skew_suspect": age < -FUTURE_SKEW}
-    if age < timedelta(0):                       # not yet available at ``now``: never a zone, whatever the cause
+    source = _parse_time(gamma.get("source_as_of"))
+    age = now - (source or moment)
+    times = {"gamma_as_of": moment.isoformat(), "gamma_age_seconds": int(age.total_seconds()) if source else None,
+             "gamma_source_as_of": source.isoformat() if source else None,
+             "gamma_clock_skew_suspect": now - moment < -FUTURE_SKEW or age < -FUTURE_SKEW}
+    if now - moment < timedelta(0) or (source is not None and source > moment) or age < timedelta(0):
         return "FUTURE_GAMMA", "Gamma-Stand liegt in der Zukunft, Zonen ausgeblendet", times
+    if source is None:
+        return "UNKNOWN_GAMMA_TIME", "Gamma-Quellzeit unbekannt (nur Empfangszeit), Zonen ausgeblendet", times
     if age > GAMMA_STALE_AFTER:
         return "STALE_GAMMA", "Gamma-Stand ist alt, Zonen ausgeblendet", times
     return "OK", None, times
@@ -209,6 +219,8 @@ def chart_drawings(view: Mapping[str, Any] | None, watch: Mapping[str, Any] | No
         text = f"Gamma-Level mit Orderbuch-Mauer: {len(drawings)}"
         if counts and counts["closed"]:
             text += f", Berührungen {counts['closed']} ({counts['held']} gehalten, {counts['broken']} gebrochen), Urteil ab {VERDICT_FROM}"
+            if counts.get("censored"):
+                text += f", {counts['censored']} wegen Beobachtungslücke ohne Ergebnis"
         notes.append(text + ".")
     elif view.get("note"):
         notes.append(f"Gamma-Zonen: {view['note']}.")
@@ -253,11 +265,28 @@ def summary(state: Mapping[str, Any] | None) -> dict[str, int]:
     every_open = (state or {}).get("open") or []
     visits = [v for v in every if v.get("ruleset") == RULESET]
     opened = [v for v in every_open if v.get("ruleset") == RULESET]
-    return {"open": len(opened), "closed": len(visits),
+    censored = [v for v in visits if v.get("outcome") == CENSORED]
+    observed = [v for v in visits if v.get("outcome") != CENSORED]
+    return {"open": len(opened), "closed": len(observed), "censored": len(censored),
             "held": sum(1 for v in visits if v["outcome"] == "gehalten"),
             "broken": sum(1 for v in visits if v["outcome"] == "gebrochen"),
             "pulled": sum(1 for v in visits if v.get("wall_pulled")),
             "earlier_open": len(every_open) - len(opened), "earlier_closed": len(every) - len(visits)}
+
+
+def _gap_reason(previous: Mapping[str, Any], at: str) -> str | None:
+    """Why the watch was interrupted before ``at``: a pause longer than ``STALE_AFTER`` (runtime down, book stale,
+    restart), time going back, or an unreadable last time. None when the step follows the last one closely."""
+    if not previous.get("updated_at"):
+        return None
+    last, now = _parse_time(str(previous["updated_at"])), _parse_time(at)
+    if last is None or now is None:
+        return "Zeit unlesbar"
+    if now < last:
+        return "Zeit rückwärts"
+    if now - last > STALE_AFTER:
+        return "Beobachtungslücke"
+    return None
 
 
 def track(state: Mapping[str, Any] | None, view: Mapping[str, Any], price: float, at: str) -> dict[str, Any]:
@@ -270,14 +299,25 @@ def track(state: Mapping[str, Any] | None, view: Mapping[str, Any], price: float
 
     Invalid states (any status but OK: book missing, old or in the future, gamma missing, old or in the future)
     never open a visit. Open visits go on: they still close by price, and ``wall_pulled`` is not set, because the
-    zones are unknown then (not gone). New visits carry ``ruleset``; visits of earlier rulesets are kept as they are.
+    zones are unknown then (not gone).
+
+    Censoring (Mission 07, Codex #372): the gap check comes before any outcome. After a pause longer than
+    ``STALE_AFTER`` (or time going back), and for open visits of another ruleset, the open visits end as ``zensiert``
+    with the reason and the last watched moment, never as gehalten or gebrochen: the price may have gone anywhere in
+    between. ``summary`` counts them apart; the verdict denominator is gehalten + gebrochen only. New visits carry ``ruleset``; visits of earlier rulesets are kept as they are.
     """
     previous = state or {}
     out = {"schema": SCHEMA, "ruleset": RULESET, "started_at": previous.get("started_at") or at, "open": [],
            "archived": int(previous.get("archived") or 0),
            "visits": list(previous.get("visits") or []), "last_price": price, "updated_at": at}
     zones = (view.get("zones") or []) if view.get("status") == "OK" else None   # None: nothing known about the book now
+    gap = _gap_reason(previous, at)
     for visit in previous.get("open") or []:
+        reason = gap or ("Versionswechsel" if visit.get("ruleset") != RULESET else None)
+        if reason:      # censored (Mission 07): the path in between was not watched, so no outcome is claimed
+            out["visits"].append({**visit, "closed_at": at, "outcome": CENSORED, "censor_reason": reason,
+                                  "observed_until": previous.get("updated_at")})
+            continue
         pad = visit["pad"]
         if zones is not None and not any(z["wall_low"] == visit["wall_low"] and z["side"] == visit["side"] for z in zones):
             visit = {**visit, "wall_pulled": True}
@@ -288,9 +328,8 @@ def track(state: Mapping[str, Any] | None, view: Mapping[str, Any], price: float
         else:
             out["open"].append(visit)
     last = previous.get("last_price")
-    if last is not None and previous.get("updated_at"):
-        if datetime.fromisoformat(at) - datetime.fromisoformat(str(previous["updated_at"])) > STALE_AFTER:
-            last = None   # after a pause the side the price came from is not known
+    if gap:
+        last = None   # after a pause the side the price came from is not known
     for zone in zones or []:
         if not zone["low"] <= price <= zone["high"] or last is None or zone["low"] <= last <= zone["high"]:
             continue

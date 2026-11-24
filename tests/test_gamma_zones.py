@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import gzip
+
+import pytest
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -136,7 +138,7 @@ def _walls_view(now: datetime, **over) -> dict:
 
 
 def _gamma(now: datetime, age: timedelta = timedelta(minutes=2)) -> dict:
-    return {"levels": LEVELS, "as_of": (now - age).isoformat()}
+    return {"levels": LEVELS, "as_of": (now - age).isoformat(), "source_as_of": (now - age).isoformat()}
 
 
 def _view(now: datetime, **over) -> dict:
@@ -187,7 +189,7 @@ def test_shadow_log_counts_held_broken_and_pulled() -> None:
     state = step(state, 98_800.0, 6, pulled)              # through
     assert state["visits"][-1]["outcome"] == "gebrochen" and state["visits"][-1]["wall_pulled"] is True
     assert gamma_zones.summary(state) == {"open": 0, "closed": 2, "held": 1, "broken": 1, "pulled": 1,
-                                          "earlier_open": 0, "earlier_closed": 0}
+                                          "earlier_open": 0, "earlier_closed": 0, "censored": 0}
     state = step(state, 99_500.0, 7)
     state = step(state, 99_100.0, 30)                     # 23 minutes without a step: side unknown, no visit
     assert state["open"] == []
@@ -200,6 +202,7 @@ def test_refresh_and_update_write_only_state_and_their_own_file(tmp_path: Path) 
     with gzip.open(folder / "2027-01-15.100.jsonl.gz", "xb") as fh:
         fh.write(("\n".join(json.dumps(r) for r in [_snapshot_row(T0)] + _rows(T0, 40, "9")) + "\n").encode())
     state = SimpleNamespace(lock=RLock(), gamma={"BTCUSDT": {"as_of": (now - timedelta(minutes=3)).isoformat(),
+                                                             "source_as_of": (now - timedelta(minutes=3)).isoformat(),
                                                              "levels": [{"key": "put_wall", "name": "Put Wall", "price": 99_100.0, "note": ""}]}}, gamma_zones={})
     gamma_zones._TAILS.clear()
     view = gamma_zones.refresh(state, "BTCUSDT", root=tmp_path / "book", now=now)
@@ -368,7 +371,7 @@ def test_invalid_states_never_open_a_visit_and_open_visits_close_by_price() -> N
     assert len(state["open"]) == 1 and state["open"][0]["wall_pulled"] is False   # zones unknown, not gone
     state = gamma_zones.track(state, invalid[0], 99_450.0, at(3))     # and closes by price
     assert state["open"] == [] and state["visits"][-1]["outcome"] == "gehalten"
-    assert set(gamma_zones.WATCH_STATUSES) == {"OK", "NO_GAMMA", "STALE_GAMMA", "FUTURE_GAMMA"}   # only with a fresh book
+    assert set(gamma_zones.WATCH_STATUSES) == {"OK", "NO_GAMMA", "STALE_GAMMA", "FUTURE_GAMMA", "UNKNOWN_GAMMA_TIME"}  # fresh book
 
 
 def test_update_in_an_invalid_state_writes_no_visit(tmp_path: Path) -> None:
@@ -400,7 +403,7 @@ def test_rollback_1_1_to_1_2_to_1_1_mixes_nothing_and_loses_nothing(tmp_path: Pa
     assert path.read_bytes() == before                                 # 1.1 log untouched (also its open visit)
     assert [v["ruleset"] for v in state["visits"]] == [gamma_zones.RULESET]
     assert gamma_zones.summary(state) == {"open": 0, "closed": 1, "held": 1, "broken": 0, "pulled": 0,
-                                          "earlier_open": 0, "earlier_closed": 0}
+                                          "earlier_open": 0, "earlier_closed": 0, "censored": 0}
     reverted = json.loads(path.read_text(encoding="utf-8"))           # what 1.1 code reads after a revert
     assert len(reverted["visits"]) == 3 and all("ruleset" not in v for v in reverted["visits"])
     again = gamma_zones.update(path, ok, 99_500.0, NOW + timedelta(minutes=3))   # back on 1.2: its file goes on
@@ -486,3 +489,69 @@ def test_archive_is_idempotent_after_a_crash_between_archive_and_log(tmp_path: P
     for minute, price in ((7, 99_500.0), (8, 99_150.0), (9, 99_450.0)):
         state = step(minute, price)
     assert [r["opened_at"][11:16] for r in gamma_zones.read_archive(archive)] == ["12:01", "12:04"]
+
+
+# Mission 07: freshness from the source time, never from the HTTP receipt.
+def test_gamma_freshness_comes_from_the_source_time_not_the_receipt() -> None:
+    received = _gamma(NOW, timedelta(seconds=5))
+    no_source = {k: v for k, v in received.items() if k != "source_as_of"}
+    view = _status(no_source, _walls_view(NOW))
+    assert view["status"] == "UNKNOWN_GAMMA_TIME" and view["zones"] == [] and view["gamma_age_seconds"] is None
+    old_source = {**received, "source_as_of": (NOW - gamma_zones.GAMMA_STALE_AFTER - timedelta(minutes=1)).isoformat()}
+    assert _status(old_source, _walls_view(NOW))["status"] == "STALE_GAMMA"      # received 5 s ago, but old data
+    after_receipt = {**received, "source_as_of": (NOW - timedelta(seconds=1)).isoformat()}
+    assert _status(after_receipt, _walls_view(NOW))["status"] == "FUTURE_GAMMA"  # a source time after receipt is impossible
+    rows = [{"creation_timestamp": int((NOW - timedelta(seconds=40)).timestamp() * 1000)},
+            {"creation_timestamp": int((NOW - timedelta(seconds=2)).timestamp() * 1000)}]
+    times = gamma_zones.gamma_data.source_times(rows, NOW)
+    assert times["source_as_of"] == (NOW - timedelta(seconds=40)).isoformat() and times["received_at"] == NOW.isoformat()
+    for bad in ([{}], [{"creation_timestamp": True}], [{"creation_timestamp": float("nan")}], []):
+        assert gamma_zones.gamma_data.source_times(bad, NOW)["source_as_of"] is None
+
+
+def _open_visit() -> dict:
+    ok = _view(NOW)
+    state = gamma_zones.track(gamma_zones.track(None, ok, 99_500.0, NOW.isoformat()), ok, 99_150.0,
+                              (NOW + timedelta(minutes=1)).isoformat())
+    assert len(state["open"]) == 1
+    return state
+
+
+# Codex #issuecomment-7136858061 test 3: an observation gap never produces an observed outcome.
+@pytest.mark.parametrize("minutes", [11, 60, 360])
+def test_open_visit_after_a_gap_is_censored_not_broken(minutes: int) -> None:
+    state = _open_visit()
+    last = gamma_zones.track(state, _view(NOW), 99_120.0, (NOW + timedelta(minutes=2)).isoformat())
+    nogamma = gamma_zones.build(None, _walls_view(NOW), NOW)
+    after = gamma_zones.track(last, nogamma, 98_000.0, (NOW + timedelta(minutes=2 + minutes)).isoformat())
+    visit = after["visits"][-1]
+    assert after["open"] == [] and visit["outcome"] == "zensiert" and visit["censor_reason"] == "Beobachtungslücke"
+    assert "exit_price" not in visit and visit["observed_until"] == (NOW + timedelta(minutes=2)).isoformat()
+    counts = gamma_zones.summary(after)
+    assert counts["closed"] == 0 and counts["censored"] == 1 and counts["broken"] == 0 and counts["held"] == 0
+
+
+def test_visits_of_another_ruleset_or_time_going_back_are_censored() -> None:
+    state = _open_visit()
+    foreign = {**state, "ruleset": "gamma-orderbuch/1.1", "open": [{**state["open"][0], "ruleset": "gamma-orderbuch/1.1"}]}
+    after = gamma_zones.track(foreign, _view(NOW), 99_150.0, (NOW + timedelta(minutes=2)).isoformat())
+    assert after["visits"][-1]["outcome"] == "zensiert" and after["visits"][-1]["censor_reason"] == "Versionswechsel"
+    back = gamma_zones.track(state, _view(NOW), 98_000.0, (NOW - timedelta(minutes=5)).isoformat())
+    assert back["visits"][-1]["censor_reason"] == "Zeit rückwärts" and back["open"] == []
+    # Within the gap limit the visit closes by price as before.
+    ok = gamma_zones.track(state, _view(NOW), 98_000.0, (NOW + timedelta(minutes=5)).isoformat())
+    assert ok["visits"][-1]["outcome"] == "gebrochen"
+
+
+def test_upgrade_rollback_restart_keeps_open_visits_with_their_version(tmp_path: Path) -> None:
+    """1.1 file untouched; a restart after a long pause censors the 1.2 visit instead of judging it by the new price."""
+    path = tmp_path / "watch.json"
+    path.write_text('{"open": [{"key": "old"}], "visits": []}', encoding="utf-8")          # 1.1 log
+    before = path.read_bytes()
+    ok = _view(NOW)
+    gamma_zones.update(path, ok, 99_500.0, NOW)
+    gamma_zones.update(path, ok, 99_150.0, NOW + timedelta(minutes=1))
+    assert path.read_bytes() == before and len(gamma_zones.load(path)["open"]) == 1
+    restarted = gamma_zones.update(path, ok, 98_000.0, NOW + timedelta(hours=3))           # runtime down for 3 h
+    assert restarted["visits"][-1]["outcome"] == "zensiert" and gamma_zones.summary(restarted)["closed"] == 0
+    assert path.read_bytes() == before

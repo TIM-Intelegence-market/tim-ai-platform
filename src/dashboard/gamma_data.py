@@ -20,9 +20,10 @@ changes a score. A failed read keeps the last snapshot, which then turns stale.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -78,7 +79,27 @@ def fetch_snapshot(currency: str = "BTC", fetch: Fetch | None = None, now: datet
     spot = index.get("index_price") if isinstance(index, Mapping) else None
     if not isinstance(spot, (int, float)) or isinstance(spot, bool):
         raise ValueError("deribit index price missing")
-    return build_gamma_snapshot(rows, float(spot), now or datetime.now(timezone.utc), currency=currency)
+    received = now or datetime.now(timezone.utc)
+    snapshot = build_gamma_snapshot(rows, float(spot), received, currency=currency)
+    return {**snapshot, **source_times(rows, received)}
+
+
+def source_times(rows: Sequence[Any], received: datetime) -> dict[str, Any]:
+    """Source time of the book summary (Mission 07, #372): the oldest ``creation_timestamp`` (ms) of the rows.
+
+    ``as_of`` stays the moment TIM received the data (availability). Freshness is judged from the source time, never
+    from the HTTP receipt; when a row has no readable ``creation_timestamp`` the source time is UNKNOWN (None)."""
+    stamps = []
+    for row in rows:
+        value = row.get("creation_timestamp") if isinstance(row, Mapping) else None
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            return {"source_as_of": None, "source_as_of_newest": None, "received_at": received.isoformat()}
+        stamps.append(float(value) / 1000.0)
+    if not stamps:
+        return {"source_as_of": None, "source_as_of_newest": None, "received_at": received.isoformat()}
+    return {"source_as_of": datetime.fromtimestamp(min(stamps), timezone.utc).isoformat(),
+            "source_as_of_newest": datetime.fromtimestamp(max(stamps), timezone.utc).isoformat(),
+            "received_at": received.isoformat()}
 
 
 def refresh(state: Any, symbol: str, fetch: Fetch | None = None, now: datetime | None = None) -> dict[str, Any] | None:
