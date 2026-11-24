@@ -170,3 +170,39 @@ def test_levels_keep_unknown_out_of_bid_ask_and_delta():
     row = state["levels"][0]
     assert (row["bid"], row["ask"], row["unknown"], row["delta"]) == (0.0, 1.0, 3.0, 1.0)
     assert state["schema"] == "orderflow-lage/2"
+
+
+# Codex #376: the consumer (Orderflow-Schatten) must not read unknown flow as neutral flow.
+def test_pure_unknown_flow_is_unbekannt_in_the_shadow_not_neutral():
+    from src.dashboard import orderflow_shadow as shadow
+
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker.ingest([_raw(0, 5.0, None, 1)])
+    view = shadow.lage_view(tracker.snapshot(T0))
+    assert view["known_share"] == 0.0
+    assert shadow.gate("LONG", view) == shadow.UNBEKANNT and shadow.gate("SHORT", view) == shadow.UNBEKANNT
+    assert shadow.should_exit("LONG", view) is None
+
+
+def test_mostly_unknown_flow_is_unbekannt_and_mostly_known_is_judged():
+    from src.dashboard import orderflow_shadow as shadow
+
+    mostly = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    mostly.ingest([_raw(0, 1.0, False, 1), _raw(1, 9.0, None, 2)])
+    view = shadow.lage_view(mostly.snapshot(T0 + timedelta(seconds=2)))
+    assert view["known_share"] == pytest.approx(0.1) and shadow.gate("LONG", view) == shadow.UNBEKANNT
+    known = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    known.ingest([_raw(0, 99.0, False, 1), _raw(1, 1.0, None, 2)])
+    view = shadow.lage_view(known.snapshot(T0 + timedelta(seconds=2)))
+    assert view["known_share"] == pytest.approx(0.99) and shadow.gate("LONG", view) != shadow.UNBEKANNT
+    assert shadow.known_share(None) is None and shadow.gate("LONG", None) == shadow.NEUTRAL  # no Lage: as before
+
+
+def test_shadow_summary_counts_unknown_side_plans_apart():
+    from src.dashboard import orderflow_shadow as shadow
+
+    plans = {"a": {"gate_at_plan": shadow.UNBEKANNT, "journal": {"status": "CLOSED", "net_r": -1.0}},
+             "b": {"gate_at_plan": shadow.NEUTRAL, "journal": {"status": "CLOSED", "net_r": 1.0}}}
+    out = shadow.summary({"plans": plans})
+    assert out["side_unknown"] == 1
+    assert out["by_gate"] == {shadow.UNBEKANNT: {"n": 1, "sum_net_r": -1.0}, shadow.NEUTRAL: {"n": 1, "sum_net_r": 1.0}}

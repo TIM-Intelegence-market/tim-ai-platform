@@ -5,6 +5,8 @@ this shadow reads them and the Live-Orderflow-Lage (src/orderflow/live_state.py)
 
 - ``gate_at_plan`` / ``gate_at_fill``: the wave when the plan appeared and when it filled. BESTÄTIGT when the
   wave runs with the plan and is not exhausted, GEGEN when it runs against the plan, NEUTRAL otherwise.
+  UNBEKANNT (Paket B, #372) when the aggressor side of too much volume is unknown (known share below
+  ``MIN_KNOWN_SHARE`` in any window of the Lage): no wave is evidence then, and it is not counted as neutral flow.
   Later we can read off whether "only enter with confirmation" would have helped.
 - ``of_exit``: once a plan is filled, the shadow leaves when the wave turns against the position (strength >= 2)
   or the own wave shows exhaustion. The shadow's R is compared with the journal's own exit (fixed targets).
@@ -31,7 +33,8 @@ DEFAULT_PATH = Path("data/journal/tim_orderflow_shadow.json")
 TARGET_TRADES = 30
 COST_R_PER_SIDE_BPS = 5  # Kraken taker, as measured 04.11.2026 (exit_variants.KRAKEN)
 AGAINST_STRENGTH = 2
-BESTAETIGT, GEGEN, NEUTRAL = "BESTÄTIGT", "GEGEN", "NEUTRAL"
+BESTAETIGT, GEGEN, NEUTRAL, UNBEKANNT = "BESTÄTIGT", "GEGEN", "NEUTRAL", "UNBEKANNT"
+MIN_KNOWN_SHARE = 0.95  # set 24.11.2026 before any data with unknown sides: below this no gate and no exit
 WITH = {"LONG": "auf", "SHORT": "ab"}
 # UTC hour -> session. Fixed UTC bounds so the label never moves with daylight saving.
 SESSIONS = ((0, "Asien"), (7, "London"), (13, "London+NY"), (16, "NY"), (21, "nach NY"))
@@ -47,6 +50,16 @@ def _time(value: Any) -> datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
 
+def known_share(lage: Mapping[str, Any] | None) -> float | None:
+    """Lowest share of volume with a known aggressor side over the Lage's windows; None without volume."""
+    shares = []
+    for window in ((lage or {}).get("windows") or {}).values():
+        volume = float((window or {}).get("volume") or 0.0)
+        if volume > 0:
+            shares.append(max(0.0, volume - float(window.get("unknown_volume") or 0.0)) / volume)
+    return round(min(shares), 4) if shares else None
+
+
 def lage_view(lage: Mapping[str, Any] | None) -> dict[str, Any] | None:
     """The part of the Lage worth keeping on a plan (small, no thresholds, no level table)."""
     if not lage or lage.get("stale") or lage.get("price") is None:
@@ -58,7 +71,7 @@ def lage_view(lage: Mapping[str, Any] | None) -> dict[str, Any] | None:
     return {"as_of": lage.get("as_of"), "price": lage.get("price"), "direction": wave.get("direction"),
             "strength": wave.get("strength"), "phase": wave.get("phase"), "exhaustion": bool(wave.get("exhaustion")),
             "tempo": lage.get("tempo"), "delta_5m": (lage.get("windows") or {}).get("5m", {}).get("delta"),
-            "perp_delta_5m": perp.get("delta_5m"), "levels": near}
+            "perp_delta_5m": perp.get("delta_5m"), "levels": near, "known_share": known_share(lage)}
 
 
 def session_of(moment: datetime) -> str:
@@ -79,7 +92,10 @@ def timing(moment: datetime, candles_30m: Sequence[Mapping[str, Any]]) -> dict[s
 
 
 def gate(direction: str, view: Mapping[str, Any] | None) -> str:
-    """BESTÄTIGT: wave with the plan and not exhausted. GEGEN: wave against the plan. NEUTRAL: no wave or no data."""
+    """BESTÄTIGT: wave with the plan and not exhausted. GEGEN: wave against the plan. NEUTRAL: no wave or no data.
+    UNBEKANNT: the side of too much volume is unknown, so neither a wave nor its absence says anything."""
+    if side_unknown(view):
+        return UNBEKANNT
     if not view or view.get("direction") in (None, "keine"):
         return NEUTRAL
     if view["direction"] == WITH.get(direction):
@@ -87,8 +103,16 @@ def gate(direction: str, view: Mapping[str, Any] | None) -> str:
     return GEGEN
 
 
+def side_unknown(view: Mapping[str, Any] | None) -> bool:
+    share = (view or {}).get("known_share")
+    return share is not None and share < MIN_KNOWN_SHARE
+
+
 def should_exit(direction: str, view: Mapping[str, Any] | None) -> str | None:
-    """Reason to leave now, or None: wave against the position (strength >= AGAINST_STRENGTH) or own wave exhausted."""
+    """Reason to leave now, or None: wave against the position (strength >= AGAINST_STRENGTH) or own wave exhausted.
+    Never on a Lage whose side is too often unknown."""
+    if side_unknown(view):
+        return None
     if not view or view.get("direction") in (None, "keine"):
         return None
     if view["direction"] != WITH.get(direction):
@@ -150,7 +174,8 @@ def summary(state: Mapping[str, Any]) -> dict[str, Any]:
             row["n"] += 1
             row["sum_net_r"] = round(row["sum_net_r"] + float(plan["journal"]["net_r"]), 4)
     with_exit = [p for p in closed if p.get("of_exit")]
-    return {"plans": len(plans), "with_lage": sum(bool(p.get("lage_at_plan")) for p in plans), "closed": len(closed), "target": TARGET_TRADES, "judgeable": len(closed) >= TARGET_TRADES,
+    return {"plans": len(plans), "with_lage": sum(bool(p.get("lage_at_plan")) for p in plans),
+            "side_unknown": sum(UNBEKANNT in (p.get("gate_at_plan"), p.get("gate_at_fill")) for p in plans), "closed": len(closed), "target": TARGET_TRADES, "judgeable": len(closed) >= TARGET_TRADES,
             "by_gate": by_gate, "by_session": by_session, "by_volume": by_volume,
             "of_exit": {"n": len(with_exit),
                         "sum_shadow_net_r": round(sum(float(p["of_exit"]["net_r"]) for p in with_exit), 4),
