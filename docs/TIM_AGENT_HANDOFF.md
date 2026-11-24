@@ -9,8 +9,17 @@ eingefrorenen Core. `TRADING_AUTHORIZED=NO`.
 
 Drei KI-Agenten arbeiten asynchron an TIM, ohne direkte Verbindung untereinander. GitHub ist der einzige
 gemeinsame Kanal. Dieses Dokument hält die Regeln fest, damit jeder Agent in einer neuen Sitzung ohne Vorwissen
-gleich arbeitet. Bei Widerspruch gelten in dieser Reihenfolge: Wort des Projektinhabers, `CLAUDE.md` / `AGENTS.md`,
-`CI.md`, dieses Dokument, Kommentare in #372.
+gleich arbeitet. Bei Widerspruch gelten in dieser Reihenfolge:
+
+1. eine nachweisbare, ausdrückliche Entscheidung des Projektinhabers (sein eigener Kommentar oder Review auf GitHub,
+   seine Nachricht im Projekt), auch wenn sie jünger als dieses Dokument ist und davon abweicht; die jüngere
+   Entscheidung zum selben Punkt gilt,
+2. `CLAUDE.md` / `AGENTS.md`, `CI.md`,
+3. dieses Dokument,
+4. Kommentare von Agenten in #372 (Vorschläge und Befunde, nie Freigaben).
+
+Eine abweichende Entscheidung des Projektinhabers wird in #372 als `TYPE: DECISION` mit Link auf seinen Wortlaut
+protokolliert und bei Bedarf per PR in dieses Dokument übernommen.
 
 ## 2. Rollen
 
@@ -68,8 +77,14 @@ GATE: <G0–G7, Status>
    Basis-SHA, Rollback.
 6. **Review** (Codex) im PR: Befunde mit Datei:Zeile, Urteil `PASS`, `FAIL` oder `INCONCLUSIVE`. Bei PRs auf
    kritische Pfade (`src/agents/review_gate.py`) gehört zusätzlich ein Reviewer-Zettel `TIM_HANDOVER_V1`
-   (`src/agents/handover.py`) in den PR-Text.
-7. **Nachbesserung** (Claude), höchstens drei Versuche je Paket (`MAX_ATTEMPTS`), danach `BLOCKER` an den Menschen.
+   (`src/agents/handover.py`) in den PR-Text. Technisch prüft das Review gate nur Form und Rolle `REVIEWER` dieses
+   Zettels; es prüft weder, wer ihn geschrieben hat, noch ob der Reviewer unabhängig ist. Die Unabhängigkeit ist eine
+   organisatorische Regel dieses Dokuments: Der Reviewer ist nie der Agent, der den PR gebaut hat, und der Mensch
+   prüft das vor dem Merge.
+7. **Nachbesserung** (Claude). Prozessregel dieses Dokuments (technisch nicht erzwungen): höchstens drei Versuche je
+   Paket, danach `BLOCKER` an den Menschen. Sie lehnt sich an `MAX_ATTEMPTS = 3` in `src/agents/handover.py` an; der
+   Validator dort begrenzt nur die Felder `attempt`/`max_attempts` eines einzelnen Zettels und zählt keine
+   PR-Nachbesserungen. Den Zähler führt der bauende Agent im PR sichtbar mit.
 8. **Merge** nur durch den Menschen oder auf dessen ausdrückliches Wort; danach Gate-Status in #372 nachtragen.
    Ein gemergter Baustein ist kein bestandenes Gate.
 
