@@ -135,7 +135,7 @@ def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | 
             record = plans.get(str(entry["id"]))
             if record is None:
                 # Point-in-time (Paket E): the Lage known at the plan's creation, never the current one; else UNKNOWN.
-                known, status = pit.lage_at(key_symbol, entry["created_at"])
+                known, status = pit.lage_at(key_symbol, entry["created_at"], until=now)
                 record = plans[str(entry["id"])] = {
                     "id": entry["id"], "journal_file": Path(journal_path).name, "timeframe": entry.get("timeframe"),
                     "direction": entry.get("direction"), "created_at": entry["created_at"], "entry": entry.get("entry"),

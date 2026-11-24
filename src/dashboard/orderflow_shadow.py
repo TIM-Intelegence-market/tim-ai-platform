@@ -216,7 +216,7 @@ def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | 
             key = str(entry["id"])
             record = plans.get(key)
             if record is None:
-                known, status = pit.lage_at(key_symbol, entry["created_at"])
+                known, status = pit.lage_at(key_symbol, entry["created_at"], until=now)
                 at_plan = lage_view(known)
                 record = plans[key] = {"id": entry["id"], "journal_file": Path(journal_path).name, "timeframe": entry.get("timeframe"),
                                        "direction": entry.get("direction"), "created_at": entry["created_at"],
@@ -229,7 +229,7 @@ def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | 
             if entry.get("filled_at") and "gate_at_fill" not in record:
                 record["fill_price"] = entry.get("fill_price") or entry.get("entry")
                 if record.get("pit"):
-                    known, status = pit.lage_at(key_symbol, entry["filled_at"])
+                    known, status = pit.lage_at(key_symbol, entry["filled_at"], until=now)
                     at_fill = lage_view(known)
                     record["lage_at_fill_status"] = status
                 else:  # a pre-pit/1 plan keeps the old way for its own fill, still counted apart in summary()
@@ -237,7 +237,7 @@ def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | 
                 record["lage_at_fill"] = at_fill
                 record["gate_at_fill"] = gate(str(entry.get("direction")), at_fill)
                 record["timing_at_fill"] = timing(_time(entry["filled_at"]), candles_30m)
-            if entry.get("status") == "FILLED" and not record.get("of_exit") and view and pit.live_after(view, entry.get("filled_at")):
+            if entry.get("status") == "FILLED" and not record.get("of_exit") and view and pit.live_after(view, entry.get("filled_at"), now):
                 reason = should_exit(str(entry.get("direction")), view)
                 if reason:
                     r = r_of({**entry, "fill_price": record.get("fill_price")}, float(view["price"]))
