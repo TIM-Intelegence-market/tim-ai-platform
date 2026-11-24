@@ -1,7 +1,7 @@
 """S40 package 1: load the public archives for 2020-2024 and write the data-maturity report. Reads and writes only
 below ``--ziel``; touches no live service.
 
-Plan: ``docs/research_lab/studien/S40_ORDERFLOW_OPTIONSFLOW_HISTORISCH_PRAEREGISTRIERUNG_ENTWURF.md`` section 4.
+Plan: ``docs/research_lab/studien/S40_ORDERFLOW_OPTIONSFLOW_HISTORISCH_PRAEREGISTRIERUNG.md`` section 4.
 Uzi 23.11.2026: "historisch ja", "go daten".
 
 - Binance USD-M daily ``aggTrades`` per market and day: verified against the official ``.CHECKSUM`` sidecar, streamed

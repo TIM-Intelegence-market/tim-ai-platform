@@ -1,6 +1,6 @@
-"""S40: does order flow or option flow predict the next 1 h / 4 h beyond price? (pre-registration draft 0.3)
+"""S40: does order flow or option flow predict the next 1 h / 4 h beyond price? (pre-registration 1.0, frozen 24.11.2026)
 
-Spec: ``docs/research_lab/studien/S40_ORDERFLOW_OPTIONSFLOW_HISTORISCH_PRAEREGISTRIERUNG_ENTWURF.md``. Input is the
+Spec: ``docs/research_lab/studien/S40_ORDERFLOW_OPTIONSFLOW_HISTORISCH_PRAEREGISTRIERUNG.md``. Input is the
 output of ``s40_daten`` (5-minute bars, Deribit option trades, funding, ``datenreife.json``). Training 2020-2022,
 validation 2023-2024 exactly once; the holdout from 2025-01-01 never enters (rows and label ends are checked).
 
