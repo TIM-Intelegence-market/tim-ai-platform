@@ -127,10 +127,23 @@ def load(path: Path) -> dict[str, Any] | None:
 
 
 def _save(state: Mapping[str, Any], path: Path) -> None:
+    """Atomic: a crash leaves the old file or the new one, never half of it."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+    with tmp.open("w", encoding="utf-8") as fh:
+        fh.write(json.dumps(state, ensure_ascii=False, indent=1, default=str))
+        fh.flush()
+        os.fsync(fh.fileno())
     os.replace(tmp, path)
+
+
+def current_path(path: Path = DEFAULT_PATH, symbol: str = "BTCUSDT") -> Path:
+    """The file this version writes and every reader of the shadow should read (E1, see ``pit_lage.versioned_path``)."""
+    return pit.versioned_path(path, symbol)
+
+
+def load_current(path: Path = DEFAULT_PATH, symbol: str = "BTCUSDT") -> dict[str, Any] | None:
+    return load(current_path(path, symbol))
 
 
 def summary(state: Mapping[str, Any]) -> dict[str, Any]:
@@ -184,8 +197,9 @@ def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | 
     now = now or datetime.now(timezone.utc)
     key_symbol = (symbol or (lage or {}).get("symbol") or "BTCUSDT").upper()
     pit.observe(lage, now, key_symbol)
-    state = load(Path(path)) or {"schema": SCHEMA, "started_at": _iso(now), "sources": [Path(p).name for p in journal_paths],
-                                 "costs": f"{COST_R_PER_SIDE_BPS} bps je Seite", "plans": {}}
+    target = current_path(path, key_symbol)       # E1: never the earlier version's file
+    state = load(target) or {"schema": SCHEMA, "started_at": _iso(now), "sources": [Path(p).name for p in journal_paths],
+                             "costs": f"{COST_R_PER_SIDE_BPS} bps je Seite", "plans": {}, "pit": PIT_VERSION, "symbol": key_symbol}
     started = _time(state["started_at"])
     view = lage_view(lage)
     from src.dashboard.chart_model import clean_candles
@@ -232,5 +246,6 @@ def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | 
                                              "gross_r": r[0], "net_r": r[1], "lage": view}
     state["checked_at"] = _iso(now)
     state["summary"] = summary(state)
-    _save(state, Path(path))
+    state["previous_version"] = pit.previous_file(path) if Path(path) != target else None
+    _save(state, target)
     return state

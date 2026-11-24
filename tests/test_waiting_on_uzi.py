@@ -53,8 +53,9 @@ def test_broken_learning_log_is_named(tmp_path):
 
 
 def test_shadow_and_opinion_due_after_target(tmp_path):
-    _write(tmp_path, orderflow_shadow.DEFAULT_PATH, {"plans": _closed(orderflow_shadow.TARGET_TRADES)})
-    _write(tmp_path, plan_opinion.DEFAULT_PATH, {"plans": _closed(plan_opinion.TARGET_TRADES - 1)})
+    _write(tmp_path, orderflow_shadow.current_path(), {"plans": _closed(orderflow_shadow.TARGET_TRADES)})
+    _write(tmp_path, plan_opinion.current_path(), {"plans": _closed(plan_opinion.TARGET_TRADES - 1)})
+    _write(tmp_path, orderflow_shadow.DEFAULT_PATH, {"plans": _closed(99)})   # the earlier version's file is not read
     lines = waiting_on_uzi.items(tmp_path)
     assert lines == [f"Orderflow-Schatten: {orderflow_shadow.TARGET_TRADES} geschlossene Pläne erreicht "
                      f"(Ziel {orderflow_shadow.TARGET_TRADES}), Urteil fällig."]
@@ -90,7 +91,7 @@ def test_decided_or_later_failed_filter_is_not_listed(tmp_path):
 
 
 def test_one_bad_file_is_named_and_others_still_listed(tmp_path):
-    _write(tmp_path, orderflow_shadow.DEFAULT_PATH, ["kein", "objekt"])
+    _write(tmp_path, orderflow_shadow.current_path(), ["kein", "objekt"])
     _write(tmp_path, waiting_on_uzi.WATCHDOG_STATE, {"restart_hold": True})
     assert waiting_on_uzi.items(tmp_path) == [
         "Watchdog hat die Neustarts angehalten (seit unbekannt): Neustart-Budget verbraucht, Ursache prüfen.",

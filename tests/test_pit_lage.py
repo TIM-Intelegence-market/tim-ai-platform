@@ -79,14 +79,21 @@ def test_shadow_after_restart_notes_unknown_and_keeps_old_records(tmp_path):
     legacy = {"id": "old", "created_at": (H11 - timedelta(hours=1)).isoformat(), "lage_at_plan": {"price": 1.0},
               "gate_at_plan": shadow.GEGEN, "journal": {"status": "CLOSED", "net_r": -1.0}}
     path.write_text(json.dumps({"schema": shadow.SCHEMA, "started_at": (H11 - timedelta(hours=2)).isoformat(), "plans": {"old": legacy}}))
+    shadow.update(path, [journal], None, now=H11 - timedelta(minutes=1))   # pit/1 starts its own file before the plan
+    pit.reset()                                                              # restart between 11:00 and 12:00
     write_journal(journal, plan("FILLED", created_at=H11.isoformat(), filled_at=H1115.isoformat(), fill_price=75000.0))
     state = shadow.update(path, [journal], lage("ab", strength=3, at=T0), now=T0)  # first run after a restart at 12:00
     record = state["plans"]["p1"]
     assert record["pit"] == pit.PIT_VERSION and record["lage_at_plan"] is None and record["lage_at_fill"] is None
     assert record["lage_at_plan_status"] == record["lage_at_fill_status"] == pit.UNKNOWN_NO_HISTORY
     assert record["gate_at_plan"] == record["gate_at_fill"] == shadow.NEUTRAL
-    assert state["plans"]["old"] == legacy  # an older record is never rewritten
-    assert state["summary"]["plans"] == 1 and state["summary"]["legacy"]["plans"] == 1
+    before = path.read_bytes()
+    assert "old" not in state["plans"] and json.loads(path.read_text())["plans"]["old"] == legacy  # old file untouched
+    assert state["previous_version"] == {"file": "shadow.json", "plans": 1, "untouched": True,
+                                         "note": "Datei der früheren Version, wird nicht mehr geschrieben"}
+    assert state["summary"]["plans"] == 1 and state["summary"]["legacy"]["plans"] == 0
+    shadow.update(path, [journal], lage("ab", strength=3, at=T0), now=T0 + timedelta(minutes=1))
+    assert path.read_bytes() == before
     assert record["of_exit"]["at"] == T0.isoformat()  # live exit: Lage of 12:00 is after the fill, allowed
 
 

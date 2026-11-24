@@ -102,6 +102,15 @@ def summary(state: Mapping[str, Any]) -> dict[str, Any]:
             "pit": PIT_VERSION, "legacy": {"plans": len(legacy), "note": "vor pit/1 gefragt, Lage-Zeitpunkt ungeprüft, nicht in der Statistik"}}
 
 
+def current_path(path: Path = DEFAULT_PATH, symbol: str = "BTCUSDT") -> Path:
+    """The file this version writes and every reader of the second opinion should read (E1)."""
+    return pit.versioned_path(path, symbol)
+
+
+def load_current(path: Path = DEFAULT_PATH, symbol: str = "BTCUSDT") -> dict[str, Any] | None:
+    return load(current_path(path, symbol))
+
+
 def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | None, now: datetime | None = None,
            ask: Ask | None = None, symbol: str = "BTCUSDT", max_calls: int = 1) -> dict[str, Any]:
     """One step: note new plans with the Lage of this moment, ask for at most ``max_calls`` opinions, follow the results."""
@@ -111,7 +120,8 @@ def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | 
     path = Path(path)
     key_symbol = symbol.upper()
     pit.observe(lage, now, key_symbol)
-    state = load(path) or {"schema": SCHEMA, "started_at": _iso(now), "sources": [Path(p).name for p in journal_paths],
+    target = current_path(path, key_symbol)       # E1: never the earlier version's file
+    state = load(target) or {"pit": PIT_VERSION, "symbol": key_symbol, "schema": SCHEMA, "started_at": _iso(now), "sources": [Path(p).name for p in journal_paths],
                            "note": "Nur Kommentar, kein Eingriff in Pläne oder Handel", "plans": {}}
     started = _time(state["started_at"])
     plans = state["plans"]
@@ -158,5 +168,6 @@ def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | 
             record["last_error"] = str(reply.get("error") or "keine Antwort")[:200]
     state["checked_at"] = _iso(now)
     state["summary"] = summary(state)
-    _save(state, path)
+    state["previous_version"] = pit.previous_file(path) if path != target else None
+    _save(state, target)
     return state

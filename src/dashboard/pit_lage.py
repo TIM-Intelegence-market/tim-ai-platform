@@ -18,6 +18,11 @@ that answers "which Lage was known at moment t?":
 
 The history lives in memory: after a restart older moments are UNKNOWN. Plans recorded before ``PIT_VERSION`` keep
 their values untouched and are counted apart (``legacy``) by the consumers.
+
+Versioned files (E1, Mission 06, Uzi "GO E1"): each consumer writes ``pit/1`` records to its own file per symbol,
+:func:`versioned_path` (``tim_orderflow_shadow.BTCUSDT.pit-1.json`` next to ``tim_orderflow_shadow.json``). The file of
+the earlier version is never written again, byte for byte: a revert reads only its own records (no mixing with
+``pit/1``), a return to ``pit/1`` continues its own file. Open cases stay with the version that opened them.
 """
 from __future__ import annotations
 
@@ -38,6 +43,33 @@ UNKNOWN_NO_TIME = "UNKNOWN_NO_TIME"  # target time missing or unreadable
 
 _LOCK = Lock()
 _HISTORY: dict[str, deque[dict[str, Any]]] = {}
+
+
+def versioned_path(path: Any, symbol: str = "BTCUSDT", version: str = PIT_VERSION) -> "Path":
+    """The file of ``version`` and ``symbol`` next to ``path``; a path that already is one is returned unchanged."""
+    from pathlib import Path
+
+    target = Path(path)
+    tag = f".{symbol.upper()}.{version.replace('/', '-')}"
+    if target.stem.endswith(tag):
+        return target
+    return target.with_name(f"{target.stem}{tag}{target.suffix}")
+
+
+def previous_file(path: Any) -> dict[str, Any] | None:
+    """Read-only facts about the earlier version's file (never written): name, plan count. None if there is none."""
+    import json
+    from pathlib import Path
+
+    target = Path(path)
+    if not target.is_file():
+        return None
+    try:
+        plans = (json.loads(target.read_text(encoding="utf-8")) or {}).get("plans") or {}
+    except (ValueError, AttributeError):
+        return {"file": target.name, "readable": False, "untouched": True}
+    return {"file": target.name, "plans": len(plans), "untouched": True,
+            "note": "Datei der früheren Version, wird nicht mehr geschrieben"}
 
 
 def _time(value: Any) -> datetime | None:
