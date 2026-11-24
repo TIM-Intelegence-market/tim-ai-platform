@@ -1,6 +1,8 @@
 """Chart-Urteil (src/dashboard/chart_verdict.py): Chart-Lage without look-ahead, frozen rules, paper shadow."""
 from __future__ import annotations
 
+import pytest
+
 import json
 from datetime import timedelta
 
@@ -8,6 +10,15 @@ from src.dashboard import chart_verdict as cv
 from src.dashboard.plan_journal import SCHEMA
 from tests.test_analysis_summary import NOW, _trending_series
 from tests.test_orderflow_shadow import lage
+from src.dashboard import pit_lage
+
+
+@pytest.fixture(autouse=True)
+def _fresh_pit_history():
+    """Paket E: the Lage history is per process; every test starts without one."""
+    pit_lage.reset()
+    yield
+    pit_lage.reset()
 
 
 def chart(**extra) -> dict:
@@ -127,3 +138,21 @@ def test_chart_page_shows_the_verdict(tmp_path, monkeypatch):
     state.plan_journal_path = tmp_path / "tim.json"
     page = render_chart_page(state, symbol="BTCUSDT")
     assert "tc-verdict" in page
+
+
+def test_paket_e_plan_gets_the_lage_of_its_moment_or_none(tmp_path):
+    """Paket E (#372): a Lage taken after the plan never counts; the one known at the plan does."""
+    series = _trending_series()
+    journal, path = tmp_path / "tim_plan_journal_mid.json", tmp_path / "verdict.json"
+    cv.update(path, [journal], series, lage("ab", at=NOW - timedelta(seconds=40)), now=NOW - timedelta(seconds=30))
+    _journal(journal, _plan("p1", NOW))
+    state = cv.update(path, [journal], series, lage("auf", at=NOW + timedelta(seconds=30)), now=NOW + timedelta(minutes=1))
+    record = state["plans"]["tim_plan_journal_mid.json:p1"]
+    assert record["lage_at_plan_status"] == pit_lage.OK and record["pit"] == pit_lage.PIT_VERSION
+    assert record["chart_at_plan"]["orderflow"]["direction"] == "ab"
+    pit_lage.reset()
+    path2 = tmp_path / "verdict2.json"
+    cv.update(path2, [journal], series, None, now=NOW - timedelta(minutes=1))
+    state = cv.update(path2, [journal], series, lage("auf", at=NOW + timedelta(seconds=30)), now=NOW + timedelta(minutes=1))
+    record = state["plans"]["tim_plan_journal_mid.json:p1"]
+    assert record["lage_at_plan_status"] == pit_lage.UNKNOWN_NO_HISTORY and record["chart_at_plan"]["orderflow"] is None

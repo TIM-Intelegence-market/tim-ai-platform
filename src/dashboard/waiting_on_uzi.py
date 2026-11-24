@@ -61,8 +61,8 @@ def _filters(root: Path) -> list[str]:
             for name, verdict in sorted(latest.items()) if verdict == "bestanden" and name not in answered]
 
 
-def _judgeable(root: Path, path: Path, summary: Any, name: str) -> list[str]:
-    target = root / path
+def _judgeable(root: Path, path: Path, summary: Any, name: str, current: Any = None) -> list[str]:
+    target = current(root / path) if current else root / path   # E1: the versioned file of the running version
     if not target.is_file():
         return []
     state = orderflow_shadow.load(target)
@@ -81,5 +81,6 @@ def items(root: Path | str = ".") -> list[str]:
     """Everything waiting for Uzi, one line each. An empty list means nothing is waiting."""
     base = Path(root)
     return (_watchdog(base) + _filters(base)
-            + _judgeable(base, orderflow_shadow.DEFAULT_PATH, orderflow_shadow.summary, "Orderflow-Schatten")
-            + _judgeable(base, plan_opinion.DEFAULT_PATH, plan_opinion.summary, "Hermes-Zweitmeinung"))
+            + _judgeable(base, orderflow_shadow.DEFAULT_PATH, orderflow_shadow.summary, "Orderflow-Schatten",
+                         orderflow_shadow.current_path)
+            + _judgeable(base, plan_opinion.DEFAULT_PATH, plan_opinion.summary, "Hermes-Zweitmeinung", plan_opinion.current_path))

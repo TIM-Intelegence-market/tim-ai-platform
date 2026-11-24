@@ -281,10 +281,11 @@ def test_mostly_unknown_flow_is_unbekannt_and_mostly_known_is_judged():
 def test_shadow_summary_counts_unknown_side_plans_apart():
     from src.dashboard import orderflow_shadow as shadow
 
-    plans = {"a": {"gate_at_plan": shadow.UNBEKANNT, "journal": {"status": "CLOSED", "net_r": -1.0}},
-             "b": {"gate_at_plan": shadow.NEUTRAL, "lage_at_plan": {"price": 1.0},
+    pit = {"pit": "pit/1"}   # integration with E: only point-in-time plans enter the statistics
+    plans = {"a": {**pit, "gate_at_plan": shadow.UNBEKANNT, "journal": {"status": "CLOSED", "net_r": -1.0}},
+             "b": {**pit, "gate_at_plan": shadow.NEUTRAL, "lage_at_plan": {"price": 1.0},
                    "journal": {"status": "CLOSED", "net_r": 1.0}},
-             "c": {"gate_at_plan": shadow.NEUTRAL, "lage_at_plan": None, "journal": {"status": "CLOSED", "net_r": 2.0}}}
+             "c": {**pit, "gate_at_plan": shadow.NEUTRAL, "lage_at_plan": None, "journal": {"status": "CLOSED", "net_r": 2.0}}}
     out = shadow.summary({"plans": plans})
     assert out["side_unknown"] == 1
     assert out["by_gate"] == {shadow.UNBEKANNT: {"n": 1, "sum_net_r": -1.0}, shadow.NEUTRAL: {"n": 1, "sum_net_r": 1.0},

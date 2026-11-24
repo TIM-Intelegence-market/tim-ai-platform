@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from src.dashboard.daily_report import LOCAL
-from src.dashboard.orderflow_shadow import TARGET_TRADES, _time, load as load_shadow, summary as shadow_summary
+from src.dashboard.orderflow_shadow import TARGET_TRADES, _time, current_path, load as load_shadow, summary as shadow_summary
 
 MIN_TRADES = TARGET_TRADES  # below this a week (or a journal) gets no verdict
 
@@ -86,7 +86,7 @@ def report(journal_paths: Sequence[Path], shadow_path: Path | None, until: datet
     for path in journal_paths:
         out["journals"][str(path)] = _one_journal(Path(path), until, days)
     if shadow_path is not None:
-        state = load_shadow(Path(shadow_path))
+        state = load_shadow(current_path(Path(shadow_path)))   # E1: the pit/1 file
         out["shadow"] = {"readable": False} if state is None else {"readable": True, **shadow_summary(state)}
     return out
 
