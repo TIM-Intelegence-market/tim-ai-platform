@@ -27,9 +27,11 @@ from src.research_lab.ki_filter.decide import append_log, read_log
 
 UTC = timezone.utc
 LOCAL = ZoneInfo("Europe/Berlin")
+LONDON = ZoneInfo("Europe/London")
+NEW_YORK = ZoneInfo("America/New_York")
 BAR_S = 900               # 15m candles
 STALE_S = 7 * 60          # ask only this soon after the candle closed (runs every 5 min, the AI needs ~40 s)
-COOLDOWN_S = 6 * 3600     # no new question at a zone overlapping one asked about in this time
+COOLDOWN_S = 6 * 3600     # no new question at a zone overlapping one asked about in this time (same session)
 ZONE_KEY_USD = 100
 ENTRY_MAX_PCT = 0.5       # entry at most this far from the price
 STOP_MIN_PCT, STOP_MAX_PCT = 0.15, 3.0
@@ -40,7 +42,7 @@ GIVE_UP_S = (FILL_BARS + HOLD_BARS + 8) * BAR_S   # no candles to finish it by t
 COST_PCT = 0.10           # fees, spread and slippage, both ways, in % of the entry price (Bitunix, maker in, taker out)
 BIG_BTC = 50.0            # big orders shown to the AI
 REASON_MAX = 400
-PLAN_RULES = (f"15m, strong zone >= {zones.STRONG}", f"cooldown {COOLDOWN_S // 3600} h per zone",
+PLAN_RULES = (f"15m, strong zone >= {zones.STRONG}", f"cooldown {COOLDOWN_S // 3600} h per zone, new session asks again",
               f"entry <= {ENTRY_MAX_PCT} % from price", f"stop {STOP_MIN_PCT}-{STOP_MAX_PCT} %", f"target >= {MIN_RR} x stop",
               f"fill within {FILL_BARS} bars", f"hold <= {HOLD_BARS} bars", f"costs {COST_PCT} %", "stop first when both")
 
@@ -57,6 +59,13 @@ dort liegen mehrere Marken übereinander (zum Beispiel Gamma-Wand, POC, Wochen- 
 Lies das ganze Bild: Hält die Zone (Absorption: viel Gegendruck im Delta ohne Durchbruch, lange Dochte, große Orders,
 die der Markt nicht durchlässt, Schluss zurück aus der Zone) oder bricht sie (Delta in Bruchrichtung, Schluss jenseits,
 große Orders in Bruchrichtung)? Beachte Trend, Funding und offene Positionen (OI).
+Handelssitzung: Zur London-Eröffnung (9 Uhr) und New-York-Eröffnung holt der Markt oft die Stops über dem Asia-Hoch oder
+unter dem Asia-Tief. Läuft der Preis danach mit Delta weiter, ist das ein Abverkauf/Anstieg mit Fortsetzung (Trade in
+Bewegungsrichtung, Einstieg am Rücklauf); kommt er schnell zurück in die Asia-Spanne, war es ein falscher Bruch (Trade zurück).
+Smart Money: Spot-CVD zeigt echte Käufer/Verkäufer, Perp-CVD den Hebel. Fallender Preis mit steigendem OI = neue Shorts,
+mit fallendem OI = Longs geben auf. Große Liquidationen sind erzwungene Orders, oft das Ende eines Schubs.
+Liquidations-Cluster ziehen den Preis an (gute Ziele). Ein klarer Bruch der Zone in Trendrichtung ist genauso ein Trade wie
+ein Abpraller.
 Antworte LONG oder SHORT nur, wenn das Bild klar ist, sonst NICHTS. Bei LONG/SHORT: Einstieg als Limit nahe dem aktuellen
 Preis (höchstens {ENTRY_MAX_PCT} % entfernt), Stop hinter der Zone, Ziel an der nächsten Gegenzone, Ziel mindestens {MIN_RR}-mal
 so weit weg wie der Stop. Kosten etwa {COST_PCT} % vom Preis pro Trade. Bei NICHTS setze Einstieg, Stop und Ziel auf 0.
@@ -86,6 +95,97 @@ def _side(value: Any) -> int:
         return 1 if float(value) > 0 else -1
     except (TypeError, ValueError):
         return 1 if str(value).lower() in ("buy", "kauf") else -1
+
+
+def session(epoch: float) -> str:
+    """Trading session at this moment: London 08:00-16:30 London time, New York 09:30-16:00 New York time."""
+    t = datetime.fromtimestamp(epoch, UTC)
+    london, ny = t.astimezone(LONDON), t.astimezone(NEW_YORK)
+    in_london = london.weekday() < 5 and (8, 0) <= (london.hour, london.minute) < (16, 30)
+    in_ny = ny.weekday() < 5 and (9, 30) <= (ny.hour, ny.minute) < (16, 0)
+    if in_london and in_ny:
+        return "London+New York"
+    if in_ny:
+        return "New York"
+    if in_london:
+        return "London"
+    return "Asia" if t.hour < 8 else "nach New York"
+
+
+def _open_epoch(end: float, name: str) -> float | None:
+    """Epoch of today's London or New York open, if it lies before ``end``."""
+    t = datetime.fromtimestamp(end, UTC)
+    zone, (h, m) = (LONDON, (8, 0)) if name == "London" else (NEW_YORK, (9, 30))
+    local = t.astimezone(zone).replace(hour=h, minute=m, second=0, microsecond=0)
+    epoch = local.timestamp()
+    return epoch if epoch < end else None
+
+
+def session_picture(candles: Sequence[Mapping[str, Any]], end: float) -> dict[str, Any]:
+    """Asia range of the day (00:00-08:00 UTC), the open of London/New York and what price did since then."""
+    day0 = datetime.fromtimestamp(end, UTC).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    asia = [c for c in candles if day0 <= float(c["time"]) and float(c["time"]) + BAR_S <= day0 + 8 * 3600]
+    price = float(candles[-1]["close"])
+    out: dict[str, Any] = {"jetzt": session(end - 1)}
+    if asia:
+        hi, lo = max(float(c["high"]) for c in asia), min(float(c["low"]) for c in asia)
+        out.update({"asia_hoch": hi, "asia_tief": lo})
+    for name in ("London", "New York"):
+        start = _open_epoch(end, name)
+        since = [c for c in candles if start is not None and float(c["time"]) >= start]
+        if not since:
+            continue
+        first = float(since[0]["open"])
+        key = "london" if name == "London" else "new_york"
+        info: dict[str, Any] = {"eroeffnung": first, "seit_min": int((end - start) // 60),
+                                "aenderung_pct": round((price - first) / first * 100, 2),
+                                "hoch": max(float(c["high"]) for c in since), "tief": min(float(c["low"]) for c in since)}
+        if asia:
+            info["asia_hoch_genommen"] = info["hoch"] > out["asia_hoch"]
+            info["asia_tief_genommen"] = info["tief"] < out["asia_tief"]
+        out[key] = info
+    return out
+
+
+def _series_change(points: Sequence[Sequence[float]], end: float, seconds: float) -> float | None:
+    before = [p for p in points if float(p[0]) < end]
+    if not before:
+        return None
+    ref = [p for p in before if float(p[0]) <= float(before[-1][0]) - seconds]
+    return round(float(before[-1][1]) - float(ref[-1][1]), 1) if ref else None
+
+
+def smart_money(model: Mapping[str, Any], end: float, price: float) -> dict[str, Any]:
+    """Who pushes: spot vs perp CVD, OI, liquidations (done and resting), big orders by side, premium; all before ``end``."""
+    cvd = model.get("cvd") or {}
+    oi = [p for p in (model.get("oi") or {}).get("points") or [] if float(p[0]) < end]
+
+    def oi_change(hours: int) -> float | None:
+        ref = [p for p in oi if float(p[0]) <= float(oi[-1][0]) - hours * 3600] if oi else []
+        return round((oi[-1][1] - ref[-1][1]) / ref[-1][1] * 100, 2) if ref and ref[-1][1] else None
+
+    liq = [x for x in (model.get("liquidations") or {}).get("items") or [] if end - 3 * 3600 <= float(x.get("time") or 0) < end]
+    cells = [c for c in (model.get("liquidation") or {}).get("cells") or []
+             if float(c.get("start") or 0) < end and abs(float(c["price"]) - price) / price <= 0.03]
+
+    def clusters(above: bool) -> list[dict[str, float]]:
+        side = [c for c in cells if (float(c["price"]) > price) == above]
+        return [{"preis": float(c["price"]), "mio_usd": round(float(c["usd"]) / 1e6, 1)}
+                for c in sorted(side, key=lambda c: -float(c["usd"]))[:2]]
+
+    big = [b for b in (model.get("bubbles") or {}).get("items") or []
+           if float(b.get("quantity") or 0) >= BIG_BTC and end - 3 * 3600 <= float(b["time"]) < end]
+    premium = [p for p in (model.get("premium") or {}).get("points") or [] if float(p[0]) < end]
+    return {
+        "cvd_spot_btc": {"1h": _series_change(cvd.get("spot") or [], end, 3600), "4h": _series_change(cvd.get("spot") or [], end, 4 * 3600)},
+        "cvd_perp_btc": {"1h": _series_change(cvd.get("perp") or [], end, 3600), "4h": _series_change(cvd.get("perp") or [], end, 4 * 3600)},
+        "oi_aenderung_pct": {"1h": oi_change(1), "4h": oi_change(4)},
+        "liquidiert_3h_mio_usd": {s: round(sum(float(x.get("usd") or 0) for x in liq if x.get("side") == s) / 1e6, 2) for s in ("long", "short")},
+        "liq_cluster_darueber": clusters(True), "liq_cluster_darunter": clusters(False),
+        "grosse_orders_3h_btc": {"kauf": round(sum(float(b["quantity"]) for b in big if _side(b.get("side")) > 0), 1),
+                                 "verkauf": round(sum(float(b["quantity"]) for b in big if _side(b.get("side")) < 0), 1)},
+        "premium_pct": premium[-1][1] if premium else None,
+    }
 
 
 def closed_candles(model: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -132,7 +232,8 @@ def trigger(model: Mapping[str, Any], records: Sequence[Mapping[str, Any]], now:
     zone = found[0]
     for r in records:
         if (r.get("kind") == "decision" and isinstance(r.get("zone"), Mapping) and _overlaps(r["zone"], zone)
-                and now - float(r.get("candle_epoch", 0)) < COOLDOWN_S):
+                and now - float(r.get("candle_epoch", 0)) < COOLDOWN_S
+                and session(float(r["candle_epoch"]) - 1) == session(float(last["time"]) + BAR_S - 1)):
             return {"why": "Zone kürzlich gefragt"}
     return {"zone": zone, "candle": last}
 
@@ -181,6 +282,7 @@ def build_context(model: Mapping[str, Any], zone: Mapping[str, Any], now: float)
         "trend": {"aenderung_4h_pct": change(16), "aenderung_24h_pct": change(96), "aenderung_3t_pct": change(288),
                   "letzter_bruch": (f"{last_break['label']} bei {round(float(last_break['price']))}" if last_break else None)},
         "funding_pct": funding[-1][1] if funding else None, "oi_aenderung_24h_pct": oi_change,
+        "sitzung": session_picture(candles, end), "smart_money": smart_money(model, end, price),
     }
 
 
@@ -323,7 +425,8 @@ def report(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     filled = [results[d["id"]] for d in decisions if d["id"] in results and results[d["id"]]["outcome"] not in ("nicht gefüllt", "Daten fehlen")]
     rs = [float(r["r"]) for r in filled]
     count = {a: sum(1 for d in decisions if d["action"] == a) for a in (*ACTIONS, "UNGUELTIG")}
-    return {"rule": RULE, "decisions": len(decisions), "by_action": count, "trades": len(rs),
+    versions = {v: sum(1 for d in decisions if d.get("prompt_version") == v) for v in sorted({str(d.get("prompt_version")) for d in decisions})}
+    return {"rule": RULE, "decisions": len(decisions), "by_prompt": versions, "by_action": count, "trades": len(rs),
             "open": sum(1 for d in decisions if d["action"] in ("LONG", "SHORT") and d["id"] not in results),
             "not_filled": sum(1 for r in results.values() if r["outcome"] == "nicht gefüllt"),
             "no_data": sum(1 for r in results.values() if r["outcome"] == "Daten fehlen"),

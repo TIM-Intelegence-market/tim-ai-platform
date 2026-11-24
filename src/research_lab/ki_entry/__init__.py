@@ -7,9 +7,14 @@ price) into zone strength (``zones``), and when price runs into a strong zone th
 sees the whole picture and answers LONG, SHORT or NICHTS with entry, stop, target and one reason (``decide``).
 Every answer is written to an append-only log before its outcome is known; ``decide.settle`` plays the paper
 trade forward on later closed candles. Nothing here places orders.
+
+0.2 (Uzi 24.11.2026 "die KI sollte smart money und das London sell off sehen"): the picture also holds the
+trading session (Asia range, London/New York open, move since the open, Asia high/low taken) and smart-money
+signs (spot vs perp CVD, OI 1h/4h, liquidations, liquidation clusters, big orders by side, premium); a new
+session may ask again at a zone already asked about.
 """
 
-RULE = "R-KI-1/0.1-entwurf"
+RULE = "R-KI-1/0.2-entwurf"
 SCHEMA = "tim_ki_entry_decision/1"
-PROMPT_VERSION = "ki-einstieg/1"
+PROMPT_VERSION = "ki-einstieg/2"
 ACTIONS = ("LONG", "SHORT", "NICHTS")

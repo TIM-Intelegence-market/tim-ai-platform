@@ -66,3 +66,24 @@ Mac-Agent `com.tim.ki-entry` (Vorlage `ops/launchd/com.tim.ki-entry.plist`, alle
 - **Bitunix-Papierkonto**: jeder beendete KI-Papier-Trade wird auf 1.000 USDT gebucht: 1 % Risiko, Maker 0,02 % rein,
   Taker 0,06 % raus (Uzis VIP0-Angaben, nicht amtlich bestätigt), 0,05 % Schlupf am Stop, Marge höchstens 5 % des
   Kontos (Hebel daraus), Prüfung gegen die Bitunix-Hebelstufen. Kein Auftrag, der Bitunix-Schlüssel wird nicht benutzt.
+
+
+## Änderung 0.2 (24.11.2026, Entwurf)
+
+Anlass: Uzi 24.11.2026 10:14 „so jetzt sollte die KI smart money und das london sell off sehen sollen. short einstieg
+waere reasonable und moeglich gewesen". Die KI wurde um 08:00 an der Zone gefragt (NICHTS); den Abverkauf zur
+London-Eröffnung ab 09:00 hat sie nicht mehr gesehen, weil die Zone noch 6 Stunden gesperrt war.
+
+- Neues Bild für die KI (`ki-einstieg/2`): `sitzung` (jetzige Sitzung, Asia-Hoch/-Tief 00:00–08:00 UTC, London-
+  und New-York-Eröffnung, Änderung seit Eröffnung, Hoch/Tief seither, ob Asia-Hoch oder -Tief genommen wurde) und
+  `smart_money` (Spot- und Perp-CVD über 1 h und 4 h, OI 1 h und 4 h, Liquidationen der letzten 3 h nach Seite,
+  die zwei größten Liquidations-Cluster je Seite innerhalb 3 %, große Orders je Seite, Premium). Alles nur aus
+  Werten vor dem Schluss der Entscheidungskerze; der laufende Balken wird nicht gezeigt.
+- Anweisung ergänzt um Sitzung (Stops über Asia-Hoch/unter Asia-Tief, Fortsetzung oder falscher Bruch) und Smart
+  Money (Spot vs. Perp, OI mit Preis, Liquidationen, Cluster als Ziel); ein klarer Bruch in Trendrichtung zählt
+  wie ein Abpraller.
+- Sperre je Zone: weiter 6 h, aber eine neue Sitzung (Asia, London, London+New York, New York, nach New York)
+  darf dieselbe Zone wieder fragen.
+- Entscheidungen 0.1 und 0.2 stehen im selben Protokoll und werden über `prompt_version` getrennt gezählt
+  (`by_prompt` im Bericht). Bisher (24.11. 10:00) nur drei Entscheidungen 0.1, alle NICHTS, kein Trade.
+- Nicht eingefroren. Ein Urteil gibt es erst mit genügend 0.2-Trades; die Grenze steht noch aus.
