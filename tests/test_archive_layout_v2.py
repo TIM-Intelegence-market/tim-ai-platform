@@ -7,6 +7,7 @@ crash recovery and backup/restore for v2. Layout v1 stays the default and is not
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -187,6 +188,14 @@ async def test_v2_backup_and_restore_reproduce_rows_and_provenance(env, tmp_path
     pg_restore = shutil.which("pg_restore", path=pg_bin or None)
     if not pg_dump or not pg_restore:
         pytest.skip("pg_dump/pg_restore not installed here")
+    # A backup is restored with the tools of the server's own major version. A newer pg_restore
+    # emits settings an older server rejects (e.g. transaction_timeout on PG16), which says nothing
+    # about the archive layout.
+    tool_major = int(re.search(r"(\d+)", subprocess.run(
+        [pg_restore, "--version"], capture_output=True, text=True, check=True).stdout.split()[-1]).group(1))
+    server_major = int(await env["c2"].fetchval("SELECT current_setting('server_version_num')::int")) // 10000
+    if tool_major != server_major:
+        pytest.skip(f"pg_restore {tool_major} does not match server major version {server_major}")
     await add_trades(env, range(1, 501))
     await set_cursor(env, 500)
     await export(env)
