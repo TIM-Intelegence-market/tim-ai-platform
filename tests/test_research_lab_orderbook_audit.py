@@ -6,6 +6,8 @@ import io
 import json
 import os
 
+import pytest
+
 from src.research_lab.orderbook import audit
 from src.research_lab.orderbook.__main__ import main
 
@@ -98,7 +100,7 @@ def test_update_id_break_is_counted_and_ends_the_window(tmp_path):
     c = r["completeness"]
     assert c["breaks"] == 1 and c["pu_mismatch"] == 1 and c["resyncs"] == 1
     assert c["breaks_list"][0]["at"]["ms"] == rows[100]["recv_ms"]
-    assert r["acceptance"]["incident_kinds"] == {"sequence_break": 1}
+    assert r["acceptance"]["incident_kinds"] == {"sequence_break": 1, "unsynced": 1}  # no book until the resync
 
 
 def test_gap_row_resets_chain_without_break(tmp_path):
@@ -159,3 +161,57 @@ def test_cli_audit_refuses_out_inside_archive_and_writes_outside(tmp_path, capsy
     printed = json.loads(capsys.readouterr().out)
     assert printed == json.loads(out.read_text()) and printed["period"]["start"]["ms"] == T0
     assert printed["acceptance"]["verdict"] == "FAIL"      # one minute is not 72 h
+
+
+def test_events_without_any_snapshot_fail_72h(tmp_path):
+    """Codex #379: 72 h of well-formed depth events but no snapshot is no valid book and must not PASS."""
+    rows = [_depth(t, 100 + i) for i, t in enumerate(range(T0, T0 + 72 * H + 1, STEP))]
+    _write(tmp_path, T0, rows)
+    r = audit.audit(tmp_path, "BTCUSDT", start_ms=T0, end_ms=T0 + 72 * H, now_ms=T0 + 80 * H)
+    assert r["time_coverage"]["coverage"] == 1.0                      # events everywhere ...
+    assert r["completeness"]["synced_share"] == 0.0 and r["book_coverage"]["coverage"] == 0.0  # ... but no book
+    acc = r["acceptance"]
+    assert acc["verdict"] == "FAIL" and acc["incident_kinds"] == {"unsynced": 1}
+    assert "no depth event applied to a synchronised book" in acc["reasons"]
+    assert acc["p3_valid_seconds"]["verdict"] == "FAIL"
+
+
+def test_mostly_unsynced_fails_and_short_resync_after_restart_does_not(tmp_path):
+    rows = [_depth(T0 + i * STEP, 50 + i) for i in range(600)]       # 10 min before the first snapshot
+    rows += _rows(T0 + 600 * STEP, T0 + 73 * H, u0=1000)
+    _write(tmp_path, T0, rows)
+    r = audit.audit(tmp_path, "BTCUSDT", now_ms=T0 + 80 * H)
+    assert r["acceptance"]["incident_kinds"] == {"unsynced": 1}
+    assert r["acceptance"]["verdict"] == "PASS"                       # the clean 72 h after the sync still count
+    assert r["acceptance"]["window"]["start"]["ms"] >= T0 + 600 * STEP
+    tmp2 = tmp_path / "b"
+    _write(tmp2, T0, [_depth(T0 + i * STEP, 50 + i) for i in range(5)] + _rows(T0 + 5 * STEP, T0 + 73 * H, u0=1000))
+    r2 = audit.audit(tmp2, "BTCUSDT", now_ms=T0 + 80 * H)
+    assert r2["acceptance"]["incident_kinds"] == {} and r2["acceptance"]["verdict"] == "PASS"
+    assert r2["book_coverage"]["unsynced_seconds"] == 5.0
+
+
+def test_current_window_includes_the_running_outage_and_is_labelled(tmp_path):
+    _write(tmp_path, T0, _rows(T0, T0 + 73 * H))                      # clean, then silence until now
+    hist = audit.audit(tmp_path, "BTCUSDT", now_ms=T0 + 80 * H)
+    assert hist["period"]["scope"] == "historical" and hist["acceptance"]["verdict"] == "PASS"
+    assert hist["acceptance"]["scope"] == "historical" and hist["period"]["seconds_since_last_event"] == 7 * 3600
+    cur = audit.audit(tmp_path, "BTCUSDT", now_ms=T0 + 80 * H, current=True)
+    assert cur["period"]["scope"] == "current" and cur["period"]["end"]["ms"] == T0 + 80 * H
+    assert cur["period"]["start"]["ms"] == T0 + 8 * H and cur["acceptance"]["verdict"] == "FAIL"
+    assert cur["acceptance"]["window"] is None
+    ok = audit.audit(tmp_path, "BTCUSDT", now_ms=T0 + 73 * H, current=True)
+    assert ok["acceptance"]["verdict"] == "PASS" and ok["acceptance"]["window"]["start"]["ms"] == T0 + H
+    with pytest.raises(ValueError):
+        audit.audit(tmp_path, "BTCUSDT", start_ms=T0, current=True)
+
+
+def test_period_edges_unrecognized_files_and_cli_current(tmp_path, capsys):
+    _write(tmp_path, T0, _rows(T0 + 30_000, T0 + 2 * H))
+    (tmp_path / "BTCUSDT" / "notes.txt").write_text("x")
+    r = audit.audit(tmp_path, "BTCUSDT", start_ms=T0, end_ms=T0 + 2 * H + 30_000, window_hours=1, now_ms=T0 + 5 * H)
+    assert r["period"]["scope"] == "explicit" and r["segments"]["unrecognized_files"] == ["notes.txt"]
+    edges = [p for p in r["time_coverage"]["pauses"] if p.get("period_edge")]
+    assert [p["seconds"] for p in edges] == [30.0, 30.0]
+    assert main(["audit", "--root", str(tmp_path), "--current", "--start", "2026-11-17T00:00:00"]) == 2
+    assert "refused" in capsys.readouterr().out

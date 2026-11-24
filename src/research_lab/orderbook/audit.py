@@ -18,11 +18,22 @@ Segments (``<YYYY-MM-DD>.<session_ms>.jsonl.gz``) are read in order (session id,
 segment of the newest session, without clean end and modified less than ``open_grace_seconds`` ago, is the file
 the recorder is still writing. A newest segment older than that is ``damaged`` (recorder killed).
 
+* **Book validity**: depth events that arrive while no book is synchronised (before the first snapshot, after
+  a break, a gap row or a restart, until the next sync) are *unsynced*. Their stretch counts as uncovered for the
+  book coverage, and a stretch longer than :data:`ACCEPT_MAX_PAUSE_SECONDS` ends a clean window. Events without
+  a valid book are no proof of integrity: an archive with events but no snapshot fails.
+
 Acceptance "72 h continuous" uses the fixed constants below (set before looking at data, not to be tuned):
 a window of ``window_hours`` inside the period that contains no pause > :data:`ACCEPT_MAX_PAUSE_SECONDS`, no
-sequence break, no damaged segment, no unparsable line and no segment overlap, and whose time coverage is at
-least :data:`ACCEPT_MIN_COVERAGE`. All times are UTC (ISO 8601 plus epoch ms); naive ``--start/--end`` are read
-as UTC.
+unsynced stretch above that, no sequence break, no damaged segment, no unparsable line and no segment overlap,
+and whose book coverage (time with events *and* a synchronised book) is at least :data:`ACCEPT_MIN_COVERAGE`.
+The Bauplan P3 criterion (:data:`P3_MIN_VALID_SHARE` valid seconds) is a different gate and reported apart.
+
+Which window is meant is always stated in ``period.scope``: ``current`` (the last ``window_hours`` up to now,
+``--current``; the window is the whole period), ``explicit`` (``--start/--end``) or ``historical`` (first to last
+event; the best window found is a *historical* window, not the state of the running recorder, and the silence
+after the last event is outside the period). All times are UTC (ISO 8601 plus epoch ms); naive
+``--start/--end`` are read as UTC.
 """
 from __future__ import annotations
 
@@ -42,6 +53,7 @@ ACCEPT_MIN_COVERAGE = 0.999          # at most 259 s uncovered in 72 h
 ACCEPT_MAX_PAUSE_SECONDS = 60        # any single pause above this ends a continuous window
 ACCEPT_MAX_BREAKS = 0                # unexplained sequence breaks allowed in the window
 ACCEPT_MAX_DAMAGED = 0               # damaged segments / unparsable lines / overlaps allowed in the window
+P3_MIN_VALID_SHARE = 0.995          # Bauplan P3 "99,5 % gültige Sekunden", a separate, weaker gate
 COVERAGE_GAP_MS = 1000               # depth@100ms: an event interval above 1 s counts as uncovered
 OUTAGE_SECONDS = 600                 # pauses of at least 10 min are also listed as outages
 DEFAULT_PAUSE_SECONDS = 10
@@ -112,6 +124,8 @@ class _Audit:
         self.chain = {"applied": 0, "old": 0, "nobook": 0, "breaks": 0, "pu_mismatch": 0, "sync_miss": 0,
                       "resyncs": 0, "session_resets": 0, "gap_resets": 0, "malformed": 0}
         self.breaks: list[dict] = []
+        self.unsynced: list[tuple[int, int]] = []     # stretches of depth events without a synchronised book
+        self._unsynced_from: int | None = None
         self.time_regressions = 0
         self._hint = {"gap_row": False, "restart": False, "after_damaged_segment": False}
         self._reset_chain(loss=False)
@@ -170,6 +184,7 @@ class _Audit:
             if counted:
                 self.rows["depth"] += 1
                 self._time(t)
+                self._validity(t, res == "applied")
                 if res in ("pu_mismatch", "sync_miss"):
                     self.chain["breaks"] += 1
                     self.chain[res] += 1
@@ -199,6 +214,24 @@ class _Audit:
             return "pu_mismatch"
         self.last_u = u
         return "applied"
+
+    def _validity(self, t: int, synced: bool) -> None:
+        if not synced:
+            if self._unsynced_from is None:
+                self._unsynced_from = t
+            return
+        if self._unsynced_from is not None:
+            self._close_unsynced(t)
+
+    def _close_unsynced(self, t: int) -> None:
+        a, self._unsynced_from = self._unsynced_from, None
+        if a is None or t <= a:
+            if a is not None:
+                self.unsynced.append((a, a))
+            return
+        self.unsynced.append((a, t))
+        if t - a > ACCEPT_MAX_PAUSE_SECONDS * 1000:
+            self.incidents.append((a, t, "unsynced"))
 
     # -- time ----------------------------------------------------------------------------------------------
     def _interval(self, a: int, b: int, edge: bool = False) -> None:
@@ -234,6 +267,8 @@ class _Audit:
         self._hint["after_damaged_segment"] = True
 
     def finish(self) -> None:
+        if self._unsynced_from is not None:
+            self._close_unsynced(max(self.last_ms or self._unsynced_from, self.end_ms or 0))
         if self.end_ms is not None and self.last_ms is not None and self.end_ms > self.last_ms:
             self._interval(self.last_ms, self.end_ms, edge=True)
 
@@ -250,7 +285,17 @@ def _uncovered(gaps: list[tuple[int, int]], starts: list[int], a: int, b: int) -
     return total
 
 
-def _acceptance(au: _Audit, p0: int, p1: int, window_ms: int) -> dict:
+def _merge(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    out: list[tuple[int, int]] = []
+    for a, b in sorted(i for i in intervals if i[1] > i[0]):
+        if out and a <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return out
+
+
+def _acceptance(au: _Audit, p0: int, p1: int, window_ms: int, scope: str) -> dict:
     # clean stretches: the period minus every incident (pause > limit as interval, other incidents as points)
     stretches: list[tuple[int, int]] = []
     cursor = p0
@@ -262,13 +307,15 @@ def _acceptance(au: _Audit, p0: int, p1: int, window_ms: int) -> dict:
             break
     if cursor < p1:
         stretches.append((cursor, p1))
-    gaps = sorted(au.gaps)
+    gaps = _merge(au.gaps + au.unsynced)          # uncovered = no events or no synchronised book
     starts = [g[0] for g in gaps]
     longest = max(stretches, key=lambda s: (s[1] - s[0], -s[0]), default=None)
     best = None
     for s0, s1 in stretches:
         if s1 - s0 < window_ms:
             continue
+        if scope == "current" and (s0, s1) != (p0, p1):
+            continue                               # the current window is the whole period, nothing to pick
         lo = bisect.bisect_left(starts, s0)
         candidates = [s0] + [g[1] for g in gaps[lo:] if g[1] <= s1 - window_ms]
         for c in candidates:
@@ -279,7 +326,11 @@ def _acceptance(au: _Audit, p0: int, p1: int, window_ms: int) -> dict:
         "thresholds": {"window_hours": window_ms / 3_600_000, "standard_window_hours": ACCEPT_WINDOW_HOURS,
                        "min_coverage": ACCEPT_MIN_COVERAGE, "max_pause_seconds": ACCEPT_MAX_PAUSE_SECONDS,
                        "max_sequence_breaks": ACCEPT_MAX_BREAKS, "max_damaged": ACCEPT_MAX_DAMAGED,
-                       "coverage_gap_ms": COVERAGE_GAP_MS},
+                       "coverage_gap_ms": COVERAGE_GAP_MS, "coverage_counts": "events and synchronised book"},
+        "scope": scope,
+        "scope_note": {"current": "the last window up to now (state of the running recorder)",
+                       "explicit": "best window inside the given --start/--end",
+                       "historical": "best historical window between first and last event; not the current state"}[scope],
         "incidents": len(au.incidents),
         "incident_kinds": {k: sum(1 for i in au.incidents if i[2] == k) for k in sorted({i[2] for i in au.incidents})},
         "longest_clean_stretch": None, "window": None, "reasons": [],
@@ -298,17 +349,37 @@ def _acceptance(au: _Audit, p0: int, p1: int, window_ms: int) -> dict:
                          "coverage": round(cov, 6), "uncovered_seconds": round(best[1] / 1000, 3)}
         if cov < ACCEPT_MIN_COVERAGE:
             out["reasons"].append(f"best window coverage {cov:.6f} < {ACCEPT_MIN_COVERAGE}")
+    if not au.chain["applied"]:
+        out["reasons"].append("no depth event applied to a synchronised book")
     if window_ms != ACCEPT_WINDOW_HOURS * 3_600_000:
         out["reasons"].append(f"window {window_ms / 3_600_000:g} h is not the standard {ACCEPT_WINDOW_HOURS} h")
     out["verdict"] = "PASS" if not out["reasons"] else "FAIL"
+    # Bauplan P3 is a separate gate: share of valid seconds in the accepted window (else the whole period)
+    w0, w1 = (best[0], best[0] + window_ms) if best is not None else (p0, p1)
+    valid = 1 - _uncovered(gaps, starts, w0, w1) / (w1 - w0)
+    out["p3_valid_seconds"] = {"min_share": P3_MIN_VALID_SHARE, "share": round(valid, 6),
+                               "measured_on": "acceptance window" if best is not None else "whole period",
+                               "verdict": "PASS" if best is not None and valid >= P3_MIN_VALID_SHARE else "FAIL",
+                               "note": "different gate from the 72 h acceptance; reported apart, never merged"}
     return out
 
 
 def audit(root: Path, symbol: str, *, start_ms: int | None = None, end_ms: int | None = None,
           window_hours: float = ACCEPT_WINDOW_HOURS, pause_seconds: float = DEFAULT_PAUSE_SECONDS,
-          open_grace_seconds: float = DEFAULT_OPEN_GRACE_SECONDS, now_ms: int | None = None) -> dict:
-    """Audit ``root/symbol`` without writing anything. Returns the JSON-serialisable report."""
+          open_grace_seconds: float = DEFAULT_OPEN_GRACE_SECONDS, now_ms: int | None = None,
+          current: bool = False) -> dict:
+    """Audit ``root/symbol`` without writing anything. Returns the JSON-serialisable report.
+
+    ``current=True`` audits exactly the last ``window_hours`` up to ``now_ms`` (no --start/--end allowed)."""
     now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+    if current:
+        if start_ms is not None or end_ms is not None:
+            raise ValueError("current=True takes no start/end")
+        end_ms = now_ms
+        start_ms = now_ms - int(window_hours * 3_600_000)
+        scope = "current"
+    else:
+        scope = "explicit" if start_ms is not None or end_ms is not None else "historical"
     folder = root / symbol
     segs, unknown = [], []
     for path in sorted(folder.glob("*")) if folder.is_dir() else []:
@@ -374,7 +445,7 @@ def audit(root: Path, symbol: str, *, start_ms: int | None = None, end_ms: int |
     report: dict = {
         "audit": "orderbook-recorder-integrity", "read_only": True, "symbol": symbol,
         "generated": stamp(now_ms),
-        "period": {"start": stamp(p0), "end": stamp(p1),
+        "period": {"scope": scope, "start": stamp(p0), "end": stamp(p1),
                    "source": {"start": "--start" if start_ms is not None else "first depth event",
                               "end": "--end" if end_ms is not None else "last depth event"},
                    "hours": round((p1 - p0) / 3_600_000, 3) if p0 is not None and p1 is not None else None,
@@ -389,7 +460,7 @@ def audit(root: Path, symbol: str, *, start_ms: int | None = None, end_ms: int |
     }
     if p0 is None or p1 is None or p1 <= p0:
         report["time_coverage"] = None
-        report["acceptance"] = {"verdict": "FAIL", "reasons": ["no depth events in the period"]}
+        report["acceptance"] = {"verdict": "FAIL", "scope": scope, "reasons": ["no depth events in the period"]}
         report["completeness"] = dict(au.chain, breaks_list=au.breaks)
         return report
     gaps = sorted(au.gaps)
@@ -402,7 +473,13 @@ def audit(root: Path, symbol: str, *, start_ms: int | None = None, end_ms: int |
         "outages_count": len(outages), "longest_pause_seconds": max((p["seconds"] for p in au.pauses), default=0.0),
     }
     depth = au.rows["depth"]
+    book_gaps = _merge(au.gaps + au.unsynced)
+    unsynced = _uncovered(_merge(au.unsynced), [g[0] for g in _merge(au.unsynced)], p0, p1)
+    book_uncovered = _uncovered(book_gaps, [g[0] for g in book_gaps], p0, p1)
+    report["book_coverage"] = {"coverage": round(1 - book_uncovered / (p1 - p0), 6),
+                               "uncovered_seconds": round(book_uncovered / 1000, 3),
+                               "unsynced_seconds": round(unsynced / 1000, 3), "unsynced_stretches": len(au.unsynced)}
     report["completeness"] = dict(au.chain, synced_share=round(au.chain["applied"] / depth, 6) if depth else 0.0,
                                   breaks_listed=len(au.breaks), breaks_list=au.breaks)
-    report["acceptance"] = _acceptance(au, p0, p1, int(window_hours * 3_600_000))
+    report["acceptance"] = _acceptance(au, p0, p1, int(window_hours * 3_600_000), scope)
     return report

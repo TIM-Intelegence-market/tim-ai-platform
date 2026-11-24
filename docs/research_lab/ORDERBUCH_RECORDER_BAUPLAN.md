@@ -75,8 +75,16 @@ python -m src.research_lab.orderbook audit --root ~/Documents/TIM/orderbook/bina
 - **Segmente**: `ok`, `damaged` (kein sauberes gzip-Ende, kaputte oder halbe Zeile, leer) oder `open`: das
   neueste Segment der neuesten Sitzung ohne gzip-Ende, zuletzt vor höchstens `--open-grace-seconds` geändert.
   Überlappende Sitzungen werden gelistet.
+- **Buchgültigkeit**: Ereignisse ohne synchronisiertes Buch (vor dem ersten Snapshot, nach Bruch, `gap`-Zeile
+  oder Neustart bis zum nächsten Sync) zählen als "unsynced": nicht abgedeckt in `book_coverage`, und ein
+  solcher Abschnitt über 60 s beendet ein sauberes Fenster. Ereignisse ganz ohne Snapshot ergeben FAIL.
 - **Abnahme "72 h durchgehend"** (Konstanten in `audit.py`, vor Blick auf die Daten festgelegt, nicht
-  nachjustieren): ein 72-h-Fenster ohne Pause > 60 s, ohne Sequenzbruch, ohne beschädigtes Segment,
-  unlesbare Zeile oder Überlappung, mit Zeitabdeckung ≥ 99,9 % (höchstens 259 s Lücke). Strenger als das
-  P3-Kriterium oben (99,5 %). Ergebnis PASS/FAIL mit Gründen, längster sauberer Abschnitt und bestem Fenster.
+  nachjustieren): ein 72-h-Fenster ohne Pause > 60 s, ohne unsynced-Abschnitt > 60 s, ohne Sequenzbruch, ohne
+  beschädigtes Segment, unlesbare Zeile oder Überlappung, mit Abdeckung (Ereignisse *und* gültiges Buch)
+  ≥ 99,9 % (höchstens 259 s Lücke). Ergebnis PASS/FAIL mit Gründen, längster sauberer Abschnitt und bestem
+  Fenster. Das P3-Kriterium oben (99,5 % gültige Sekunden) ist ein eigenes Gate und steht getrennt unter
+  `acceptance.p3_valid_seconds`.
+- **Welches Fenster**: `period.scope` = `current` (`--current`: genau die letzten 72 h bis jetzt, Zustand des
+  laufenden Recorders, ein laufender Ausfall zählt mit), `explicit` (`--start/--end`) oder `historical`
+  (erstes bis letztes Ereignis: bestes *historisches* Fenster, kein Betriebszustand).
 - Alle Zeiten UTC als ISO und Epoch-ms; `--start/--end` ohne Offset gelten als UTC.
