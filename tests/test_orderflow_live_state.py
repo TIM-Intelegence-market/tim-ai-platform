@@ -349,3 +349,15 @@ def test_perp_store_without_updated_at_counts_closed_buckets_only():
     rows = [[t - 600, 75000.0, 1.0, 2.0], [t - 120, 75000.0, 0.0, 1.0]]
     out = ls._perp({"days": {"d": rows}, "bucket_seconds": 300}, t)
     assert out["delta_15m"] == pytest.approx(1.0) and out["closed_buckets_only"] is True
+
+
+def test_head_of_line_delay_of_the_prefix_rule_is_reported():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker.ingest([_raw(-20, 2.0, False, 1)], available_at=T0 + timedelta(seconds=10))
+    tracker.ingest([_raw(-10, 3.0, False, 2)], available_at=T0 - timedelta(seconds=5))   # waits 15 s for trade 1
+    tracker.ingest([_raw(30, 1.0, False, 3)], available_at=T0 + timedelta(seconds=30))   # no wait
+    state = tracker.snapshot(T0 + timedelta(seconds=40))
+    assert state["held_back"] == {"trades": 1, "max_seconds": 15.0}
+    live = ls.LiveOrderflowTracker(SYMBOL, 5.0)                       # live: one read time per batch, never held back
+    live.ingest([_raw(0, 1.0, False, 1), _raw(1, 1.0, True, 2)], available_at=T0 + timedelta(seconds=2))
+    assert live.snapshot(T0 + timedelta(seconds=3))["held_back"] == {"trades": 0, "max_seconds": 0.0}

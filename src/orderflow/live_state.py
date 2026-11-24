@@ -95,6 +95,8 @@ class LiveOrderflowTracker:
         # Parallel to _trades: (available epoch, day key, day cvd, day unknown volume, day high, day low) after the trade.
         self._states: deque[tuple[float, float, float, float, float, float]] = deque()
         self.late_dropped = 0  # trades older than the newest one, delivered late: never inserted back in time
+        self.held_back = 0  # trades made visible later than their own availability, waiting for an earlier one
+        self.held_back_max_seconds = 0.0  # longest such wait (head-of-line delay of the prefix rule)
         self._last_available: float | None = None  # availability is kept monotone: a trade is visible after all earlier
         self._carry: tuple[float, float, float, float, float, float] | None = None  # state after the last pruned trade
         self._last_snapshot: float | None = None
@@ -143,9 +145,11 @@ class LiveOrderflowTracker:
             self.day_high = trade.price if self.day_high is None else max(self.day_high, trade.price)
             self.day_low = trade.price if self.day_low is None else min(self.day_low, trade.price)
             self._trades.append((moment, float(trade.price), float(trade.quantity), side))
-            seen = max(moment, available) if available is not None else moment
-            if self._last_available is not None:
-                seen = max(seen, self._last_available)
+            own = max(moment, available) if available is not None else moment
+            seen = own if self._last_available is None else max(own, self._last_available)
+            if seen > own:
+                self.held_back += 1
+                self.held_back_max_seconds = max(self.held_back_max_seconds, seen - own)
             self._last_available = seen
             self._states.append((seen, day, self.day_cvd,
                                  self.day_unknown_volume, float(self.day_high), float(self.day_low)))
@@ -236,7 +240,8 @@ class LiveOrderflowTracker:
         state = {
             "schema": SCHEMA_VERSION, "symbol": self.symbol, "as_of": now.astimezone(timezone.utc).isoformat(),
             "price": price, "last_trade_at": last_time.isoformat() if last_time else None,
-            "stale": stale, "future_trades": future, "late_dropped": self.late_dropped, "windows": windows, "tempo": _round(tempo, 2) if tempo is not None else None,
+            "stale": stale, "future_trades": future, "late_dropped": self.late_dropped,
+            "held_back": {"trades": self.held_back, "max_seconds": _round(self.held_back_max_seconds, 3)}, "windows": windows, "tempo": _round(tempo, 2) if tempo is not None else None,
             "day": day,
             "wave": wave, "levels": level_rows, "perp": perp, "thresholds": THRESHOLDS,
         }
