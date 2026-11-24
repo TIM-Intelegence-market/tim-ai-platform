@@ -224,3 +224,18 @@ def test_chart_verdict_at_a_plan_is_the_same_with_or_without_a_later_backfill(tm
         assert record["store_rows_arrival"] == "PIT"
         results.append((record["chart_at_plan"], record["urteil"]))
     assert results[0] == results[1]
+
+
+@pytest.mark.parametrize("bucket", [{}, {"bucket_seconds": None}, {"bucket_seconds": 0}, {"bucket_seconds": "300"},
+                                    {"bucket_seconds": True}, {"bucket_seconds": float("nan")}, {"bucket_seconds": 2.5}])
+def test_a_store_without_a_usable_bucket_width_is_no_evidence(bucket):
+    """Mission 07-FINAL F1: 300 s was assumed before; now the cut is unknown and nothing reaches a judgement."""
+    t = int(H11.timestamp())
+    day = "2026-11-08"
+    rows = [[t - 600, 75000.0, 1.0, 2.0]]
+    good = {"bucket_seconds": 300, "updated_at": (H11 - timedelta(seconds=5)).isoformat(), "days": {day: rows}}
+    pit.observe_store(good, H11 - timedelta(seconds=5))
+    assert pit.store_known_at(good, "BTCUSDT", H11)["days"] == {day: rows}       # the same rows count with a stated width
+    store = {**{k: v for k, v in good.items() if k != "bucket_seconds"}, **bucket}
+    assert pit.store_known_at(store, "BTCUSDT", H11) is None
+    assert pit.store_until(store, H11) is None
