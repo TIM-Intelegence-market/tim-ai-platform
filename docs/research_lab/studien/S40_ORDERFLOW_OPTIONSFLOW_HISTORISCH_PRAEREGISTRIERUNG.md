@@ -1,9 +1,9 @@
-# S40 – Hilft Orderflow oder Optionsflow über den Preis hinaus? (Präregistrierung, ENTWURF 0.3, 23.11.2026)
+# S40 – Hilft Orderflow oder Optionsflow über den Preis hinaus? (Präregistrierung, Version 1.0, eingefroren 24.11.2026)
 
 Auftrag Uzi 23.11.2026: "Go P0-P4, historisch ja" (Weg H erlaubt), dann "s40 go". Grundlage: Forschungsplan
 `docs/research_lab/of_optionen_gamma/FORSCHUNGSPLAN.md` (Abschnitte 4, 5, 7, 8, 11) und die Bausteine aus PR #352.
-**Status: Entwurf, nicht eingefroren.** Einfrieren nur auf Uzis Wort ("einfrieren") nach erneuter Prüfung durch
-`studien-pruefer`. Nach dem ersten Ergebnis wird nichts mehr geändert; jede Änderung danach ist eine neue Version.
+**Status: eingefroren 1.0** auf Uzis Wort ("merge + einfrieren", 24.11.2026 10:15 Ortszeit), nach zwei Prüfungen durch
+`studien-pruefer` (0.1, 0.3). Ab jetzt wird nichts mehr geändert; jede Änderung ist eine neue Version.
 Protokoll 1.3 (`src/research_lab/protocol.py`). Wie S34–S39 wird S40 per PR eingefroren (Hash des Commits im Bericht)
 und nicht in `REGISTER.jsonl` eingetragen (dort 58 von 60 Plätzen belegt, `MAX_REGISTER_ENTRIES`).
 Änderungen 0.1 → 0.2: Prüfung `studien-pruefer` vom 23.11. (12 Punkte), alle eingearbeitet (Abschnitt 13).
@@ -172,7 +172,7 @@ Vorhersagekraft. "Nicht bestanden" ist das wahrscheinlichste Ergebnis und wird s
    `src/research_lab/studies/s40.py`, Tests mit synthetischen Daten: Look-ahead-Test je Merkmal (Zukunft verändern,
    Merkmal bei t gleich), inkrementell = Baustein, Validierungsgrenze und Hash, HAC-Clark-West gegen Handrechnung.
    Prüfung `studien-pruefer`, dann Uzis "einfrieren".
-3. **Training** auf der PS5: `python -m src.research_lab.studies.s40 --phase train`.
+3. **Training** auf dem Mac (Datenordner `~/Documents/TIM/s40-data`): `python -m src.research_lab.studies.s40 --phase train`.
 4. **Validierung** nur bei bestandenem Training: `--phase validate`.
 5. **Bericht** `S40_BERICHT.md` mit allen 12 Tests.
 
@@ -192,6 +192,8 @@ ungültigen Monaten nicht im z-Fenster, Ausschlüsse je Grund gezählt, Deribit-
 ungeöffnet, `STRESS_COSTS` zusätzlich berichtet, ISO-Wochen im Bootstrap, Sperren gegen zweites Training und gegen
 Validierung mit anderem Code oder anderen Daten, Optionen je Sekunde gebündelt (Speicher).
 
-**Vor dem Einfrieren von Uzi zu entscheiden:** (1) Teilung 2020–2022/2023–2024 (wie `protocol.py`) oder 2020–2023/2024
-(wie OFX am 10.11.); (2) Deflated Sharpe ≥ 0,95 als Pflicht der Handelsprüfung (in `stats/deflated.py` sonst nur
-Zusatzauswertung). Datenlauf (Paket 1) läuft seit 23.11. 21:18 auf dem Mac.
+**Von Uzi entschieden (23.11., "lassen"/"jaja"):** (1) Teilung 2020–2022 Training / 2023–2024 Validierung (wie
+`protocol.py`); (2) Deflated Sharpe ≥ 0,95 ist Pflicht der Handelsprüfung.
+
+**1.0 (24.11.):** Datenreife fertig (`S40_DATENREIFE.md`): alle Quellen 100 % gültige Monate, T1–T12 prüfbar,
+`OPTIONS_START_MONTH = "2020-01"`. Daten auf dem Mac geladen (nicht PS5, Uzi 23.11.). Keine Regeländerung gegenüber 0.3.
