@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,7 @@ from src.research_lab.ki_entry import (
     PROMPT_VERSION,
     READINGS,
     RULE,
+    RULE_DEEPSEEK,
     SCHEMA,
     zones,
 )
@@ -49,9 +51,35 @@ GIVE_UP_S = (FILL_BARS + HOLD_BARS + 8) * BAR_S   # no candles to finish it by t
 COST_PCT = 0.10           # fees, spread and slippage, both ways, in % of the entry price (Bitunix, maker in, taker out)
 BIG_BTC = 50.0            # big orders shown to the AI
 REASON_MAX = 400
-PLAN_RULES = (f"15m, strong zone >= {zones.STRONG}", f"cooldown {COOLDOWN_S // 3600} h per zone, new session asks again",
-              f"entry <= {ENTRY_MAX_PCT} % from price", f"stop {STOP_MIN_PCT}-{STOP_MAX_PCT} %", f"target >= {MIN_RR} x stop",
-              f"fill within {FILL_BARS} bars", f"hold <= {HOLD_BARS} bars", f"costs {COST_PCT} %", "stop first when both")
+
+
+@dataclass(frozen=True)
+class Profile:
+    """One decider with its own log: which rule name it writes and the guards the AI cannot change."""
+    rule: str = RULE
+    stop_min_pct: float = STOP_MIN_PCT
+    min_rr: float = MIN_RR
+    max_trades_day: int | None = None       # LONG/SHORT decisions per local day (Europe/Berlin)
+    pause_after_losses: int | None = None   # this many losing results in a row on one local day: no more that day
+
+
+LOCAL_PROFILE = Profile()
+# Uzi 24.11.2026 "go deepseek": DeepSeek decides on its own paper account, with fixed guards.
+DEEPSEEK_PROFILE = Profile(rule=RULE_DEEPSEEK, stop_min_pct=0.5, min_rr=2.0, max_trades_day=3, pause_after_losses=2)
+
+
+def plan_rules(profile: Profile = LOCAL_PROFILE) -> tuple[str, ...]:
+    rules = [f"15m, strong zone >= {zones.STRONG}", f"cooldown {COOLDOWN_S // 3600} h per zone, new session asks again",
+             f"entry <= {ENTRY_MAX_PCT} % from price", f"stop {profile.stop_min_pct}-{STOP_MAX_PCT} %", f"target >= {profile.min_rr} x stop",
+             f"fill within {FILL_BARS} bars", f"hold <= {HOLD_BARS} bars", f"costs {COST_PCT} %", "stop first when both"]
+    if profile.max_trades_day is not None:
+        rules.append(f"at most {profile.max_trades_day} trades per day")
+    if profile.pause_after_losses is not None:
+        rules.append(f"pause for the day after {profile.pause_after_losses} losses in a row")
+    return tuple(rules)
+
+
+PLAN_RULES = plan_rules()
 
 ANSWER_SCHEMA = {
     "type": "object",
@@ -62,7 +90,8 @@ ANSWER_SCHEMA = {
                    "grund": {"type": "string", "maxLength": REASON_MAX}},
     "required": ["lesart", "aktion", "einstieg", "stop", "ziel", "vertrauen", "grund"],
 }
-INSTRUCTIONS = f"""Du bist ein erfahrener BTC-Orderflow-Trader (Bitunix-Perp). Der Preis ist gerade in eine starke Zone gelaufen:
+def instructions(profile: Profile = LOCAL_PROFILE) -> str:
+    return f"""Du bist ein erfahrener BTC-Orderflow-Trader (Bitunix-Perp). Der Preis ist gerade in eine starke Zone gelaufen:
 dort liegen mehrere Marken übereinander (zum Beispiel Gamma-Wand, POC, Wochen- oder Monatsmarke, meistgehandelter Preis).
 Lies das ganze Bild: Hält die Zone (Absorption: viel Gegendruck im Delta ohne Durchbruch, lange Dochte, große Orders,
 die der Markt nicht durchlässt, Schluss zurück aus der Zone) oder bricht sie (Delta in Bruchrichtung, Schluss jenseits,
@@ -77,9 +106,12 @@ ein Abpraller.
 Lies zuerst, dann entscheide: "lesart" ist HAELT (Zone hält, Trade weg von der Zone), BRICHT (Zone bricht, Trade in
 Bruchrichtung, Einstieg am Rücklauf an die Zone) oder UNKLAR. Bei HAELT oder BRICHT gib den passenden Trade (LONG oder
 SHORT); NICHTS nur bei UNKLAR oder wenn kein sinnvoller Stop und kein Ziel möglich ist. Bei LONG/SHORT: Einstieg als Limit nahe dem aktuellen
-Preis (höchstens {ENTRY_MAX_PCT} % entfernt), Stop hinter der Zone, Ziel an der nächsten Gegenzone, Ziel mindestens {MIN_RR}-mal
+Preis (höchstens {ENTRY_MAX_PCT} % entfernt), Stop hinter der Zone (mindestens {profile.stop_min_pct} % vom Einstieg entfernt), Ziel an der nächsten Gegenzone, Ziel mindestens {profile.min_rr}-mal
 so weit weg wie der Stop. Kosten etwa {COST_PCT} % vom Preis pro Trade. Bei NICHTS setze Einstieg, Stop und Ziel auf 0.
 Du siehst nur Daten bis jetzt. Erfinde nichts. Grund: ein bis zwei kurze Sätze auf Deutsch. Antworte nur mit JSON."""
+
+
+INSTRUCTIONS = instructions()
 
 
 def _iso(epoch: float) -> str:
@@ -222,7 +254,28 @@ def open_trade(records: Sequence[Mapping[str, Any]]) -> Mapping[str, Any] | None
     return None
 
 
-def trigger(model: Mapping[str, Any], records: Sequence[Mapping[str, Any]], now: float) -> dict[str, Any] | None:
+def _day(epoch: float) -> str:
+    return datetime.fromtimestamp(epoch, UTC).astimezone(LOCAL).strftime("%Y-%m-%d")
+
+
+def day_guard(records: Sequence[Mapping[str, Any]], now: float, profile: Profile) -> str | None:
+    """Why this profile takes no new question today (trade limit, pause after losses), or None."""
+    today = _day(now)
+    decisions = {r["id"]: r for r in records if r.get("kind") == "decision" and _day(float(r["candle_epoch"])) == today}
+    trades = [d for d in decisions.values() if d.get("action") in ("LONG", "SHORT")]
+    if profile.max_trades_day is not None and len(trades) >= profile.max_trades_day:
+        return "Tageslimit erreicht"
+    if profile.pause_after_losses is not None:
+        rs = [float(r["r"]) for r in records if r.get("kind") == "result" and r.get("decision_id") in decisions
+              and r.get("r") is not None and r.get("outcome") not in ("nicht gefüllt", "Daten fehlen")]
+        tail = rs[-profile.pause_after_losses:]
+        if len(tail) == profile.pause_after_losses and all(r < 0 for r in tail):
+            return "Pause nach Verlusten"
+    return None
+
+
+def trigger(model: Mapping[str, Any], records: Sequence[Mapping[str, Any]], now: float,
+            profile: Profile = LOCAL_PROFILE) -> dict[str, Any] | None:
     """The strong zone the newest closed candle touched, or None (with the reason in ``why`` for the summary)."""
     candles = closed_candles(model)
     if len(candles) < 20:
@@ -232,6 +285,9 @@ def trigger(model: Mapping[str, Any], records: Sequence[Mapping[str, Any]], now:
         return {"why": "Kerzen veraltet"}
     if open_trade(records):
         return {"why": "Papier-Trade offen"}
+    blocked = day_guard(records, now, profile)
+    if blocked:
+        return {"why": blocked}
     if any(r.get("kind") == "decision" and r.get("candle") == last["time"] for r in records):
         return {"why": "Kerze schon gefragt"}
     price = float(last["close"])
@@ -297,11 +353,11 @@ def build_context(model: Mapping[str, Any], zone: Mapping[str, Any], now: float)
     }
 
 
-def build_prompt(context: Mapping[str, Any]) -> str:
-    return INSTRUCTIONS + "\n\nDATEN:\n" + json.dumps(context, ensure_ascii=False, sort_keys=True, default=str)
+def build_prompt(context: Mapping[str, Any], profile: Profile = LOCAL_PROFILE) -> str:
+    return instructions(profile) + "\n\nDATEN:\n" + json.dumps(context, ensure_ascii=False, sort_keys=True, default=str)
 
 
-def check_answer(answer: Any, price: float) -> tuple[str, dict[str, float], float, str, str | None]:
+def check_answer(answer: Any, price: float, profile: Profile = LOCAL_PROFILE) -> tuple[str, dict[str, float], float, str, str | None]:
     """(action, plan, confidence, reason, problem). ``problem`` set = written as UNGUELTIG, never traded."""
     if not isinstance(answer, dict) or answer.get("aktion") not in ACTIONS:
         raise ValueError("answer without a valid aktion")
@@ -323,10 +379,10 @@ def check_answer(answer: Any, price: float) -> tuple[str, dict[str, float], floa
     if abs(entry - price) / price * 100 > ENTRY_MAX_PCT:
         return action, plan, float(confidence), reason, f"Einstieg mehr als {ENTRY_MAX_PCT} % vom Preis"
     risk = abs(entry - stop) / entry * 100
-    if not STOP_MIN_PCT <= risk <= STOP_MAX_PCT:
-        return action, plan, float(confidence), reason, f"Stop {risk:.2f} % (erlaubt {STOP_MIN_PCT}-{STOP_MAX_PCT} %)"
-    if abs(target - entry) < MIN_RR * abs(entry - stop):
-        return action, plan, float(confidence), reason, f"Ziel kleiner als {MIN_RR} x Stop"
+    if not profile.stop_min_pct <= risk <= STOP_MAX_PCT:
+        return action, plan, float(confidence), reason, f"Stop {risk:.2f} % (erlaubt {profile.stop_min_pct}-{STOP_MAX_PCT} %)"
+    if abs(target - entry) < profile.min_rr * abs(entry - stop):
+        return action, plan, float(confidence), reason, f"Ziel kleiner als {profile.min_rr} x Stop"
     return action, plan, float(confidence), reason, None
 
 
@@ -395,36 +451,36 @@ def settle(records: list[dict[str, Any]], candles: Sequence[Mapping[str, Any]], 
 
 
 def run(model: Mapping[str, Any], log_path: Path, ask: Callable[[str], Any], model_name: str,
-        now: float | None = None) -> dict[str, Any]:
+        now: float | None = None, profile: Profile = LOCAL_PROFILE) -> dict[str, Any]:
     now = now if now is not None else datetime.now(UTC).timestamp()
     records = read_log(log_path)
     candles = closed_candles(model)
     summary: dict[str, Any] = {"results": [], "decision": None}
     for r in settle(records, candles, log_path, now):
         summary["results"].append({k: r[k] for k in ("decision_id", "action", "outcome", "r")})
-    hit = trigger(model, records, now)
+    hit = trigger(model, records, now, profile)
     if not hit or "zone" not in hit:
         summary["waiting"] = (hit or {}).get("why")
     else:
         zone, candle = hit["zone"], hit["candle"]
         try:
             context = build_context(model, zone, now)
-            prompt = build_prompt(context)
+            prompt = build_prompt(context, profile)
             answer = ask(prompt)
-            action, plan, confidence, reason, problem = check_answer(answer, float(candle["close"]))
+            action, plan, confidence, reason, problem = check_answer(answer, float(candle["close"]), profile)
             reading = answer.get("lesart") if answer.get("lesart") in READINGS else None
         except Exception as error:  # noqa: BLE001 - data, AI or answer unusable: nothing written, next run retries
             summary["failed"] = type(error).__name__
         else:
             stamp = _iso(float(candle["time"]) + BAR_S)
             record = append_log(log_path, {
-                "schema": SCHEMA, "rule": RULE, "prompt_version": PROMPT_VERSION, "model": model_name, "kind": "decision",
+                "schema": SCHEMA, "rule": profile.rule, "prompt_version": PROMPT_VERSION, "model": model_name, "kind": "decision",
                 "id": f"ki-{int(candle['time'])}", "candle": candle["time"], "candle_epoch": float(candle["time"]) + BAR_S,
                 "decided_at": stamp, "price": float(candle["close"]), "zone_key": zone_key(zone),
                 "zone": {k: zone[k] for k in ("low", "high", "strength", "sources", "rejections")},
                 "action": "UNGUELTIG" if problem else action, "answer_action": action, "problem": problem, "plan": plan,
-                "reading": reading, "confidence": round(confidence, 3), "reason": reason, "context_hash": hashlib.sha256(prompt.encode()).hexdigest(),
-                "context": context, "rules": list(PLAN_RULES) + list(zones.ZONE_RULES), "written_at": _iso(now),
+                "reading": reading, "asked": answer.get("gefragt"), "confidence": round(confidence, 3), "reason": reason, "context_hash": hashlib.sha256(prompt.encode()).hexdigest(),
+                "context": context, "rules": list(plan_rules(profile)) + list(zones.ZONE_RULES), "written_at": _iso(now),
             }, records)
             summary["decision"] = {k: record[k] for k in ("id", "action", "reading", "price", "plan", "reason", "problem")}
     if records:
@@ -432,14 +488,14 @@ def run(model: Mapping[str, Any], log_path: Path, ask: Callable[[str], Any], mod
     return summary
 
 
-def report(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def report(records: Sequence[Mapping[str, Any]], rule: str = RULE) -> dict[str, Any]:
     decisions = [r for r in records if r.get("kind") == "decision"]
     results = {r["decision_id"]: r for r in records if r.get("kind") == "result"}
     filled = [results[d["id"]] for d in decisions if d["id"] in results and results[d["id"]]["outcome"] not in ("nicht gefüllt", "Daten fehlen")]
     rs = [float(r["r"]) for r in filled]
     count = {a: sum(1 for d in decisions if d["action"] == a) for a in (*ACTIONS, "UNGUELTIG")}
     versions = {v: sum(1 for d in decisions if d.get("prompt_version") == v) for v in sorted({str(d.get("prompt_version")) for d in decisions})}
-    return {"rule": RULE, "decisions": len(decisions), "by_prompt": versions, "by_action": count, "trades": len(rs),
+    return {"rule": rule, "decisions": len(decisions), "by_prompt": versions, "by_action": count, "trades": len(rs),
             "open": sum(1 for d in decisions if d["action"] in ("LONG", "SHORT") and d["id"] not in results),
             "not_filled": sum(1 for r in results.values() if r["outcome"] == "nicht gefüllt"),
             "no_data": sum(1 for r in results.values() if r["outcome"] == "Daten fehlen"),

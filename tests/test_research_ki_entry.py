@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.research_lab.ki_entry import decide, zones
+from src.research_lab.ki_entry import decide, deepseek, zones
 from src.research_lab.ki_filter.decide import LogError, read_log
 
 T0 = 1_795_400_000 - 1_795_400_000 % 900
@@ -306,3 +306,62 @@ def test_new_session_asks_again_at_the_same_zone(tmp_path: Path):
     assert out["decision"]["action"] == "NICHTS" and out["decision"]["reading"] == "UNKLAR"
     rep = decide.report(read_log(log))
     assert rep["by_prompt"] == {"ki-einstieg/2": 2} and rep["rule"] == "R-KI-1/0.2-entwurf"
+
+
+def _reply(action: str, entry: float = 60100.0, stop: float = 59700.0, target: float = 61000.0, key: str = "aktion") -> dict:
+    body = f'{{"lesart": "HAELT", "{key}": "{action}", "einstieg": {entry}, "stop": {stop}, "ziel": {target}, "grund": "Zone hält."}}'
+    return {"ok": True, "answer": "```json\n" + body + "\n```"}
+
+
+def test_deepseek_trades_only_when_both_answers_agree(tmp_path: Path):
+    c = falling_into_zone()
+    replies = iter([_reply("LONG"), _reply("LONG", key="richtung")])
+    prompts: list[str] = []
+
+    def ask(text: str) -> dict:
+        prompts.append(text)
+        return next(replies)
+
+    log = tmp_path / "ds.jsonl"
+    out = decide.run(model(c), log, deepseek.decider(ask), deepseek.MODEL_NAME, now=now_after(c), profile=decide.DEEPSEEK_PROFILE)
+    assert out["decision"]["action"] == "LONG" and len(prompts) == 2 and "keine Werkzeuge" in prompts[0]
+    assert "mindestens 0.5 %" in prompts[0] and "mindestens 2.0-mal" in prompts[0]
+    rec = read_log(log)[0]
+    assert rec["rule"] == "R-KI-2/0.1-entwurf" and rec["asked"] == ["LONG", "LONG"] and rec["model"] == "deepseek (Hermes)"
+    assert "at most 3 trades per day" in rec["rules"]
+
+    swing = iter([_reply("SHORT", 60100, 60500, 59000), _reply("LONG")])
+    log2 = tmp_path / "ds2.jsonl"
+    out = decide.run(model(c), log2, deepseek.decider(lambda t: next(swing)), "ds", now=now_after(c), profile=decide.DEEPSEEK_PROFILE)
+    assert out["decision"]["action"] == "NICHTS" and "uneinig" in out["decision"]["reason"]
+
+    log3 = tmp_path / "ds3.jsonl"
+    out = decide.run(model(c), log3, deepseek.decider(lambda t: {"ok": False, "error": "Zeit"}), "ds", now=now_after(c),
+                     profile=decide.DEEPSEEK_PROFILE)
+    assert out["failed"] == "RuntimeError" and not log3.exists()
+    with pytest.raises(ValueError):
+        deepseek.parse("kein JSON")
+
+
+def test_deepseek_guards_stop_target_day_limit_and_pause():
+    p = decide.DEEPSEEK_PROFILE
+    ok = {"aktion": "LONG", "einstieg": 60000.0, "stop": 59700.0, "ziel": 60600.0, "vertrauen": 0.6, "grund": "x"}
+    assert decide.check_answer(ok, 60000.0, p)[4] is None
+    assert "Stop" in decide.check_answer({**ok, "stop": 59800.0, "ziel": 61000.0}, 60000.0, p)[4]      # 0.33 % < 0.5 %
+    assert "Ziel" in decide.check_answer({**ok, "ziel": 60500.0}, 60000.0, p)[4]                        # 1.67 x < 2 x
+    assert decide.check_answer({**ok, "stop": 59800.0, "ziel": 60400.0}, 60000.0)[4] is None            # local profile unchanged
+    now = 1_795_478_400 + 12 * 3600
+
+    def dec(i: int, action: str = "LONG") -> dict:
+        return {"kind": "decision", "id": f"d{i}", "action": action, "candle_epoch": now - 3600 * (5 - i)}
+
+    def res(i: int, r: float) -> dict:
+        return {"kind": "result", "decision_id": f"d{i}", "outcome": "Stop" if r < 0 else "Ziel", "r": r}
+
+    assert decide.day_guard([dec(1), res(1, 2.0), dec(2), res(2, -1.0)], now, p) is None
+    assert decide.day_guard([dec(1), res(1, -1.0), dec(2), res(2, -1.0)], now, p) == "Pause nach Verlusten"
+    assert decide.day_guard([dec(1), res(1, 1.0), dec(2), res(2, 1.0), dec(3), res(3, 1.0)], now, p) == "Tageslimit erreicht"
+    assert decide.day_guard([dec(1, "NICHTS"), dec(2, "NICHTS"), dec(3, "NICHTS")], now, p) is None
+    old = [{**dec(1), "candle_epoch": now - 30 * 3600}, res(1, -1.0), {**dec(2), "candle_epoch": now - 29 * 3600}, res(2, -1.0)]
+    assert decide.day_guard(old, now, p) is None                                                       # yesterday does not count
+    assert decide.day_guard([dec(1), res(1, -1.0), dec(2), res(2, -1.0)], now, decide.LOCAL_PROFILE) is None
