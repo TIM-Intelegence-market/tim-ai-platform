@@ -103,7 +103,7 @@ def _io_errors(function):
             if error.errno in _HALT_ERRNOS:
                 raise ArchiveSyncError(f"file system error {name}: halted, nothing half-written is kept as stored") from None
             raise ArchiveSyncError(f"file system error {name}: {error.strerror or error}") from None
-        except (ValueError, KeyError, TypeError) as error:
+        except (json.JSONDecodeError, UnicodeDecodeError, KeyError) as error:
             raise ArchiveSyncError(f"store metadata unreadable ({type(error).__name__}); refusing to continue") from None
     return wrapper
 
@@ -418,11 +418,15 @@ class ColdStore:
         return {"bound": True, "mount": str(mount), "volume_id": self.volume["volume_id"]}
 
     @contextlib.contextmanager
-    def _locked(self):
-        """Exclusive writer lock; a second writer fails at once instead of interleaving."""
+    def _locked(self, shared: bool = False):
+        """Writer lock (exclusive); a second writer fails at once instead of interleaving.
+
+        ``shared`` is for readers such as verify: it needs no write access and only waits for no one;
+        it fails while a writer runs, so a running ingest is never reported as half-written."""
         with _dir(self.root) as root_fd:
             try:
-                fd = os.open(LOCK_FILE, os.O_RDWR | os.O_CREAT | _NOFOLLOW | _CLOEXEC, 0o600, dir_fd=root_fd)
+                flags = os.O_RDONLY if shared else os.O_RDWR | os.O_CREAT
+                fd = os.open(LOCK_FILE, flags | _NOFOLLOW | _CLOEXEC, 0o600, dir_fd=root_fd)
             except OSError as error:
                 if error.errno == errno.ELOOP:
                     raise ArchiveSyncError("symbolic link refused: store lock; nothing written") from None
@@ -431,7 +435,7 @@ class ColdStore:
             if not stat.S_ISREG(os.fstat(fd).st_mode):
                 raise ArchiveSyncError("store lock is not a regular file; nothing written")
             try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(fd, (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise ArchiveSyncError("another writer holds the store lock; nothing written") from None
             yield
@@ -513,6 +517,7 @@ class ColdStore:
         lines = text.split("\n")
         lines.pop()  # text after the last newline: empty or a torn entry
         entries = []
+        seen: dict[str, dict[str, Any]] = {}
         for number, line in enumerate(lines, 1):
             if not line.strip():
                 continue
@@ -522,7 +527,7 @@ class ColdStore:
                 entry = None
             if not isinstance(entry, dict):
                 following = lines[number] if number < len(lines) else ""
-                if '"event":"torn_tail_discarded"' in following:
+                if '"event":"torn_tail_' in following:
                     continue  # the torn rest of a crashed append, closed and logged by the next append
                 raise ArchiveSyncError(f"ledger line {number} is unreadable; refusing to continue")
             if "event" in entry:
@@ -530,10 +535,16 @@ class ColdStore:
             if not isinstance(entry.get("path"), str) or not _LEDGER_PATH.fullmatch(entry["path"]) \
                     or ".." in entry["path"]:
                 raise ArchiveSyncError(f"ledger line {number} names a path outside batches/; refusing to continue")
+            first = seen.get(entry["path"])
+            if first is not None:
+                if first.get("sha256") != entry.get("sha256") or first.get("bytes") != entry.get("bytes"):
+                    raise ArchiveSyncError(f"ledger line {number} records {entry['path']} again with other content")
+                continue  # the same record twice (crash between closing a torn line and appending): count once
+            seen[entry["path"]] = entry
             entries.append(entry)
         return entries
 
-    def _append(self, entry: dict[str, Any]) -> None:
+    def _append(self, entry: dict[str, Any] | None) -> None:
         self.check_volume()
         with _dir(self.root) as root_fd:
             fd = _open_regular(LEDGER_FILE, root_fd, os.O_RDWR | os.O_APPEND)
@@ -548,11 +559,23 @@ class ColdStore:
                 # re-recorded by this ingest. Nothing is cut: the line is closed and the event logged.
                 torn_tail = data[data.rfind(b"\n") + 1:]
                 lines += b"\n"
+                try:
+                    complete = json.loads(torn_tail.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    complete = None
+                if isinstance(complete, dict) and complete.get("path") == entry.get("path") \
+                        and complete.get("sha256") == entry.get("sha256"):
+                    entry = None  # only the newline was lost: closing the line records the file
+            if torn_tail and entry is None:
+                lines += json.dumps({"event": "torn_tail_closed", "at": _now()},
+                                    sort_keys=True, separators=(",", ":")).encode() + b"\n"
+                torn_tail = b""
             if torn_tail:
                 lines += json.dumps({"event": "torn_tail_discarded", "at": _now(), "bytes": len(torn_tail),
                                      "sha256": hashlib.sha256(torn_tail).hexdigest()},
                                     sort_keys=True, separators=(",", ":")).encode() + b"\n"
-            lines += json.dumps(entry, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+            if entry is not None:
+                lines += json.dumps(entry, sort_keys=True, separators=(",", ":")).encode() + b"\n"
             handle.write(lines)
             handle.flush()
             os.fsync(handle.fileno())
@@ -638,12 +661,19 @@ class ColdStore:
                 results.append({"manifest": name, "status": "DISK_STOP", "disk": gate.as_dict()})
                 halted = "DISK_STOP"
                 continue
+            problem = None
             for stored_name, sha, size, data in files:  # data first, manifest last
                 if stored_name not in missing and stored_name not in unrecorded:
                     continue
                 if stored_name in missing:
                     self.check_volume()
-                    _copy_verified(inbox / stored_name, target_dir / stored_name, sha, data=data, size=size)
+                    try:
+                        _copy_verified(inbox / stored_name, target_dir / stored_name, sha, data=data, size=size)
+                    except ArchiveSyncError as error:
+                        if "larger than declared" not in str(error) and "sha256 changed" not in str(error):
+                            raise
+                        problem = str(error)  # the source changed after its check; nothing was published
+                        break
                 self._append({
                     "stored_at": _now(), "symbol": symbol, "path": rel[stored_name],
                     "bytes": size, "sha256": sha, "batch_id": manifest["batch_id"],
@@ -651,6 +681,10 @@ class ColdStore:
                     "lo": int(manifest["lo"]), "hi": int(manifest["hi"]),
                     "role": "data" if stored_name == data_name else "manifest",
                 })
+            if problem:
+                results.append({"manifest": name, "status": "FILE_INVALID", "reason": problem})
+                halted = "FILE_INVALID"
+                continue
             status = "STORED" if len(missing) == len(files) else "RESUMED"
             results.append({"manifest": name, "status": status, "batch_id": manifest["batch_id"], "bytes": incoming})
         summary: dict[str, int] = {}
@@ -700,7 +734,7 @@ class ColdStore:
         """Re-hash every ledger entry and look for anything below batches/ the ledger does not know.
 
         Takes the writer lock, so a running ingest is never reported as a half-written file."""
-        with self._locked():
+        with self._locked(shared=True):
             return self._verify()
 
     def _verify(self) -> dict[str, Any]:

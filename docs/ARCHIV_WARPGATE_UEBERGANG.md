@@ -135,12 +135,15 @@ Die Übertragung läuft über den vorhandenen Weg Mac → Warpgate → Server:
   sein. Ein Store auf `/` wird abgelehnt. `init` legt nur den Store-Ordner selbst an. Ein
   abgerissener Ledger-Rest wird nicht mehr abgeschnitten, sondern abgeschlossen und protokolliert.
   Datei-Systemfehler wie ENOSPC oder EROFS kommen als sauberer Abbruch an. Der Umzug prüft das
-  15-%-Tor am Ziel und lehnt ineinander liegende Ordner ab. `verify` nimmt die Schreibsperre.
+  15-%-Tor am Ziel und lehnt ineinander liegende Ordner ab. `verify` nimmt eine geteilte Sperre
+  (braucht kein Schreibrecht, läuft nicht neben einem Import). Ein Ledger-Eintrag, dem nur der
+  Zeilenumbruch fehlte, zählt nach dem Abschluss genau einmal. Eine geänderte oder wachsende
+  Quelle ist FILE_INVALID für dieses Paket.
 - **Keine Löschfunktion:** Ein Test stellt sicher, dass das Modul nur seine eigene, gerade mit
   `O_EXCL` angelegte `.tmp-`-Datei entfernt und nichts umbenennt oder ersetzt.
 - Kommandos: `cold-init`, `cold-ingest`, `cold-verify`, `cold-migrate`.
 
-Tests: `tests/test_archive_cold_store.py` mit 78 Fällen, ohne Datenbank: Negativtests, ein
+Tests: `tests/test_archive_cold_store.py` mit 81 Fällen, ohne Datenbank: Negativtests, ein
 Schnappschuss-Test, dass außerhalb von Store und Umzugsziel nichts geschrieben wird, und 25
 Zufallsläufe mit festen Startwerten für Budget und Unversehrtheit. Echtdatenprobe am Mac
 mit den drei Batches vom 22.11. (Stand 18f70e5e):
@@ -371,6 +374,19 @@ Beide Server-Platten sind drehende Platten. Für 1, 3 und 5 Jahre reicht nichts 
 3. `MIGRATION.json` und ein `cold-verify` am Ziel belegen gleiche Dateizahl und gleiche Bytes.
 4. Der alte Store bleibt stehen, bis Uzi ausdrücklich über ihn entscheidet. Erst dann darf die
    Image-Datei weg.
+5. Ein Ziel **ohne** `MIGRATION.json` ist ein abgebrochener Umzug und gilt nicht als Kopie, auch
+   wenn sein `verify` OK meldet. Ein neuer Versuch geht in einen neuen, leeren Ordner.
+
+Grenzen, bewusst so gelassen:
+
+- **Pfade mit Links:** Der Store lehnt jeden symbolischen Link irgendwo im Pfad ab, auch in den
+  übergeordneten Ordnern. Auf dem Server sind `/srv` und `/var/lib/warpgate` echte Ordner. Am
+  Mac sind `/tmp` und `/var` Links, dort braucht es aufgelöste Pfade (`/private/...`).
+- **Überlappende Bereiche** unterschiedlicher Batches erkennt der Store nicht. Das prüft der
+  Importer beim Rückweg in PostgreSQL.
+- **Belegung** zählt die Dateigrößen. Blockrundung und Verwaltungsdaten deckt der Abstand von
+  26 GiB Grenze zu rund 31,5 GiB nutzbarem Platz ab.
+
 
 ## 15 Offene Fragen an Chris (zur Kenntnis, keine Freigabe nötig)
 

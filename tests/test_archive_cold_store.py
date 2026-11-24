@@ -205,6 +205,7 @@ def test_module_has_no_delete_path():
     assert "rmtree" not in source and "os.remove" not in source
     # The only unlink removes a temporary file this process created itself (guarded by its prefix).
     assert source.count(".unlink(") == 1 and "os.unlink(name, dir_fd=dir_fd)" in source
+    assert ".truncate(" not in source and "ftruncate" not in source
     assert "os.replace" not in source and ".replace(info)" not in source and "os.rename" not in source
 
 
@@ -578,8 +579,8 @@ def test_data_changed_after_the_check_is_refused_without_leftovers(tmp_path, mon
         return result
 
     monkeypatch.setattr(cold_store, "_check_batch", swap_after_check)
-    with pytest.raises(ArchiveSyncError, match="sha256 changed"):
-        s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    report = s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    assert report["summary"] == {"FILE_INVALID": 1} and "sha256 changed" in report["results"][0]["reason"]
     assert list((s.root / "batches" / SYMBOL).iterdir()) == [] and s.ledger() == []
 
 
@@ -686,8 +687,8 @@ def test_source_growing_after_the_check_never_exceeds_its_declared_size(tmp_path
         return result
 
     monkeypatch.setattr(cold_store, "_check_batch", grow_after_check)
-    with pytest.raises(ArchiveSyncError, match="larger than declared"):
-        s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    report = s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    assert report["summary"] == {"FILE_INVALID": 1} and "larger than declared" in report["results"][0]["reason"]
     assert s.ledger() == [] and list((s.root / "batches" / SYMBOL).iterdir()) == []
     assert declared < (4 << 20)
 
@@ -810,4 +811,34 @@ def test_verify_is_refused_while_a_writer_holds_the_lock(tmp_path):
     with s._locked():
         with pytest.raises(ArchiveSyncError, match="lock"):
             cold_store.ColdStore(s.root, usage=ROOMY).verify()
+    assert s.verify()["status"] == "OK"
+
+
+def test_torn_append_that_only_lost_its_newline_is_recorded_once(tmp_path):
+    s = store(tmp_path)
+    make_batch(tmp_path / "in", 1, 100)
+    s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    ledger = s.root / "LEDGER.jsonl"
+    ledger.write_bytes(ledger.read_bytes()[:-1])  # crash after the entry, before its newline
+    assert len(s.ledger()) == 1
+    assert s.ingest_directory(tmp_path / "in", symbol=SYMBOL)["summary"] == {"RESUMED": 1}
+    paths = [e["path"] for e in s.ledger()]
+    assert len(paths) == len(set(paths)) == 2 and b"torn_tail_closed" in ledger.read_bytes()
+    assert cold_store.migrate_store(s.root, tmp_path / "copy")["status"] == "OK"
+
+
+def test_ledger_repeating_a_path_with_other_content_stops_everything(tmp_path):
+    s = store(tmp_path)
+    make_batch(tmp_path / "in", 1, 100)
+    s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    ledger = s.root / "LEDGER.jsonl"
+    first = json.loads(ledger.read_text().splitlines()[0])
+    ledger.write_text(ledger.read_text() + json.dumps({**first, "sha256": "0" * 64}) + "\n")
+    with pytest.raises(ArchiveSyncError, match="other content"):
+        s.verify()
+
+
+def test_verify_needs_no_write_access_to_the_lock(tmp_path):
+    s = store(tmp_path)
+    (s.root / ".lock").chmod(0o444)
     assert s.verify()["status"] == "OK"
