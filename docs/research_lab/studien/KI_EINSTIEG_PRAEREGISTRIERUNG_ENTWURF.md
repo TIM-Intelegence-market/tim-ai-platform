@@ -110,7 +110,7 @@ also kein Beleg) antwortete DeepSeek SHORT, SHORT, LONG; das lokale Modell dreim
 
 ## Zusatz 24.11.2026: Summen-Blasen als Zonenmarke
 
-Uzi 24.11.2026 12:25 „go summe“ (Broncx-Bild: dort sind Orders am selben Preis zusammengezählt, Absorption klar
+Uzi 24.11.2026 12:25 „go summe“ (Bild der Signalgruppe: dort sind Orders am selben Preis zusammengezählt, Absorption klar
 sichtbar). `src/dashboard/bubble_sum.py`: Binance-Perp-Orders ab 100.000 $ einer Seite, binnen 5 min und 0,10 %
 um den Durchschnittspreis, zusammen mindestens 400 BTC aus mindestens 3 Orders = Summen-Blase; die 8 größten der
 letzten 48 h als Linie im Chart (Gruppe `absorb`). Schwellen am Bild vom 23./24.11. nach Augenmaß gesetzt, nicht

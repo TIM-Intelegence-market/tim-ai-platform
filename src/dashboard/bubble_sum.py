@@ -1,6 +1,6 @@
 """Summed bubbles: big taker orders at one price within a few minutes, added up (Uzi 24.11.2026 "go Summe").
 
-TIM's bubbles show single taker orders. Other charts (Broncx's MMT view, Uzi's screenshot of 24.11.2026) add up
+TIM's bubbles show single taker orders. Other charts (the signal group's MMT view, Uzi's screenshot of 24.11.2026) add up
 the orders that hit the same price within minutes, so absorption shows as one big bubble (1K, 835, 776 BTC at
 the high of 23.11.) where TIM showed several of 200 to 350 BTC. ``clusters`` does that sum; ``drawings`` turns
 the biggest sums into chart lines (group "absorb") that the AI deciders read as zone marks.
