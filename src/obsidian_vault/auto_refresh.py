@@ -14,7 +14,10 @@ One run (launchd `com.tim.obsidian-refresh`, hourly on the Mac):
    when platform-main moved, otherwise only the cheap `refresh-docs`.
 4. Graphify view (only when platform-main moved): `graphify update` and a copy of `graph.html` to
    `~/Documents/TIM/TIM Graph Ansicht/`, then the TIM area view `tim-graph.html` and
-   the gap report `TIM_GRAPH_LUECKEN.md` (src/tim_graph_view); the tracked `graphify-out/` in
+   the gap report `TIM_GRAPH_LUECKEN.md` (src/tim_graph_view). The view's `graph.json`
+   carries German group names that survive the rebuild (src/obsidian_vault/graph_names:
+   carried over by shared members, new groups named by the local model, unnamed ones
+   retried next run). The tracked `graphify-out/` in
    the clone is restored afterwards so the next fast-forward is not blocked.
 5. Graph hubs: `graph_hubs.sync` attaches new notes to their area MOC and the
    MOCs to `TIM Home` (only inside the `tim-graph` markers), so the Obsidian
@@ -44,7 +47,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.obsidian_vault import graph_hubs  # noqa: E402
+from src.obsidian_vault import graph_hubs, graph_names  # noqa: E402
 from src.tim_graph_view import build as tim_graph_view  # noqa: E402
 from src.obsidian_vault.schema import DEFAULT_VAULT, load_schema, vault_path  # noqa: E402
 
@@ -114,6 +117,7 @@ class Report:
     notes_refused: list[str] = field(default_factory=list)
     graph: str = "skipped"
     graphify: str = "skipped"
+    names: str = "skipped"
     tim_view: str = "skipped"
     vault_commit: str = "skipped"
     hubs_written: list[str] = field(default_factory=list)
@@ -276,9 +280,10 @@ def refresh_graphify(repo: Path, view_dir: Path, report: Report) -> None:
     html = repo / "graphify-out/graph.html"
     if result.returncode == 0 and html.exists():
         view_dir.mkdir(parents=True, exist_ok=True)
-        for name in ("graph.html", "GRAPH_REPORT.md", "graph.json"):
+        for name in ("graph.html", "GRAPH_REPORT.md"):
             if (repo / "graphify-out" / name).exists():
                 shutil.copy2(repo / "graphify-out" / name, view_dir / name)
+        name_groups(view_dir, report, repo / "graphify-out/graph.json")
         report.graphify = "ok"
         build_tim_view(repo, view_dir, report)
     else:
@@ -287,6 +292,24 @@ def refresh_graphify(repo: Path, view_dir: Path, report: Report) -> None:
     # graphify-out/ is tracked: restore it so the next fast-forward is not blocked
     git(repo, "checkout", "--", "graphify-out", check=False)
     git(repo, "clean", "-fdq", "--", "graphify-out", check=False)
+
+
+def name_groups(view_dir: Path, report: Report, new_graph: Path | None = None) -> None:
+    """German group names that survive the rebuild (see graph_names). Writes the
+    named graph.json into the view; without names the plain copy still lands there."""
+    try:
+        summary = graph_names.refresh(view_dir, new_graph)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        if new_graph is not None and new_graph.exists():
+            shutil.copy2(new_graph, view_dir / "graph.json")
+        report.names = "error"
+        report.errors.append(f"graph_names: {exc}")
+        return
+    report.names = (f"{summary['state']} {summary.get('groups', 0)} Gruppen, "
+                    f"{summary.get('kept', 0)} behalten, {summary.get('named', 0)} neu, "
+                    f"{summary.get('open', 0)} offen")
+    if summary.get("error"):
+        report.names += " (Modell nicht erreichbar)"
 
 
 def sync_hubs(vault: Path, report: Report, dry_run: bool = False) -> None:
@@ -360,6 +383,10 @@ def run(repo: Path, vault: Path, dry_run: bool = False, skip_graph: bool = False
     if not skip_graphify:
         if same_head and previous.get("graphify") in ("ok", "unchanged"):
             report.graphify = "unchanged"
+            if str(previous.get("names", "")).startswith("offen"):
+                name_groups(view_dir, report)
+            else:
+                report.names = previous.get("names", "skipped")
         else:
             refresh_graphify(repo, view_dir, report)
     commit_vault(vault, report)
