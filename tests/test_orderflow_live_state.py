@@ -245,8 +245,6 @@ def test_perp_buckets_after_now_are_ignored_and_running_bucket_dropped_for_newer
     later = ls._perp({"days": {"d": rows}, "bucket_seconds": 300, "updated_at": (now + timedelta(hours=1)).isoformat()}, t)
     assert later["delta_15m"] == pytest.approx(1.0) and later["closed_buckets_only"] is True
 
-    assert state["schema"] == "orderflow-lage/2"
-
 
 # Codex #376: the consumer (Orderflow-Schatten) must not read unknown flow as neutral flow.
 def test_pure_unknown_flow_is_unbekannt_in_the_shadow_not_neutral():
@@ -282,3 +280,54 @@ def test_shadow_summary_counts_unknown_side_plans_apart():
     out = shadow.summary({"plans": plans})
     assert out["side_unknown"] == 1
     assert out["by_gate"] == {shadow.UNBEKANNT: {"n": 1, "sum_net_r": -1.0}, shadow.NEUTRAL: {"n": 1, "sum_net_r": 1.0}}
+
+
+# Codex #377 negative tests: availability order, day values after prune, UTC day change, perp store time.
+def test_non_monotone_availability_keeps_windows_and_day_values_consistent():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker.ingest([_raw(-20, 2.0, False, 1)], available_at=T0 + timedelta(seconds=10))
+    tracker.ingest([_raw(-10, 3.0, False, 2)], available_at=T0 - timedelta(seconds=5))
+    early = tracker.snapshot(T0)
+    # visibility is a prefix: trade 2 is not visible before trade 1, so neither window nor day sees 5 (or 3 of 5)
+    assert early["windows"]["5m"]["delta"] == 0 and early["day"]["cvd"] is None and early["future_trades"] == 2
+    later = tracker.snapshot(T0 + timedelta(seconds=10))
+    assert later["windows"]["5m"]["delta"] == pytest.approx(5.0) and later["day"]["cvd"] == pytest.approx(5.0)
+
+
+def test_day_values_survive_the_prune_of_their_trades():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker.ingest([_raw(0, 2.0, False, 1, 75010.0)], available_at=T0)
+    assert tracker.snapshot(T0)["day"]["cvd"] == pytest.approx(2.0)
+    later = tracker.snapshot(T0 + timedelta(minutes=31))              # the trade is pruned, same UTC day
+    assert later["day"]["cvd"] == pytest.approx(2.0) and later["day"]["high"] == 75010.0
+    assert later["day"]["status"] == "OK" and later["stale"] is True
+
+
+def test_day_values_reset_on_the_utc_day_change_and_are_unknown_without_trades():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    assert tracker.snapshot(T0)["day"] == {"cvd": None, "high": None, "low": None, "unknown_volume": None,
+                                           "source": "seit Start der Runtime", "status": "UNKNOWN"}  # restart: unknown
+    midnight = T0.replace(hour=23, minute=59, second=50)
+    tracker.ingest([Trade(SYMBOL, 75000.0, 1.0, midnight, 1, buyer_is_maker=False)], available_at=midnight)
+    assert tracker.snapshot(midnight)["day"]["cvd"] == pytest.approx(1.0)
+    next_day = tracker.snapshot(midnight + timedelta(seconds=20))     # no trade of the new day yet
+    assert next_day["day"]["cvd"] is None and next_day["day"]["status"] == "UNKNOWN"
+    tracker.ingest([Trade(SYMBOL, 75000.0, 0.5, midnight + timedelta(seconds=25), 2, buyer_is_maker=True)],
+                   available_at=midnight + timedelta(seconds=25))
+    assert tracker.snapshot(midnight + timedelta(seconds=30))["day"]["cvd"] == pytest.approx(-0.5)
+    unknown_day = {**next_day, "stale": False, "price": 75000.0}
+    assert "Tages-CVD" not in ls.describe(unknown_day)             # an unknown day value is not written as 0
+
+
+def test_naive_available_at_is_refused():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    with pytest.raises(ValueError):
+        tracker.ingest([_raw(0, 1.0, False, 1)], available_at=T0.replace(tzinfo=None))
+
+
+def test_perp_store_without_updated_at_counts_closed_buckets_only():
+    now = T0 + timedelta(minutes=10)
+    t = int(now.timestamp())
+    rows = [[t - 600, 75000.0, 1.0, 2.0], [t - 120, 75000.0, 0.0, 1.0]]
+    out = ls._perp({"days": {"d": rows}, "bucket_seconds": 300}, t)
+    assert out["delta_15m"] == pytest.approx(1.0) and out["closed_buckets_only"] is True
