@@ -242,8 +242,14 @@ class IndependentWatchdog:
             await database.connect()
             async with database.acquire() as connection:
                 listener = str(await connection.fetchval("SELECT current_setting('listen_addresses')"))
+                # Newest trade by primary key, not max() over ingest_timestamp: that column has no index,
+                # so max() read the whole table (10 GB, 3.3 s idle and database TimeoutError under
+                # load on the server). The highest trade ID is the newest live trade; a backfill
+                # below the cursor no longer makes a dead live stream look fresh.
                 latest = await connection.fetchval(
-                    "SELECT max(ingest_timestamp) FROM agg_trades WHERE symbol=$1", self.symbol
+                    """SELECT ingest_timestamp FROM agg_trades WHERE symbol=$1
+                       ORDER BY aggregate_trade_id DESC LIMIT 1""",
+                    self.symbol,
                 )
                 # Filter in WHERE, not in FILTER: the outbox keeps a COMPLETED row per trade, and
                 # scanning them all took up to 28 s on the Mac (database TimeoutError, false RED).
