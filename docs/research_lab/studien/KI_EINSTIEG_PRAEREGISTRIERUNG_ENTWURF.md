@@ -116,3 +116,21 @@ um den Durchschnittspreis, zusammen mindestens 400 BTC aus mindestens 3 Orders =
 letzten 48 h als Linie im Chart (Gruppe `absorb`). Schwellen am Bild vom 23./24.11. nach Augenmaß gesetzt, nicht
 getestet. Für R-KI-1 und R-KI-2 zählt eine solche Linie ab diesem Stand als Zonenmarke mit Gewicht 2
 (`zones.GROUP_WEIGHT`, steht je Entscheidung in `rules`). Entscheidungen davor hatten diese Marke nicht.
+
+## Änderung 24.11.2026 15:00: Stop-Regel (R-KI-1 0.3, R-KI-2 0.2, `ki-einstieg/3`)
+
+Uzi 24.11.2026 15:01 „der Stop sollte wie der Einstieg gut kalkuliert werden“. Anlass: Der erste Papier-Trade von
+R-KI-2 (LONG, Fill 60.218, Stop 59.890, also 110 USD unter der runden 60.000) wurde in einer Kerze mit Tief 59.712
+ausgestoppt; danach stand der Preis wieder über 60.000. Ein Trade, kein Beleg.
+
+- Neues Feld `stop_hilfe` im Bild: ATR der letzten 14 geschlossenen 15m-Kerzen, Puffer = 0,5 ATR, für LONG das Tief
+  aus Zone und den letzten 12 Kerzen, für SHORT das Hoch; `stop_spaetestens` = Struktur ± Puffer. Liegt dieser Wert
+  näher als der Puffer an einem Vielfachen von 500 USD jenseits des Preises, rückt er um den Puffer hinter die runde Marke.
+- Prüfung im Code (die KI kann sie nicht ändern): Ein Stop vor `stop_spaetestens` wird als UNGUELTIG geschrieben und
+  nicht gehandelt. Mindest- und Höchstabstand, Mindest-Ziel und Kosten bleiben.
+- Anweisung: Stop so sorgfältig wie der Einstieg; wird er zu weit für das Mindest-Ziel, Einstieg näher an die Struktur
+  legen oder NICHTS.
+- Nachrechnung am Auslöser (kein Test, eine Beobachtung): `stop_spaetestens` wäre 59.212 gewesen (Tief 59.366, ATR 308);
+  das Tief danach war 59.712. Ob DeepSeek mit diesem weiten Stop (1,9 %) überhaupt einen Trade gegeben hätte, ist offen.
+- Erwartete Nebenwirkung: weniger Trades, weitere Stops, kleinere Positionsgröße je Risiko. Die Auswertung trennt die
+  Versionen über `rule` und `prompt_version`; Entscheidungen vor der Änderung zählen nicht zur neuen Version.

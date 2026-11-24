@@ -19,6 +19,7 @@ import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -51,6 +52,10 @@ GIVE_UP_S = (FILL_BARS + HOLD_BARS + 8) * BAR_S   # no candles to finish it by t
 COST_PCT = 0.10           # fees, spread and slippage, both ways, in % of the entry price (Bitunix, maker in, taker out)
 BIG_BTC = 50.0            # big orders shown to the AI
 REASON_MAX = 400
+STOP_LOOK_BARS = 12       # structure for the stop: extreme of the candles the AI sees (3 h)
+STOP_ATR_BARS = 14
+STOP_BUFFER_ATR = 0.5     # the stop lies this many ATR beyond the structure ...
+ROUND_USD = 500           # ... and never closer than that to a round number, where stops are collected
 
 
 @dataclass(frozen=True)
@@ -70,7 +75,8 @@ DEEPSEEK_PROFILE = Profile(rule=RULE_DEEPSEEK, stop_min_pct=0.5, min_rr=2.0, max
 
 def plan_rules(profile: Profile = LOCAL_PROFILE) -> tuple[str, ...]:
     rules = [f"15m, strong zone >= {zones.STRONG}", f"cooldown {COOLDOWN_S // 3600} h per zone, new session asks again",
-             f"entry <= {ENTRY_MAX_PCT} % from price", f"stop {profile.stop_min_pct}-{STOP_MAX_PCT} %", f"target >= {profile.min_rr} x stop",
+             f"entry <= {ENTRY_MAX_PCT} % from price", f"stop {profile.stop_min_pct}-{STOP_MAX_PCT} %",
+             f"stop beyond zone and {STOP_LOOK_BARS}-bar extreme by {STOP_BUFFER_ATR} ATR, same distance from round {ROUND_USD}", f"target >= {profile.min_rr} x stop",
              f"fill within {FILL_BARS} bars", f"hold <= {HOLD_BARS} bars", f"costs {COST_PCT} %", "stop first when both"]
     if profile.max_trades_day is not None:
         rules.append(f"at most {profile.max_trades_day} trades per day")
@@ -106,8 +112,13 @@ ein Abpraller.
 Lies zuerst, dann entscheide: "lesart" ist HAELT (Zone hält, Trade weg von der Zone), BRICHT (Zone bricht, Trade in
 Bruchrichtung, Einstieg am Rücklauf an die Zone) oder UNKLAR. Bei HAELT oder BRICHT gib den passenden Trade (LONG oder
 SHORT); NICHTS nur bei UNKLAR oder wenn kein sinnvoller Stop und kein Ziel möglich ist. Bei LONG/SHORT: Einstieg als Limit nahe dem aktuellen
-Preis (höchstens {ENTRY_MAX_PCT} % entfernt), Stop hinter der Zone (mindestens {profile.stop_min_pct} % vom Einstieg entfernt), Ziel an der nächsten Gegenzone, Ziel mindestens {profile.min_rr}-mal
+Preis (höchstens {ENTRY_MAX_PCT} % entfernt), Ziel an der nächsten Gegenzone, Ziel mindestens {profile.min_rr}-mal
 so weit weg wie der Stop. Kosten etwa {COST_PCT} % vom Preis pro Trade. Bei NICHTS setze Einstieg, Stop und Ziel auf 0.
+Der Stop wird so sorgfältig gerechnet wie der Einstieg: hinter die Zone UND hinter das letzte Tief (LONG) oder Hoch (SHORT),
+mit Puffer, nie knapp an eine runde Marke oder direkt an ein frisches Tief/Hoch, denn dort werden Stops abgeholt.
+"stop_hilfe" rechnet das vor: Bei LONG muss der Stop bei oder unter stop_hilfe.long.stop_spaetestens liegen, bei SHORT bei
+oder über stop_hilfe.short.stop_spaetestens (mindestens {profile.stop_min_pct} % vom Einstieg). Wird der Stop dadurch zu weit für ein Ziel
+mit {profile.min_rr}-mal Abstand, lege den Einstieg als Limit näher an die Struktur (Rücklauf abwarten) oder sage NICHTS.
 Du siehst nur Daten bis jetzt. Erfinde nichts. Grund: ein bis zwei kurze Sätze auf Deutsch. Antworte nur mit JSON."""
 
 
@@ -304,6 +315,34 @@ def trigger(model: Mapping[str, Any], records: Sequence[Mapping[str, Any]], now:
     return {"zone": zone, "candle": last}
 
 
+def stop_help(candles: Sequence[Mapping[str, Any]], zone: Mapping[str, Any]) -> dict[str, Any]:
+    """Where a stop may lie at the latest: beyond the zone and the recent extreme, with a buffer, clear of round numbers.
+
+    Uzi 24.11.2026 "der Stop sollte wie der Einstieg gut kalkuliert werden": the first DeepSeek paper trade had its
+    stop 110 USD under 60,000 and was taken out by one wick.
+    """
+    bars = candles[-(STOP_ATR_BARS + 1):]
+    ranges = [max(float(c["high"]) - float(c["low"]), abs(float(c["high"]) - float(p["close"])), abs(float(c["low"]) - float(p["close"])))
+              for p, c in pairwise(bars)]
+    atr = sum(ranges) / len(ranges) if ranges else 0.0
+    buffer = STOP_BUFFER_ATR * atr
+    seen = candles[-STOP_LOOK_BARS:]
+    price = float(candles[-1]["close"])
+
+    def clear(level: float, sign: int) -> float:   # sign -1: stop below (LONG), +1: stop above (SHORT)
+        level += sign * buffer
+        nearest = round(level / ROUND_USD) * ROUND_USD
+        if abs(level - nearest) < buffer and sign * (nearest - price) > 0:
+            level = nearest + sign * buffer
+        return round(level, 1)
+
+    low = min([float(c["low"]) for c in seen] + [float(zone["low"])])
+    high = max([float(c["high"]) for c in seen] + [float(zone["high"])])
+    return {"atr_15m": round(atr, 1), "puffer": round(buffer, 1),
+            "long": {"struktur_tief": low, "stop_spaetestens": clear(low, -1)},
+            "short": {"struktur_hoch": high, "stop_spaetestens": clear(high, 1)}}
+
+
 def build_context(model: Mapping[str, Any], zone: Mapping[str, Any], now: float) -> dict[str, Any]:
     """Everything up to the newest closed candle, compact and in plain words."""
     candles = closed_candles(model)
@@ -350,6 +389,7 @@ def build_context(model: Mapping[str, Any], zone: Mapping[str, Any], now: float)
                   "letzter_bruch": (f"{last_break['label']} bei {round(float(last_break['price']))}" if last_break else None)},
         "funding_pct": funding[-1][1] if funding else None, "oi_aenderung_24h_pct": oi_change,
         "sitzung": session_picture(candles, end), "smart_money": smart_money(model, end, price),
+        "stop_hilfe": stop_help(candles, zone),
     }
 
 
@@ -357,7 +397,8 @@ def build_prompt(context: Mapping[str, Any], profile: Profile = LOCAL_PROFILE) -
     return instructions(profile) + "\n\nDATEN:\n" + json.dumps(context, ensure_ascii=False, sort_keys=True, default=str)
 
 
-def check_answer(answer: Any, price: float, profile: Profile = LOCAL_PROFILE) -> tuple[str, dict[str, float], float, str, str | None]:
+def check_answer(answer: Any, price: float, profile: Profile = LOCAL_PROFILE,
+                 stops: Mapping[str, Any] | None = None) -> tuple[str, dict[str, float], float, str, str | None]:
     """(action, plan, confidence, reason, problem). ``problem`` set = written as UNGUELTIG, never traded."""
     if not isinstance(answer, dict) or answer.get("aktion") not in ACTIONS:
         raise ValueError("answer without a valid aktion")
@@ -378,6 +419,10 @@ def check_answer(answer: Any, price: float, profile: Profile = LOCAL_PROFILE) ->
         return action, plan, float(confidence), reason, "Stop oder Ziel auf der falschen Seite"
     if abs(entry - price) / price * 100 > ENTRY_MAX_PCT:
         return action, plan, float(confidence), reason, f"Einstieg mehr als {ENTRY_MAX_PCT} % vom Preis"
+    if stops:
+        limit = float(stops["long" if sign > 0 else "short"]["stop_spaetestens"])
+        if sign * (stop - limit) > 0:
+            return action, plan, float(confidence), reason, f"Stop vor der Struktur (spätestens {limit:g})"
     risk = abs(entry - stop) / entry * 100
     if not profile.stop_min_pct <= risk <= STOP_MAX_PCT:
         return action, plan, float(confidence), reason, f"Stop {risk:.2f} % (erlaubt {profile.stop_min_pct}-{STOP_MAX_PCT} %)"
@@ -467,7 +512,7 @@ def run(model: Mapping[str, Any], log_path: Path, ask: Callable[[str], Any], mod
             context = build_context(model, zone, now)
             prompt = build_prompt(context, profile)
             answer = ask(prompt)
-            action, plan, confidence, reason, problem = check_answer(answer, float(candle["close"]), profile)
+            action, plan, confidence, reason, problem = check_answer(answer, float(candle["close"]), profile, context["stop_hilfe"])
             reading = answer.get("lesart") if answer.get("lesart") in READINGS else None
         except Exception as error:  # noqa: BLE001 - data, AI or answer unusable: nothing written, next run retries
             summary["failed"] = type(error).__name__

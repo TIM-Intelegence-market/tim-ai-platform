@@ -12,11 +12,14 @@ trade forward on later closed candles. Nothing here places orders.
 trading session (Asia range, London/New York open, move since the open, Asia high/low taken) and smart-money
 signs (spot vs perp CVD, OI 1h/4h, liquidations, liquidation clusters, big orders by side, premium); a new
 session may ask again at a zone already asked about.
+
+0.3 / R-KI-2 0.2 (Uzi 24.11.2026 "der Stop sollte wie der Einstieg gut kalkuliert werden"): the picture holds
+``stop_hilfe`` (zone and 3-h extreme, 0.5 ATR buffer, clear of round 500s); a stop in front of it is UNGUELTIG.
 """
 
-RULE = "R-KI-1/0.2-entwurf"
-RULE_DEEPSEEK = "R-KI-2/0.1-entwurf"   # DeepSeek decides itself, own log and paper account (Uzi 24.11.2026 "go deepseek")
+RULE = "R-KI-1/0.3-entwurf"
+RULE_DEEPSEEK = "R-KI-2/0.2-entwurf"   # DeepSeek decides itself, own log and paper account (Uzi 24.11.2026 "go deepseek")
 SCHEMA = "tim_ki_entry_decision/1"
-PROMPT_VERSION = "ki-einstieg/2"
+PROMPT_VERSION = "ki-einstieg/3"
 ACTIONS = ("LONG", "SHORT", "NICHTS")
 READINGS = ("HAELT", "BRICHT", "UNKLAR")   # 0.2: the AI states its reading before the action

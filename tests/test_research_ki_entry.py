@@ -305,7 +305,7 @@ def test_new_session_asks_again_at_the_same_zone(tmp_path: Path):
     out = decide.run(model(cs), log, lambda p: {**nothing(p), "lesart": "UNKLAR"}, "test", now=cs[-1]["time"] + 960)
     assert out["decision"]["action"] == "NICHTS" and out["decision"]["reading"] == "UNKLAR"
     rep = decide.report(read_log(log))
-    assert rep["by_prompt"] == {"ki-einstieg/2": 2} and rep["rule"] == "R-KI-1/0.2-entwurf"
+    assert rep["by_prompt"] == {"ki-einstieg/3": 2} and rep["rule"] == "R-KI-1/0.3-entwurf"
 
 
 def _reply(action: str, entry: float = 60100.0, stop: float = 59700.0, target: float = 61000.0, key: str = "aktion") -> dict:
@@ -327,7 +327,7 @@ def test_deepseek_trades_only_when_both_answers_agree(tmp_path: Path):
     assert out["decision"]["action"] == "LONG" and len(prompts) == 2 and "keine Werkzeuge" in prompts[0]
     assert "mindestens 0.5 %" in prompts[0] and "mindestens 2.0-mal" in prompts[0]
     rec = read_log(log)[0]
-    assert rec["rule"] == "R-KI-2/0.1-entwurf" and rec["asked"] == ["LONG", "LONG"] and rec["model"] == "deepseek (Hermes)"
+    assert rec["rule"] == "R-KI-2/0.2-entwurf" and rec["asked"] == ["LONG", "LONG"] and rec["model"] == "deepseek (Hermes)"
     assert "at most 3 trades per day" in rec["rules"]
 
     swing = iter([_reply("SHORT", 60100, 60500, 59000), _reply("LONG")])
@@ -383,3 +383,27 @@ def test_both_ais_judge_the_candle_by_the_same_clock(tmp_path: Path, monkeypatch
     monkeypatch.setattr(cli.decide, "run", fake_run)
     assert cli.main(["run", "--log", str(tmp_path / "ki.jsonl"), "--no-hermes"]) == 0
     assert len(clocks) == 2 and clocks[0] is not None and clocks[0] == clocks[1]
+
+
+def test_stop_lies_behind_zone_and_recent_extreme_with_buffer():
+    """Uzi 24.11.2026: the stop is calculated as carefully as the entry."""
+    c = [candle(i, 60500, 60600, 60400, 60500) for i in range(20)]   # ATR 200, buffer 100
+    c.append(candle(20, 60500, 60550, 60180, 60300))
+    help_ = decide.stop_help(c, {"low": 60250.0, "high": 60350.0})
+    assert help_["long"]["struktur_tief"] == 60180.0
+    assert help_["long"]["stop_spaetestens"] < 60180 - 90
+    assert help_["short"]["struktur_hoch"] == 60600.0 and help_["short"]["stop_spaetestens"] > 60690
+    answer = {"aktion": "LONG", "einstieg": 60300, "stop": 60150, "ziel": 61200, "vertrauen": 0.6, "grund": "x"}
+    assert "Stop vor der Struktur" in decide.check_answer(answer, 60300.0, stops=help_)[4]
+    assert decide.check_answer({**answer, "stop": 59850}, 60300.0, stops=help_)[4] is None
+    assert decide.check_answer({"aktion": "SHORT", "einstieg": 60300, "stop": 60650, "ziel": 59000, "vertrauen": 0.6, "grund": "x"},
+                               60300.0, stops=help_)[4].startswith("Stop vor der Struktur")
+
+
+def test_stop_keeps_the_buffer_from_a_round_number():
+    c = [candle(i, 60300, 60400, 60200, 60300) for i in range(20)]   # ATR 200, buffer 100
+    c.append(candle(20, 60300, 60350, 60110, 60250))                 # low 60110: minus buffer = 60010, right on 60,000
+    help_ = decide.stop_help(c, {"low": 60150.0, "high": 60250.0})
+    assert help_["long"]["stop_spaetestens"] <= 59900.5
+    assert "stop_hilfe" in decide.build_context(model(falling_into_zone()), zones.build(model(falling_into_zone()), 60100.0,
+                                                                                        falling_into_zone()[:-1])[0], 0.0)
