@@ -69,7 +69,8 @@ def known_side(lage: Mapping[str, Any] | None) -> dict[str, Any]:
     """Known-side check over the Lage's windows, exact (Mission 07: no rounding before the policy).
 
     ``ok`` is True when every window with volume has known volume >= ``MIN_KNOWN_SHARE`` x volume, compared as exact
-    fractions; False when one is below or a window's numbers are invalid (``status`` INVALID); None without volume.
+    fractions; False when one is below, a window's numbers are invalid (``status`` INVALID) or no window has volume
+    (``status`` EMPTY: no evidence is never confirmation, Codex #372 Mission 07).
     ``share`` is the lowest raw share for display only, never for the decision."""
     lowest: Fraction | None = None
     invalid = False
@@ -87,7 +88,7 @@ def known_side(lage: Mapping[str, Any] | None) -> dict[str, Any]:
     if invalid:
         return {"ok": False, "status": "INVALID", "share": float(lowest) if lowest is not None else None}
     if lowest is None:
-        return {"ok": None, "status": None, "share": None}
+        return {"ok": False, "status": "EMPTY", "share": None}
     ok = lowest >= MIN_KNOWN
     return {"ok": ok, "status": "OK" if ok else "BELOW", "share": float(lowest)}
 
