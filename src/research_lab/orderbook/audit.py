@@ -396,6 +396,7 @@ def audit(root: Path, symbol: str, *, start_ms: int | None = None, end_ms: int |
     au = _Audit(start_ms, end_ms, int(pause_seconds * 1000))
     seg_out, overlaps = [], []
     prev_session, prev_last, prev_name = None, None, None
+    pending_damage: list[list] = []   # [start, end, end still open until the next segment's first event]
     for session, day, path in segs:
         if (day0 and day < day0) or (day1 and day > day1):
             continue
@@ -423,9 +424,17 @@ def audit(root: Path, symbol: str, *, start_ms: int | None = None, end_ms: int |
         else:
             seg["status"] = "damaged" if reasons else "ok"
         seg["reasons"] = reasons
-        point = seg["last_ms"] if seg["last_ms"] is not None else session
-        if reasons and au.in_range(point):
-            au.incidents.append((point, point, "damaged_segment"))
+        if seg["first_ms"] is not None:            # the first event after a cut stream ends its unknown stretch
+            for item in pending_damage:
+                if item[2]:
+                    item[1], item[2] = max(item[1], seg["first_ms"]), False
+        if reasons:
+            # Fail closed (Mission 07, Codex #372): where in the segment the damage lies is unknown, so the whole span
+            # it may touch is an incident: from its first readable event (else the session start) to its last one,
+            # and for a cut or broken stream on to the next segment's first event (what came after is lost).
+            lo = seg["first_ms"] if seg["first_ms"] is not None else session
+            hi = seg["last_ms"] if seg["last_ms"] is not None else lo
+            pending_damage.append([lo, hi, not clean or seg["rows"] == 0])
             au.damaged()
         if seg["first_ms"] is not None and prev_last is not None and seg["first_ms"] < prev_last:
             overlaps.append({"segment": path.name, "previous": prev_name, "first": stamp(seg["first_ms"]),
@@ -442,6 +451,11 @@ def audit(root: Path, symbol: str, *, start_ms: int | None = None, end_ms: int |
 
     p0 = start_ms if start_ms is not None else au.first_ms
     p1 = end_ms if end_ms is not None else au.last_ms
+    for lo, hi, still_open in pending_damage:
+        if still_open:                             # nothing readable came after it: the loss runs to the period end
+            hi = max(hi, p1 if p1 is not None else hi, au.last_ms or hi)
+        if (end_ms is None or lo <= end_ms) and (start_ms is None or hi >= start_ms):   # touches the period
+            au.incidents.append((lo, max(lo, hi), "damaged_segment"))
     report: dict = {
         "audit": "orderbook-recorder-integrity", "read_only": True, "symbol": symbol,
         "generated": stamp(now_ms),

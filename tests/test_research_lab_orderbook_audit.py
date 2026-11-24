@@ -215,3 +215,69 @@ def test_period_edges_unrecognized_files_and_cli_current(tmp_path, capsys):
     assert [p["seconds"] for p in edges] == [30.0, 30.0]
     assert main(["audit", "--root", str(tmp_path), "--current", "--start", "2026-11-17T00:00:00"]) == 2
     assert "refused" in capsys.readouterr().out
+
+
+def _write_one(root, session: int, name_day: str, rows: list[dict], *, bad_at: int | None = None, cut: bool = False) -> None:
+    """One segment file; ``bad_at`` inserts an unparsable line after that many rows, ``cut`` drops the gzip end."""
+    buf = io.BytesIO()
+    g = gzip.GzipFile(fileobj=buf, mode="wb", mtime=0)
+    for i, r in enumerate(rows):
+        if bad_at is not None and i == bad_at:
+            g.write(b"NOT JSON\n")
+        g.write((json.dumps(r, separators=(",", ":")) + "\n").encode())
+    g.flush() if cut else g.close()
+    folder = root / "BTCUSDT"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{name_day}.{session}.jsonl.gz"
+    path.write_bytes(buf.getvalue()[:-4] if cut else buf.getvalue())
+    os.utime(path, (T0 / 1000, T0 / 1000))          # old mtime: never "open"
+
+
+# Codex Mission 06/07: damage in a segment that runs past the window end must not give PASS.
+def test_damage_in_a_segment_spanning_the_window_end_fails_closed(tmp_path):
+    end = T0 + 72 * H
+    rows = _rows(T0, end + 49_000)
+    bad = next(i for i, r in enumerate(rows) if r.get("recv_ms", 0) >= end - 40_000)
+    _write_one(tmp_path, T0, "2026-11-17", rows, bad_at=bad)
+    r = audit.audit(tmp_path, "BTCUSDT", start_ms=T0, end_ms=end, now_ms=end + 10 * H)
+    assert r["segments"]["status"]["damaged"] == 1
+    assert r["acceptance"]["incident_kinds"].get("damaged_segment") == 1 and r["acceptance"]["verdict"] == "FAIL"
+
+
+@pytest.mark.parametrize("where", ["before", "inside", "after"])
+def test_damage_before_inside_after_the_window(tmp_path, where):
+    """Three segments (sessions) around a 72 h window; only damage in a segment touching the window fails it."""
+    start, end = T0 + 2 * H, T0 + 74 * H
+    parts = {"before": (T0, T0 + H), "inside": (start, end), "after": (end + H, end + 2 * H)}
+    for key, (a, b) in parts.items():
+        rows = _rows(a, b, u0=100 + a // 1000)
+        _write_one(tmp_path, a, audit.iso(a)[:10], rows, bad_at=5 if key == where else None)
+    r = audit.audit(tmp_path, "BTCUSDT", start_ms=start, end_ms=end, now_ms=end + 10 * H)
+    kinds = r["acceptance"]["incident_kinds"]
+    if where == "inside":
+        assert kinds.get("damaged_segment") == 1 and r["acceptance"]["verdict"] == "FAIL"
+    else:
+        assert "damaged_segment" not in kinds, where
+
+
+def test_truncated_gzip_marks_the_loss_up_to_the_next_segment(tmp_path):
+    """A cut stream loses whatever came after its last readable row: up to the next segment's first event."""
+    start, end = T0, T0 + 72 * H
+    first = _rows(T0, T0 + 10 * H)
+    _write_one(tmp_path, T0, "2026-11-17", first, cut=True)
+    second_start = T0 + 10 * H + 30_000
+    _write_one(tmp_path, second_start, "2026-11-17", _rows(second_start, end + H, u0=10_000_000))
+    r = audit.audit(tmp_path, "BTCUSDT", start_ms=start, end_ms=end, now_ms=end + 10 * H)
+    assert r["segments"]["status"]["damaged"] == 1 and r["acceptance"]["verdict"] == "FAIL"
+    assert r["acceptance"]["incident_kinds"].get("damaged_segment") == 1
+
+
+def test_damaged_segment_without_any_readable_row_counts_from_its_session(tmp_path):
+    start, end = T0, T0 + 72 * H
+    _write_one(tmp_path, T0, "2026-11-17", _rows(T0, end + H))
+    folder = tmp_path / "BTCUSDT"
+    broken = folder / f"2026-11-18.{T0 + 30 * H}.jsonl.gz"
+    broken.write_bytes(b"\x1f\x8b not really gzip")
+    os.utime(broken, (T0 / 1000, T0 / 1000))
+    r = audit.audit(tmp_path, "BTCUSDT", start_ms=start, end_ms=end, now_ms=end + 10 * H)
+    assert r["acceptance"]["incident_kinds"].get("damaged_segment") == 1 and r["acceptance"]["verdict"] == "FAIL"
