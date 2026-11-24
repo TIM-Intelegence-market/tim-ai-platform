@@ -16,6 +16,12 @@ that answers "which Lage was known at moment t?":
   arrival time per row, so a bucket written later (backfill after a gap, revision) still counts once its bucket time
   is before t. The cut says so (``rows_arrival``): ``"UNVERIFIED"`` whenever the store was written after t.
 
+- ``observe_store(store, seen_at, symbol)`` / ``store_known_at(store, symbol, t)`` (Mission 07, shared contract
+  ``src/orderflow/pit_contract.py``): the footprint store is noted in a per-symbol ``RevisionLog`` each time a consumer
+  holds it (at ``max(seen_at, updated_at)``; a store without ``updated_at`` is not noted). The view at t has, per closed
+  bucket, only the revision seen by t: a backfill or a revision after t is not evidence at t (UNKNOWN), and nothing
+  UNVERIFIED reaches a judgement. ``store_until`` stays as the plain cut (display, tests) and keeps saying UNVERIFIED.
+
 The history lives in memory: after a restart older moments are UNKNOWN. Plans recorded before ``PIT_VERSION`` keep
 their values untouched and are counted apart (``legacy``) by the consumers.
 
@@ -32,6 +38,8 @@ from datetime import datetime, timedelta, timezone
 from threading import Lock
 from typing import Any
 
+from src.orderflow.pit_contract import RevisionLog
+
 PIT_VERSION = "pit/1"
 MAX_AGE = timedelta(minutes=3)  # the Lage refreshes every 10 s and consumers run every minute: 3 min is ample
 KEEP = timedelta(hours=12)
@@ -43,6 +51,8 @@ UNKNOWN_NO_TIME = "UNKNOWN_NO_TIME"  # target time missing or unreadable
 
 _LOCK = Lock()
 _HISTORY: dict[str, deque[dict[str, Any]]] = {}
+_STORES: dict[str, RevisionLog] = {}
+_COMPLETE: dict[str, dict[str, tuple[float, Any]]] = {}  # per symbol: day -> (first seen, flag value)
 
 
 def versioned_path(path: Any, symbol: str = "BTCUSDT", version: str = PIT_VERSION) -> "Path":
@@ -107,8 +117,12 @@ def reset(symbol: str | None = None) -> None:
     with _LOCK:
         if symbol is None:
             _HISTORY.clear()
+            _STORES.clear()
+            _COMPLETE.clear()
         else:
             _HISTORY.pop(symbol.upper(), None)
+            _STORES.pop(symbol.upper(), None)
+            _COMPLETE.pop(symbol.upper(), None)
 
 
 def lage_at(symbol: str, target: Any, max_age: timedelta = MAX_AGE) -> tuple[dict[str, Any] | None, str]:
@@ -174,3 +188,49 @@ def store_until(store: Mapping[str, Any] | None, target: Any) -> dict[str, Any] 
     arrival = "OK" if written is not None and written <= moment else "UNVERIFIED"
     return {**store, "days": days, "complete": complete, "bubbles": bubbles, "cut_at": moment.isoformat(),
             "rows_arrival": arrival}
+
+
+def observe_store(store: Mapping[str, Any] | None, seen_at: datetime, symbol: str = "BTCUSDT") -> int:
+    """Note the footprint store as held at ``max(seen_at, updated_at)``; without ``updated_at`` nothing is noted."""
+    written = _time((store or {}).get("updated_at"))
+    if not store or written is None or seen_at.tzinfo is None:
+        return 0
+    seen = max(seen_at, written)
+    with _LOCK:
+        log = _STORES.setdefault(symbol.upper(), RevisionLog(keep_seconds=KEEP.total_seconds()))
+        flags = _COMPLETE.setdefault(symbol.upper(), {})
+        for day, value in (store.get("complete") or {}).items():
+            flags.setdefault(str(day), (seen.timestamp(), value))
+    return log.observe(store.get("days") or {}, seen)
+
+
+def store_known_at(store: Mapping[str, Any] | None, symbol: str, target: Any) -> dict[str, Any] | None:
+    """The store as TIM knew it at ``target``: closed buckets in the revision seen by then, nothing seen later.
+
+    ``complete`` day flags count from the moment they were first seen (and only for days that ended by ``target``);
+    bubbles (no revision history of their own) are kept only when the store itself was written by ``target``. ``rows_arrival`` is ``"PIT"`` (every kept row was seen by t) and ``rows_counts`` says how many
+    buckets were left out as UNKNOWN or taken in an earlier revision. None without a store, a time, or any observation.
+    """
+    moment = _time(target)
+    if not store or moment is None:
+        return None
+    with _LOCK:
+        log = _STORES.get(symbol.upper())
+        flags = dict(_COMPLETE.get(symbol.upper()) or {})
+    if log is None:
+        return None
+    bucket = int(store.get("bucket_seconds") or 300)
+    days, counts = log.rows_at(moment, bucket)
+    written = _time(store.get("updated_at"))
+    plain = store_until(store, moment) if written is not None and written <= moment else None
+    limit = moment.timestamp()
+    complete = {}
+    for day, (seen, value) in flags.items():
+        try:
+            ended = (datetime.fromisoformat(day).replace(tzinfo=timezone.utc) + timedelta(days=1)).timestamp() <= limit
+        except ValueError:
+            continue
+        if ended and seen <= limit and day in days:
+            complete[day] = value
+    return {**store, "days": days, "complete": complete, "bubbles": (plain or {}).get("bubbles", {}),
+            "cut_at": moment.isoformat(), "rows_arrival": "PIT", "rows_counts": counts}

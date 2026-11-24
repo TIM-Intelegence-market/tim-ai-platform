@@ -165,3 +165,62 @@ def test_shadow_summary_keeps_plans_without_a_lage_apart(tmp_path):
     state = shadow.update(path, [journal], lage("ab", strength=3, at=T0), now=T0)   # restart: no Lage of 11:00
     assert state["plans"]["p1"]["gate_at_plan"] == shadow.NEUTRAL
     assert state["summary"]["by_gate"] == {shadow.OHNE_LAGE: {"n": 1, "sum_net_r": 1.0}}
+
+
+# Mission 07 (Codex #issuecomment-7136858061, test 2): 20 late revisions of a 11:50 bucket, store written 13:00.
+def test_store_known_at_excludes_every_late_revision_and_backfill():
+    t = int(H11.timestamp())
+    day = "2026-11-08"
+    base = [[t - 600, 75000.0, 1.0, 2.0]]
+    pit.observe_store({"bucket_seconds": 300, "updated_at": (H11 - timedelta(seconds=5)).isoformat(), "days": {day: base}},
+                      H11 - timedelta(seconds=5))
+    reference = pit.store_known_at({"bucket_seconds": 300, "updated_at": H11.isoformat(), "days": {day: base}}, "BTCUSDT", H11)
+    assert reference["days"] == {day: base} and reference["rows_arrival"] == "PIT"
+    later = H11 + timedelta(hours=1)
+    for i in range(20):
+        revised = [[t - 600, 75000.0, 1.0 + i, 2.0 * i], [t - 600, 75000.0 + 5 * (i + 1), float(i), 1.0]]
+        store = {"bucket_seconds": 300, "updated_at": later.isoformat(), "days": {day: revised}}
+        pit.observe_store(store, later)
+        known = pit.store_known_at(store, "BTCUSDT", H11)
+        assert known["days"] == {day: base}, i                 # neither the revision nor the new level reaches 11:00
+        assert known["bubbles"] == {} and known["complete"] == {}
+    assert known["rows_counts"]["unknown"] == 20 and known["rows_counts"]["revised_later"] == 1
+
+
+def test_store_without_updated_at_or_after_restart_is_unknown_not_unverified():
+    t = int(H11.timestamp())
+    store = {"bucket_seconds": 300, "days": {"2026-11-08": [[t - 600, 1.0, 1.0, 2.0]]}}
+    assert pit.observe_store(store, H11) == 0 and pit.store_known_at(store, "BTCUSDT", H11) is None
+    pit.observe_store({**store, "updated_at": H11.isoformat()}, H11)
+    pit.reset()                                                    # restart: nothing known from before
+    assert pit.store_known_at({**store, "updated_at": H11.isoformat()}, "BTCUSDT", H11) is None
+
+
+def test_chart_verdict_at_a_plan_is_the_same_with_or_without_a_later_backfill(tmp_path):
+    """Metamorphic end to end: the Urteil of a plan does not change when a backfill/revision arrives after it."""
+    from tests.test_analysis_summary import NOW, _trending_series
+    from tests.test_chart_verdict import _journal, _plan
+
+    series = _trending_series()
+    t = int(NOW.timestamp())
+    prev, day = (NOW - timedelta(days=1)).date().isoformat(), NOW.date().isoformat()
+    d0 = int((NOW.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)).timestamp())
+    rows = [[d0 + 300 * k, 89000.0 + 50 * (k % 40), 3.0, 4.0] for k in range(288)]
+    early = {"bucket_seconds": 300, "tick": 5.0, "symbol": "BTCUSDT", "updated_at": (NOW - timedelta(seconds=20)).isoformat(),
+             "days": {prev: rows, day: [[t - 1200, 90000.0, 1.0, 1.0]]}, "complete": {prev: True}}
+    late = {**early, "updated_at": (NOW + timedelta(hours=1)).isoformat(),   # gap in the previous day filled at 13:00
+            "days": {prev: rows + [[d0 + 1500, 89900.0, 5000.0, 5000.0]], day: early["days"][day] + [[t - 600, 89650.0, 900.0, 0.0]]}}
+    # The test discriminates: the plain cut (Mission 06) would let the backfill change the levels at NOW.
+    assert cv.chart_lage(series, NOW, None, pit.store_until(early, NOW)) != cv.chart_lage(series, NOW, None, pit.store_until(late, NOW))
+    results = []
+    for store in (early, late):
+        pit.reset()
+        journal, path = tmp_path / f"j{len(results)}.json", tmp_path / f"v{len(results)}.json"
+        _journal(journal)
+        cv.update(path, [journal], series, lage("auf", at=NOW - timedelta(seconds=20)), now=NOW - timedelta(seconds=10), trades=early)
+        _journal(journal, _plan("p1", NOW))
+        state = cv.update(path, [journal], series, lage("auf", at=NOW + timedelta(minutes=59)), now=NOW + timedelta(hours=1), trades=store)
+        record = state["plans"][f"{journal.name}:p1"]
+        assert record["store_rows_arrival"] == "PIT"
+        results.append((record["chart_at_plan"], record["urteil"]))
+    assert results[0] == results[1]

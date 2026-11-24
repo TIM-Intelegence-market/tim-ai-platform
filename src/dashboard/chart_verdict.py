@@ -319,13 +319,15 @@ def update(path: Path, journal_paths: Sequence[Path], series: Mapping[str, Seque
     """One step: every new plan gets the Chart-Lage and the Urteil at its creation, closed plans get the journal result.
 
     Point-in-time (Paket E): the orderflow is the Lage known at the plan's creation (:func:`pit_lage.lage_at`, else
-    UNKNOWN) and the trade levels come from the store cut to buckets ended by then (:func:`pit_lage.store_until`).
+    UNKNOWN) and the trade levels come from the store as known then (:func:`pit_lage.store_known_at`, Mission 07):
+    closed buckets in the revision seen by the plan's creation; a later backfill or revision is not evidence.
     """
     from src.dashboard.plan_journal import load_view
 
     now = now or datetime.now(timezone.utc)
     key_symbol = (symbol or (lage or {}).get("symbol") or "BTCUSDT").upper()
     pit.observe(lage, now, key_symbol)
+    pit.observe_store(trades, now, key_symbol)
     own_file = current_path(path, key_symbol)     # E1: never the earlier version's file
     state = load(own_file) or {"schema": SCHEMA, "ruleset": RULESET, "started_at": _iso(now), "pit": PIT_VERSION,
                              "symbol": key_symbol, "sources": [Path(p).name for p in journal_paths], "plans": {}}
@@ -346,7 +348,7 @@ def update(path: Path, journal_paths: Sequence[Path], series: Mapping[str, Seque
                 targets = [t for t in (entry.get("targets") or []) if _num(t) is not None]
                 target = _num(targets[0]) if targets else None
                 known, status = pit.lage_at(key_symbol, created)
-                cut = pit.store_until(trades, created)
+                cut = pit.store_known_at(trades, key_symbol, created)
                 chart = chart_lage(series, created, known, cut)
                 urteil = judge(str(entry.get("direction")), entry_price, chart, stop, target) if entry_price else None
                 record = plans[key] = {"id": entry["id"], "journal_file": Path(journal_path).name, "timeframe": entry.get("timeframe"),
@@ -354,7 +356,8 @@ def update(path: Path, journal_paths: Sequence[Path], series: Mapping[str, Seque
                                        "entry": entry_price, "stop": stop, "target_1": target,
                                        "seen_at": _iso(now), "chart_at_plan": chart, "urteil": urteil,
                                        "pit": PIT_VERSION, "symbol": key_symbol, "lage_at_plan_status": status,
-                                       "store_rows_arrival": (cut or {}).get("rows_arrival")}
+                                       "store_rows_arrival": (cut or {}).get("rows_arrival") or "UNKNOWN",
+                                       "store_rows_counts": (cut or {}).get("rows_counts")}
             record["journal"] = {"status": entry.get("status"), "filled_at": entry.get("filled_at"), "closed_at": entry.get("closed_at"),
                                  "exit_reason": entry.get("exit_reason"), "net_r": entry.get("net_r")}
     state["checked_at"] = _iso(now)
