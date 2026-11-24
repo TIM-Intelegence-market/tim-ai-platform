@@ -85,10 +85,11 @@ def main(argv: list[str] | None = None) -> int:
         except OSError:
             print(json.dumps({"status": "busy"}))
             return 0
-        summary = decide.run(model, args.log, _ask(args.ollama_url, args.model), args.model)
-        if not args.no_deepseek:   # before Hermes' second opinion: the candle is fresh for a few minutes only
+        started = time.time()   # one clock for both: the local AI needs minutes, DeepSeek must not find the candle stale after it
+        summary = decide.run(model, args.log, _ask(args.ollama_url, args.model), args.model, now=started)
+        if not args.no_deepseek:   # before Hermes' second opinion
             summary["deepseek"] = decide.run(model, _deepseek_log(args.log), deepseek.decider(_hermes_long),
-                                             deepseek.MODEL_NAME, profile=decide.DEEPSEEK_PROFILE)
+                                             deepseek.MODEL_NAME, now=started, profile=decide.DEEPSEEK_PROFILE)
         if not args.no_hermes:
             now = time.time()
             stamp = decide._iso(now)

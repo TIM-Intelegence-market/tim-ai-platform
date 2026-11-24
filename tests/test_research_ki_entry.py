@@ -365,3 +365,21 @@ def test_deepseek_guards_stop_target_day_limit_and_pause():
     old = [{**dec(1), "candle_epoch": now - 30 * 3600}, res(1, -1.0), {**dec(2), "candle_epoch": now - 29 * 3600}, res(2, -1.0)]
     assert decide.day_guard(old, now, p) is None                                                       # yesterday does not count
     assert decide.day_guard([dec(1), res(1, -1.0), dec(2), res(2, -1.0)], now, decide.LOCAL_PROFILE) is None
+
+
+def test_both_ais_judge_the_candle_by_the_same_clock(tmp_path: Path, monkeypatch):
+    """The local AI needs minutes; DeepSeek, asked after it, must not find the candle stale (24.11.2026: 0 DeepSeek decisions)."""
+    import io
+
+    from src.research_lab.ki_entry import __main__ as cli
+    clocks: list[float] = []
+
+    def fake_run(model, log_path, ask, model_name, now=None, profile=decide.LOCAL_PROFILE):
+        clocks.append(now)
+        cli.time.sleep(0.01)
+        return {"results": [], "decision": None}
+
+    monkeypatch.setattr(cli, "urlopen", lambda *a, **k: io.BytesIO(b"{}"))
+    monkeypatch.setattr(cli.decide, "run", fake_run)
+    assert cli.main(["run", "--log", str(tmp_path / "ki.jsonl"), "--no-hermes"]) == 0
+    assert len(clocks) == 2 and clocks[0] is not None and clocks[0] == clocks[1]
