@@ -127,3 +127,18 @@ def test_chart_page_shows_the_verdict(tmp_path, monkeypatch):
     state.plan_journal_path = tmp_path / "tim.json"
     page = render_chart_page(state, symbol="BTCUSDT")
     assert "tc-verdict" in page
+
+
+def test_r7_never_judges_a_wave_whose_side_is_not_proven():
+    """Mission 07-FINAL: the chart verdict uses the shadow's gate, so it needs the known-side check too."""
+    base = lage("auf", price=73700.0, at=NOW)
+    legacy = {**base, "windows": {name: {"volume": 10.0, "delta": 3.0} for name in ("1m", "5m", "15m")}}  # no unknown_volume
+    for broken, status in ((legacy, "MISSING"), ({**base, "windows": {"5m": base["windows"]["5m"]}}, "MISSING"),
+                           ({k: v for k, v in base.items() if k != "windows"}, "MISSING")):
+        flow = cv.orderflow_view(broken, NOW)
+        assert flow["side_ok"] is False and flow["side_status"] == status
+        v = cv.judge("LONG", 73700.0, chart(orderflow=flow), stop=73400.0, target=74000.0)
+        assert "R7" not in sides(v) and any(text.startswith("R7 Seite") for text in v["skipped"])
+    v = cv.judge("LONG", 73700.0, chart(orderflow={"direction": "auf", "strength": 2, "levels": []}), stop=73400.0, target=74000.0)
+    assert "R7" not in sides(v)                                    # a stored view without the fields is not judged either
+    assert sides(cv.judge("LONG", 73700.0, chart(orderflow=cv.orderflow_view(base, NOW)), stop=73400.0, target=74000.0))["R7"] == cv.FOR
