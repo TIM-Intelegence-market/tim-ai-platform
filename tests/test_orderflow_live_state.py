@@ -361,3 +361,36 @@ def test_head_of_line_delay_of_the_prefix_rule_is_reported():
     live = ls.LiveOrderflowTracker(SYMBOL, 5.0)                       # live: one read time per batch, never held back
     live.ingest([_raw(0, 1.0, False, 1), _raw(1, 1.0, True, 2)], available_at=T0 + timedelta(seconds=2))
     assert live.snapshot(T0 + timedelta(seconds=3))["held_back"] == {"trades": 0, "max_seconds": 0.0}
+
+
+def test_known_side_is_compared_exactly_not_rounded():
+    """Codex Mission 06: 0.94996 must not pass as 0.95."""
+    from src.dashboard import orderflow_shadow as shadow
+
+    def view(volume, unknown):
+        return shadow.lage_view({"price": 100.0, "wave": {"direction": "auf"},
+                                 "windows": {"1m": {"volume": volume, "unknown_volume": unknown}}})
+
+    assert shadow.gate("LONG", view(100000.0, 5004.0)) == shadow.UNBEKANNT            # 0.94996
+    assert shadow.gate("LONG", view(100000.0, 5000.0)) == shadow.BESTAETIGT           # exactly 0.95
+    assert shadow.gate("LONG", view(100000.0, 4999.0)) == shadow.BESTAETIGT           # above
+    assert view(100000.0, 5004.0)["known_share"] == pytest.approx(0.94996)            # raw, for display
+
+
+@pytest.mark.parametrize("volume, unknown", [(float("nan"), 0.0), (float("inf"), 0.0), (-1.0, 0.0), (10.0, -1.0),
+                                             (10.0, 11.0), ("10", 0.0), (True, 0.0), (10.0, float("nan"))])
+def test_invalid_volumes_are_unknown_downstream(volume, unknown):
+    from src.dashboard import orderflow_shadow as shadow
+
+    v = shadow.lage_view({"price": 100.0, "wave": {"direction": "auf", "strength": 3},
+                          "windows": {"1m": {"volume": volume, "unknown_volume": unknown}}})
+    assert v["side_ok"] is False and v["side_status"] == "INVALID"
+    assert shadow.gate("LONG", v) == shadow.UNBEKANNT and shadow.should_exit("SHORT", v) is None
+
+
+def test_empty_volume_has_no_side_verdict_and_old_views_still_work():
+    from src.dashboard import orderflow_shadow as shadow
+
+    empty = shadow.lage_view({"price": 100.0, "wave": {"direction": "keine"}, "windows": {"1m": {"volume": 0.0}}})
+    assert empty["side_ok"] is None and shadow.gate("LONG", empty) == shadow.NEUTRAL
+    assert shadow.side_unknown({"known_share": 0.9}) and not shadow.side_unknown({"known_share": 0.95})  # pre-07 views

@@ -23,7 +23,9 @@ Judgement after ``TARGET_TRADES`` closed plans, by Uzi. Nothing here trades or c
 from __future__ import annotations
 
 import json
+import math
 import os
+from fractions import Fraction
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -40,6 +42,7 @@ OHNE_LAGE = "OHNE LAGE"  # summary only: NEUTRAL because no Lage was there, kept
 # is still judged. Live Binance spot trades always carry the side, so this should never trigger; if it does, it is
 # a data problem to look at, not a threshold to tune.
 MIN_KNOWN_SHARE = 0.95
+MIN_KNOWN = Fraction(95, 100)  # the same threshold as an exact fraction, used for the decision
 WITH = {"LONG": "auf", "SHORT": "ab"}
 # UTC hour -> session. Fixed UTC bounds so the label never moves with daylight saving.
 SESSIONS = ((0, "Asien"), (7, "London"), (13, "London+NY"), (16, "NY"), (21, "nach NY"))
@@ -55,14 +58,43 @@ def _time(value: Any) -> datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
 
-def known_share(lage: Mapping[str, Any] | None) -> float | None:
-    """Lowest share of volume with a known aggressor side over the Lage's windows; None without volume."""
-    shares = []
+def _number(value: Any) -> Fraction | None:
+    """An exact, finite, non-negative number, else None (bools, text, NaN, inf and negatives are invalid)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+        return None
+    return Fraction(value)
+
+
+def known_side(lage: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Known-side check over the Lage's windows, exact (Mission 07: no rounding before the policy).
+
+    ``ok`` is True when every window with volume has known volume >= ``MIN_KNOWN_SHARE`` x volume, compared as exact
+    fractions; False when one is below or a window's numbers are invalid (``status`` INVALID); None without volume.
+    ``share`` is the lowest raw share for display only, never for the decision."""
+    lowest: Fraction | None = None
+    invalid = False
     for window in ((lage or {}).get("windows") or {}).values():
-        volume = float((window or {}).get("volume") or 0.0)
+        if not isinstance(window, Mapping):
+            invalid = True
+            continue
+        volume, unknown = _number(window.get("volume", 0)), _number(window.get("unknown_volume", 0))
+        if volume is None or unknown is None or unknown > (volume or 0):
+            invalid = True
+            continue
         if volume > 0:
-            shares.append(max(0.0, volume - float(window.get("unknown_volume") or 0.0)) / volume)
-    return round(min(shares), 4) if shares else None
+            share = (volume - unknown) / volume
+            lowest = share if lowest is None else min(lowest, share)
+    if invalid:
+        return {"ok": False, "status": "INVALID", "share": float(lowest) if lowest is not None else None}
+    if lowest is None:
+        return {"ok": None, "status": None, "share": None}
+    ok = lowest >= MIN_KNOWN
+    return {"ok": ok, "status": "OK" if ok else "BELOW", "share": float(lowest)}
+
+
+def known_share(lage: Mapping[str, Any] | None) -> float | None:
+    """Lowest raw share of volume with a known side (display); the decision uses :func:`known_side`."""
+    return known_side(lage)["share"]
 
 
 def lage_view(lage: Mapping[str, Any] | None) -> dict[str, Any] | None:
@@ -76,7 +108,12 @@ def lage_view(lage: Mapping[str, Any] | None) -> dict[str, Any] | None:
     return {"as_of": lage.get("as_of"), "price": lage.get("price"), "direction": wave.get("direction"),
             "strength": wave.get("strength"), "phase": wave.get("phase"), "exhaustion": bool(wave.get("exhaustion")),
             "tempo": lage.get("tempo"), "delta_5m": (lage.get("windows") or {}).get("5m", {}).get("delta"),
-            "perp_delta_5m": perp.get("delta_5m"), "levels": near, "known_share": known_share(lage)}
+            "perp_delta_5m": perp.get("delta_5m"), "levels": near, **_side_fields(lage)}
+
+
+def _side_fields(lage: Mapping[str, Any]) -> dict[str, Any]:
+    side = known_side(lage)
+    return {"known_share": side["share"], "side_ok": side["ok"], "side_status": side["status"]}
 
 
 def session_of(moment: datetime) -> str:
@@ -109,7 +146,12 @@ def gate(direction: str, view: Mapping[str, Any] | None) -> str:
 
 
 def side_unknown(view: Mapping[str, Any] | None) -> bool:
-    share = (view or {}).get("known_share")
+    """True when the view's side check failed (below the policy or invalid numbers). Views noted before Mission 07
+    carry only ``known_share``: then the raw share is compared."""
+    view = view or {}
+    if "side_ok" in view:
+        return view["side_ok"] is False
+    share = view.get("known_share")
     return share is not None and share < MIN_KNOWN_SHARE
 
 
