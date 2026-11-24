@@ -73,7 +73,7 @@ BOOT_DRAWS, BOOT_SEED = 10_000, 40
 CVD = {"lookback": 24, "right": 3, "k_sigma": 1.0}
 SWEEP = {"lookback": 24, "m": 3, "min_excess": 0.001, "vol_mult": 2.0}
 EVENT_BARS = 12
-OPTIONS_START_MONTH: str | None = None  # set in version 1.0 from the data report (plan section 4); None = report value
+OPTIONS_START_MONTH: str | None = "2020-01"  # from S40_DATENREIFE.md (24.11.2026): Deribit 60/60 months valid
 
 PRICE = ("ret_1h", "ret_4h", "ret_24h", "rv_24h", "hour_sin", "hour_cos")
 ORDERFLOW = ("ai_1h", "ai_4h", "cvd_div", "sweep")
