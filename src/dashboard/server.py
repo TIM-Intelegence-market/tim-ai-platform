@@ -165,15 +165,19 @@ class DashboardServer:
                         from src.dashboard.chart_live import load_plan_journals
                         from src.dashboard.gamma_zones import load as load_zone_watch
 
-                        model = build_live_chart(query.get("symbol", [None])[0], query.get("tf", [None])[0], outer.state.chart_series(), footprint=footprint,
-                                                 plan_journals=load_plan_journals(plan_journal_paths(outer.state)), gamma=gamma,
-                                                 gamma_zones=gamma_zones, gamma_zone_watch=load_zone_watch(outer.state.gamma_zone_watch_path),
-                                                 liquidation=liquidation, perp=perp, open_interest=open_interest, bybit=bybit,
-                                                 market=query.get("market", [None])[0],
-                                                 context=chart_context(query.get("symbol", [None])[0]))
-                        from src.dashboard.chart_reading import overlay
+                        def build(tf):
+                            return build_live_chart(query.get("symbol", [None])[0], tf, outer.state.chart_series(), footprint=footprint,
+                                                    plan_journals=load_plan_journals(plan_journal_paths(outer.state)), gamma=gamma,
+                                                    gamma_zones=gamma_zones, gamma_zone_watch=load_zone_watch(outer.state.gamma_zone_watch_path),
+                                                    liquidation=liquidation, perp=perp, open_interest=open_interest, bybit=bybit,
+                                                    market=query.get("market", [None])[0],
+                                                    context=chart_context(query.get("symbol", [None])[0]))
+
+                        model = build(query.get("tf", [None])[0])
+                        from src.dashboard.chart_reading import unified_overlay
                         from src.dashboard.pages.chart import APP_VERSION
-                        model["reading"] = overlay(model)  # Control Center = Uzi's own machine
+                        # Control Center = Uzi's own machine. One reading on every timeframe (30m details, 4h big picture).
+                        model["reading"] = unified_overlay(model, build)
                         model["app_version"] = APP_VERSION
                     except Exception as exc:  # noqa: BLE001 - malformed data must not drop the connection
                         return self.respond(500, json.dumps({"error": type(exc).__name__}).encode(), "application/json")

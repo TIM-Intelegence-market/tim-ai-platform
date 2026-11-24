@@ -127,3 +127,33 @@ def test_overlay_has_boxes_in_both_languages_and_never_raises():
     assert overlay({"candles": []}, NOW) is None
     assert overlay({"candles": "broken"}, NOW) is None
 
+
+
+def test_one_reading_for_every_timeframe():
+    """Uzi 24.11.2026: 4 timeframes explained 4 different things; now the boxes are the same on every timeframe."""
+    from src.dashboard.chart_reading import build_unified, unified_overlay
+
+    prices, deltas = _pump_then_sell()
+    base = _model(prices, deltas, levels=(("day", "1D VAL", 62400.0),))
+    big = _model([(60000 + i * 100, 60200 + i * 100, 59900 + i * 100, 60100 + i * 100) for i in range(24)], [1.0] * 24)
+    big.update({"timeframe": "4h", "interval_seconds": 14400})
+    for i, c in enumerate(big["candles"]):
+        c["time"] = START - (23 - i) * 14400
+    built = []
+
+    def build(tf):
+        built.append(tf)
+        return {"30m": base, "4h": big}[tf]
+
+    reading = build_unified(base, big, NOW, lang="de")
+    assert reading["sentences"][0]["title"] == "Das große Bild" and reading["sentences"][0]["text"].startswith("Letzte 4 Tage")
+    assert [s["n"] for s in reading["sentences"]] == list(range(1, len(reading["sentences"]) + 1))
+    shown_1h = {"timeframe": "1h", "candles": [{"time": START + i * 3600} for i in range(12)]}
+    shown_15m = {"timeframe": "15m", "candles": [{"time": START + i * 900} for i in range(48)]}
+    one, two = unified_overlay(shown_1h, build, NOW), unified_overlay(shown_15m, build, NOW)
+    titles = lambda out: [b["title"] for b in out["de"]["boxes"]]
+    assert titles(one) == titles(two) and titles(one)[0].startswith("1) Das große Bild")
+    times_1h = {c["time"] for c in shown_1h["candles"]}
+    assert all(b["time"] is None or b["time"] in times_1h for b in one["en"]["boxes"])
+    assert set(built) == {"30m", "4h"}
+    assert unified_overlay(shown_1h, lambda tf: (_ for _ in ()).throw(RuntimeError("down")), NOW) is None

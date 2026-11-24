@@ -26,7 +26,8 @@ the page says so. Without footprint data the delta parts are left out, not guess
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from bisect import bisect_right
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
 from statistics import median
 from typing import Any
@@ -83,6 +84,7 @@ TEXT = {
         "o_flip_above": "Above it: swings tend to be damped (options estimate)",
         "o_now": "Now ~{p}", "o_now_both": "Between support and resistance", "o_now_one": "See the levels",
         "o_head": "TIM reading · {stamp} · not financial advice",
+        "t_big": "The big picture", "stamp_big": " The big picture comes from the last {n} 4h bars.",
     },
     "de": {
         "few": "Gerade zu wenige Kerzen, um den Chart zu deuten.",
@@ -116,6 +118,7 @@ TEXT = {
         "o_flip_above": "Darüber: Ausschläge eher gedämpft (Optionen-Schätzung)",
         "o_now": "Jetzt ~{p}", "o_now_both": "Zwischen Stütze und Widerstand", "o_now_one": "Siehe die Marken",
         "o_head": "TIM-Deutung · {stamp} · keine Anlageberatung",
+        "t_big": "Das große Bild", "stamp_big": " Das große Bild kommt aus den letzten {n} 4h-Kerzen.",
     },
 }
 # German names for the level labels the English chart model carries (prefix match, first hit wins).
@@ -337,6 +340,64 @@ def build_reading(model: Mapping[str, Any], now: datetime | None = None, lang: s
     return reading
 
 
+# --- one reading for every timeframe (Uzi 24.11.2026: "ich brauch einen einheitlichen Chart") -----------------
+
+BASE_TF = "30m"  # the details: move, high/low, who leads, levels, thin zone
+BIG_TF = "4h"    # the big picture: the move of the last days
+
+
+def build_unified(model: Mapping[str, Any], big: Mapping[str, Any] | None, now: datetime | None = None,
+                  lang: str = "en") -> dict[str, Any]:
+    """The one reading TIM shows on every timeframe: ``model`` is the 30m chart, ``big`` the 4h chart (may be None)."""
+    reading = build_reading(model, now, lang)
+    wide = build_reading(big, now, lang) if big else None
+    if not reading.get("ok") or not wide or not wide.get("ok"):
+        return reading
+    T = TEXT[reading["lang"]]
+    move = wide["sentences"][0]
+    rest = [dict(item, n=i + 2) for i, item in enumerate(reading["sentences"])]
+    reading["sentences"] = [{"n": 1, "title": T["t_big"], "text": move["text"], "tone": move["tone"], "time": None, "price": None}] + rest
+    reading["points"] = [item for item in rest if item.get("time") is not None]
+    reading["big"] = {"timeframe": wide.get("timeframe"), "bars": len(wide["candles"]), "change_pct": wide["change_pct"]}
+    return reading
+
+
+def _snap(out: dict[str, Any], shown: Mapping[str, Any]) -> dict[str, Any]:
+    """Put each box on the shown chart's candle that holds its moment (or drop the anchor when it is off the chart)."""
+    times = sorted(c["time"] for c in shown.get("candles") or [])
+    if not times:
+        return out
+
+    def at(t: Any) -> Any:
+        if t is None or t < times[0]:
+            return None
+        return times[bisect_right(times, t) - 1]
+
+    for lang in LANGS:
+        part = out.get(lang)
+        if not part:
+            continue
+        part["boxes"] = [dict(box, time=at(box.get("time"))) for box in part["boxes"]]
+        part["from"] = at(part.get("from")) or times[0]
+    return out
+
+
+def unified_overlay(shown: Mapping[str, Any], build: Callable[[str], Mapping[str, Any]], now: datetime | None = None) -> dict[str, Any] | None:
+    """The same boxes on every timeframe: read from the 30m and 4h charts (``build(tf)``), drawn on ``shown``.
+
+    None when there is nothing to read; never raises (the chart must load without it)."""
+    try:
+        base = shown if shown.get("timeframe") == BASE_TF else build(BASE_TF)
+        try:
+            big = shown if shown.get("timeframe") == BIG_TF else build(BIG_TF)
+        except Exception:  # noqa: BLE001 - without the big picture the details still stand
+            big = None
+        out = _overlay(base, now, big)
+        return _snap(out, shown) if out else None
+    except Exception:  # noqa: BLE001 - the reading only hides itself
+        return None
+
+
 # --- rendering -------------------------------------------------------------------------------------------
 
 TONE = {"buy": "#5b8cff", "sell": "#ff6b6b", "warn": "#ffc53d", "flat": "#9aa4b2", "level": "#3ddc97"}
@@ -422,6 +483,8 @@ def render(reading: Mapping[str, Any], drawing: bool = True) -> str:
         for s in reading["sentences"])
     note = T["delta_yes" if reading.get("has_delta") else "delta_no"]
     footer = T["stamp"].format(stamp=stamp, n=len(reading["candles"]), tf=_safe(reading.get("timeframe")), note=_safe(note))
+    if reading.get("big"):
+        footer += T["stamp_big"].format(n=reading["big"]["bars"])
     picture = f"<div class='rd-chart'>{svg(reading)}</div>" if drawing else ""
     return (picture + f"<ol class='rd-list'>{items}</ol>"
             f"<p class='rd-now'><b>{_safe(reading['now_text'])}</b></p>"
@@ -439,6 +502,10 @@ def _boxes(reading: Mapping[str, Any], model: Mapping[str, Any]) -> list[dict[st
     T = TEXT[lang]
     boxes = [{"title": f"{p['n']}) {p['title']}", "text": p["text"], "tone": p["tone"], "time": p["time"], "price": p["price"]}
              for p in reading.get("points") or []]
+    if reading.get("big"):  # the big picture has no single spot: a box pinned to the top left, no line
+        first = reading["sentences"][0]
+        boxes.insert(0, {"title": f"{first['n']}) {first['title']}", "text": first["text"], "tone": first["tone"],
+                         "time": None, "price": None, "pin": True})
     for key, title, text, tone in (("resistance", "o_res", "o_res_t", "level"), ("support", "o_sup", "o_sup_t", "sell")):
         lv = reading.get(key)
         if lv:
@@ -471,12 +538,12 @@ def overlay(model: Mapping[str, Any], now: datetime | None = None) -> dict[str, 
         return None
 
 
-def _overlay(model: Mapping[str, Any], now: datetime | None = None) -> dict[str, Any] | None:
+def _overlay(model: Mapping[str, Any], now: datetime | None = None, big: Mapping[str, Any] | None = None) -> dict[str, Any] | None:
     now = now or datetime.now(timezone.utc)
     stamp = now.astimezone(LOCAL).strftime("%d.%m. %H:%M")
     out: dict[str, Any] = {"schema": SCHEMA, "generated_at": now.isoformat(), "window": WINDOW}
     for lang in LANGS:
-        reading = build_reading(model, now, lang=lang)
+        reading = build_unified(model, big, now, lang=lang)
         if not reading.get("ok"):
             return None
         lines = [{"price": lv["price"], "tone": tone} for lv, tone in ((reading.get("resistance"), "level"), (reading.get("support"), "sell"),

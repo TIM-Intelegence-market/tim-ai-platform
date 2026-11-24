@@ -882,8 +882,6 @@ def reading_csp() -> str:
 
 def reading_page(card: str, timeframe: str, lang: str) -> str:
     """TIM chart reading (BTC) for logged-in traders, in English or German (Uzi 23.11.2026)."""
-    from src.dashboard.chart_reading import TIMEFRAMES
-
     de = lang == "de"
     title = "TIM Chart-Deutung" if de else "TIM chart reading"
     intro = ("TIM liest den BTC-Chart automatisch und schreibt die wichtigsten Stellen als Kästen direkt in den Chart. "
@@ -895,9 +893,8 @@ def reading_page(card: str, timeframe: str, lang: str) -> str:
 
     # Uzi 23.11.2026 ("wie ein Chart-Layout"): the real interactive chart, opened on the "TIM AI overlay" layout, so the
     # boxes sit on the live candles. Own browser memory (data-space), so choices here never change /chart.
-    frames = "".join(
-        f"<a href='/reading?tf={tf}&amp;lang={lang}' data-tf='{tf}' class='tc-tab{' tc-tab--active' if tf == timeframe else ''}'"
-        + (" aria-current='page'" if tf == timeframe else "") + f">BTC {tf}</a>" for tf in TIMEFRAMES)
+    # One chart, one reading (Uzi 24.11.2026): no timeframe tabs here; the reading is the same on every timeframe.
+    frames = "<span class='tc-tabs__sep'>" + ("BTC 30m · großes Bild aus 4h" if de else "BTC 30m · big picture from 4h") + "</span>"
     now_label, fit_label = ("Zu jetzt", "Alles zeigen") if de else ("Go to now", "Show all")
     layers_label = "Ebenen einzeln" if de else "Single layers"
     chart = (
