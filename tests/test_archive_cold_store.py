@@ -152,7 +152,7 @@ def test_crash_after_the_data_file_is_resumed_without_duplicates(tmp_path, monke
         return real(src, dst, sha, **kw)
 
     monkeypatch.setattr(cold_store, "_copy_verified", dying)
-    with pytest.raises(OSError):
+    with pytest.raises(ArchiveSyncError, match="process died"):
         s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
     monkeypatch.setattr(cold_store, "_copy_verified", real)
     report = s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
@@ -639,3 +639,175 @@ def test_random_runs_keep_the_budget_and_integrity_invariants(tmp_path, seed):
     assert s.used_bytes() <= limit and s.verify()["status"] == "OK"
     for entry in s.ledger():  # every stored file equals its original byte for byte
         assert (s.root / entry["path"]).read_bytes() == (tmp_path / "in" / Path(entry["path"]).name).read_bytes()
+
+
+# ---------------------------------------------------------------- INFRA-09 remediation: second review
+def test_invalid_utf8_batch_is_invalid_not_a_crash(tmp_path):
+    s = store(tmp_path)
+    manifest = make_batch(tmp_path / "in", 1, 100)
+    body = json.loads(manifest.read_text())
+    raw = b"\xff\xfe" * 10
+    data = tmp_path / "in" / body["file"]
+    data.write_bytes(gzip.compress(raw, mtime=0))
+    content = hashlib.sha256(raw).hexdigest()
+    body.update(content_sha256=content, csv_bytes=len(raw), file_bytes=data.stat().st_size, file_sha256=sha256_file(data),
+                batch_id=batch_id_for("new", SYMBOL, 1, 100, content, []))
+    manifest.write_text(json.dumps(body))
+    report = s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    assert report["summary"] == {"FILE_INVALID": 1} and "UTF-8" in report["results"][0]["reason"]
+
+
+def test_non_canonical_trade_ids_are_invalid(tmp_path):
+    s = store(tmp_path)
+    manifest = make_batch(tmp_path / "in", 1, 3)
+    body = json.loads(manifest.read_text())
+    rows = "".join(f"{SYMBOL},{i},2026-11-22 23:55:05+00,1,1,f,X,2026-11-22 23:55:05+00\n" for i in ("+1", "2", "3"))
+    data = tmp_path / "in" / body["file"]
+    data.write_bytes(gzip.compress(rows.encode(), mtime=0))
+    content = hashlib.sha256(rows.encode()).hexdigest()
+    body.update(content_sha256=content, csv_bytes=len(rows), file_bytes=data.stat().st_size, file_sha256=sha256_file(data),
+                batch_id=batch_id_for("new", SYMBOL, 1, 3, content, []))
+    manifest.write_text(json.dumps(body))
+    report = s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    assert report["summary"] == {"FILE_INVALID": 1} and "canonical" in report["results"][0]["reason"]
+
+
+def test_source_growing_after_the_check_never_exceeds_its_declared_size(tmp_path, monkeypatch):
+    s = store(tmp_path)
+    manifest = make_batch(tmp_path / "in", 1, 100)
+    data = tmp_path / "in" / json.loads(manifest.read_text())["file"]
+    declared = data.stat().st_size
+    real = cold_store._check_batch
+
+    def grow_after_check(path, parsed=None, symbol=None):
+        result = real(path, parsed, symbol)
+        with data.open("ab") as handle:
+            handle.write(b"\0" * (4 << 20))
+        return result
+
+    monkeypatch.setattr(cold_store, "_check_batch", grow_after_check)
+    with pytest.raises(ArchiveSyncError, match="larger than declared"):
+        s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    assert s.ledger() == [] and list((s.root / "batches" / SYMBOL).iterdir()) == []
+    assert declared < (4 << 20)
+
+
+def test_same_batch_under_a_second_name_is_a_conflict(tmp_path):
+    s = store(tmp_path)
+    manifest = make_batch(tmp_path / "in", 1, 100)
+    s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    body = json.loads(manifest.read_text())
+    copy = tmp_path / "in2"
+    copy.mkdir()
+    new_name = body["file"].replace("-new-", "-copy-")
+    (copy / new_name).write_bytes((tmp_path / "in" / body["file"]).read_bytes())
+    (copy / new_name.replace(".csv.gz", ".manifest.json")).write_text(json.dumps({**body, "file": new_name}))
+    report = s.ingest_directory(copy, symbol=SYMBOL)
+    assert report["summary"] == {"CONFLICT": 1} and "another name" in report["results"][0]["reason"]
+
+
+def test_manifest_and_data_names_must_pair(tmp_path):
+    s = store(tmp_path)
+    manifest = make_batch(tmp_path / "in", 1, 100)
+    body = json.loads(manifest.read_text())
+    other = body["file"].replace("-new-", "-other-")
+    (tmp_path / "in" / body["file"]).rename(tmp_path / "in" / other)
+    manifest.write_text(json.dumps({**body, "file": other}))
+    report = s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    assert report["summary"] == {"FILE_INVALID": 1} and "match the manifest" in report["results"][0]["reason"]
+
+
+def test_empty_or_malformed_volume_marker_fails_closed(tmp_path):
+    volume = tmp_path / "vol"
+    volume.mkdir()
+    (volume / cold_store.VOLUME_MARKER).write_text("")
+    with pytest.raises(ArchiveSyncError, match="malformed"):
+        cold_store.ColdStore.init(volume / "store", volume_mount=volume, is_mount=FakeMounts(volume), usage=ROOMY)
+    (tmp_path / "b").mkdir()
+    s, vol2, _mounts = bound(tmp_path / "b")
+    marker = vol2 / cold_store.VOLUME_MARKER
+    marker.chmod(0o644)
+    marker.write_text("")
+    with pytest.raises(ArchiveSyncError, match="wrong volume"):
+        s.check_volume()
+
+
+def test_init_refuses_root_volume_oversized_limit_and_a_changed_binding(tmp_path):
+    with pytest.raises(ArchiveSyncError, match="root file system"):
+        cold_store.ColdStore.init(tmp_path / "x", volume_mount="/", is_mount=lambda p: True, usage=ROOMY)
+    volume = tmp_path / "vol"
+    volume.mkdir()
+    small = lambda _p: Usage(10**6, 0, 10**6)  # noqa: E731
+    with pytest.raises(ArchiveSyncError, match="15% reserve"):
+        cold_store.ColdStore.init(volume / "store", limit_bytes=10**6, volume_mount=volume,
+                                  is_mount=FakeMounts(volume), usage=small)
+    assert not (volume / "store").exists() and not (volume / cold_store.VOLUME_MARKER).exists()
+    s = store(tmp_path)
+    with pytest.raises(ArchiveSyncError, match="volume binding"):
+        cold_store.ColdStore.init(s.root, limit_bytes=s.limit_bytes, volume_mount=volume, is_mount=FakeMounts(volume))
+
+
+def test_init_creates_only_the_store_directory(tmp_path):
+    with pytest.raises(ArchiveSyncError, match="does not exist"):
+        cold_store.ColdStore.init(tmp_path / "a" / "b" / "store", usage=ROOMY)
+    assert not (tmp_path / "a").exists()
+
+
+def test_vanished_inbox_file_and_file_system_errors_are_clean_errors(tmp_path, monkeypatch):
+    from src.archive_sync import __main__ as cli
+
+    s = store(tmp_path)
+    manifest = make_batch(tmp_path / "in", 1, 100)
+    real = cold_store._read_bytes
+
+    def vanish(name, dir_fd):
+        if name == manifest.name:
+            raise FileNotFoundError(2, "No such file or directory")
+        return real(name, dir_fd)
+
+    monkeypatch.setattr(cold_store, "_read_bytes", vanish)
+    assert s.ingest_directory(tmp_path / "in", symbol=SYMBOL)["summary"] == {"FILE_INVALID": 1}
+    monkeypatch.setattr(cold_store, "_read_bytes", real)
+
+    def full(*_a, **_k):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(cold_store, "_write_new", full)
+    with pytest.raises(ArchiveSyncError, match="ENOSPC: halted"):
+        s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    code = cli.main(["cold-ingest", "--root", str(s.root), "--dir", str(tmp_path / "in"), "--symbol", SYMBOL,
+                     "--unbound-ok"])
+    assert code == 2 and s.ledger() == []
+
+
+def test_torn_ledger_is_closed_not_truncated(tmp_path):
+    s = store(tmp_path)
+    make_batch(tmp_path / "in", 1, 100)
+    s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    ledger = s.root / "LEDGER.jsonl"
+    torn = ledger.read_bytes()[:-20]
+    ledger.write_bytes(torn)
+    s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    after = ledger.read_bytes()
+    assert after.startswith(torn + b"\n") and b"torn_tail_discarded" in after
+    assert len(s.ledger()) == 2 and s.verify()["status"] == "OK"
+
+
+def test_migration_into_or_around_the_source_is_refused(tmp_path):
+    s = store(tmp_path)
+    make_batch(tmp_path / "in", 1, 100)
+    s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    before = snapshot(s.root)
+    with pytest.raises(ArchiveSyncError, match="contain each other"):
+        cold_store.migrate_store(s.root, s.root / "batches" / "copy")
+    with pytest.raises(ArchiveSyncError, match="contain each other"):
+        cold_store.migrate_store(s.root, tmp_path)
+    assert snapshot(s.root) == before
+
+
+def test_verify_is_refused_while_a_writer_holds_the_lock(tmp_path):
+    s = store(tmp_path)
+    with s._locked():
+        with pytest.raises(ArchiveSyncError, match="lock"):
+            cold_store.ColdStore(s.root, usage=ROOMY).verify()
+    assert s.verify()["status"] == "OK"

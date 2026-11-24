@@ -66,6 +66,9 @@ _DIRECTORY = getattr(os, "O_DIRECTORY", 0)
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,200}")
 _LEDGER_PATH = re.compile(r"batches/[A-Za-z0-9]+/[A-Za-z0-9][A-Za-z0-9._-]{0,200}")
 _CHUNK = 1 << 20
+_SYMBOL = re.compile(r"[A-Za-z0-9]{1,40}")
+_VOLUME_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+_HALT_ERRNOS = {errno.ENOSPC, errno.EROFS, errno.EDQUOT, errno.EIO}
 
 
 # ---------------------------------------------------------------------- safe file system access
@@ -74,6 +77,35 @@ def _safe_name(name: str) -> str:
     if not isinstance(name, str) or not _NAME.fullmatch(name) or ".." in name:
         raise ArchiveSyncError(f"unsafe file name {name!r}")
     return name
+
+
+def _safe_symbol(symbol: str) -> str:
+    if not isinstance(symbol, str) or not _SYMBOL.fullmatch(symbol):
+        raise ArchiveSyncError(f"unsafe symbol {symbol!r}")
+    return symbol
+
+
+def _io_errors(function):
+    """Every file system error leaves as ArchiveSyncError (no raw traceback in the CLI).
+
+    A full, read-only or failing file system halts the run; what is already stored stays valid.
+    """
+    import functools
+
+    @functools.wraps(function)
+    def wrapper(*args, **kwargs):
+        try:
+            return function(*args, **kwargs)
+        except ArchiveSyncError:
+            raise
+        except OSError as error:
+            name = errno.errorcode.get(error.errno or 0, "OSError")
+            if error.errno in _HALT_ERRNOS:
+                raise ArchiveSyncError(f"file system error {name}: halted, nothing half-written is kept as stored") from None
+            raise ArchiveSyncError(f"file system error {name}: {error.strerror or error}") from None
+        except (ValueError, KeyError, TypeError) as error:
+            raise ArchiveSyncError(f"store metadata unreadable ({type(error).__name__}); refusing to continue") from None
+    return wrapper
 
 
 def _open_dir(path: str | Path, *, create: bool = False) -> int:
@@ -169,23 +201,32 @@ def _discard_own_temp(dir_fd: int, name: str) -> None:
 
 
 def _fsync_fd(fd: int) -> None:
-    with contextlib.suppress(OSError):
+    try:
         os.fsync(fd)
+    except OSError as error:  # some file systems cannot fsync a directory; real I/O errors still count
+        if error.errno not in (errno.EINVAL, errno.ENOTSUP, errno.EBADF):
+            raise
 
 
-def _write_new(dir_fd: int, name: str, chunks: Iterable[bytes], expected_sha256: str, *, mode: int = 0o444) -> int:
+def _write_new(dir_fd: int, name: str, chunks: Iterable[bytes], expected_sha256: str, *, mode: int = 0o444,
+               max_bytes: int | None = None, internal: bool = False) -> int:
     """Create ``name`` in ``dir_fd`` with exactly this content. Never replaces or follows anything.
 
     The content goes to a fresh ``.tmp-<random>`` file (``O_EXCL``), is fsynced, read back and
     compared with ``expected_sha256``, set read-only and then hard-linked to ``name``; ``link``
     fails if ``name`` exists in any form. Returns the size in bytes.
     """
-    _safe_name(name)
+    if not (internal and name == VOLUME_MARKER):
+        _safe_name(name)
     temp = f"{TMP_PREFIX}{uuid.uuid4().hex}"
     fd = os.open(temp, os.O_RDWR | os.O_CREAT | os.O_EXCL | _NOFOLLOW | _CLOEXEC, 0o600, dir_fd=dir_fd)
     try:
         with os.fdopen(fd, "r+b") as handle:
+            written = 0
             for chunk in chunks:
+                written += len(chunk)
+                if max_bytes is not None and written > max_bytes:  # a growing source never fills the disk
+                    raise ArchiveSyncError(f"{name}: source is larger than declared ({max_bytes} bytes); refused")
                 handle.write(chunk)
             handle.flush()
             os.fsync(handle.fileno())
@@ -204,17 +245,24 @@ def _write_new(dir_fd: int, name: str, chunks: Iterable[bytes], expected_sha256:
     finally:
         _discard_own_temp(dir_fd, temp)
     _fsync_fd(dir_fd)
+    if _sha_of(name, dir_fd) != expected_sha256:  # what is published under the name is what was checked
+        raise ArchiveSyncError(f"{name}: published file differs from the checked copy; review by hand")
     return size
 
 
-def _copy_verified(source: Path, target: Path, expected_sha256: str, *, data: bytes | None = None) -> None:
-    """Store ``source`` (or the exact ``data`` read from it) as the new file ``target``."""
+def _copy_verified(source: Path, target: Path, expected_sha256: str, *, data: bytes | None = None,
+                   size: int | None = None) -> None:
+    """Store ``source`` (or the exact ``data`` read from it) as the new file ``target``.
+
+    ``size`` caps a streamed copy: more bytes than declared are refused before they reach the disk.
+    """
     with _dir(target.parent) as target_fd:
         if data is not None:
             _write_new(target_fd, target.name, [data], expected_sha256)
             return
         with _dir(source.parent) as source_fd, os.fdopen(_open_regular(source.name, source_fd), "rb") as handle:
-            _write_new(target_fd, target.name, iter(lambda: handle.read(_CHUNK), b""), expected_sha256)
+            _write_new(target_fd, target.name, iter(lambda: handle.read(_CHUNK), b""), expected_sha256,
+                       max_bytes=size)
 
 
 def _tree(root: Path) -> Iterator[tuple[str, os.stat_result]]:
@@ -265,6 +313,8 @@ def _check_batch(manifest_path: Path, manifest: dict[str, Any] | None = None,
         return manifest, "data file name is not a plain batch file name"
     if symbol is not None and not manifest["file"].startswith(f"{symbol}-"):
         return manifest, "data file name does not belong to this symbol"
+    if manifest_path.name != manifest["file"][: -len(".csv.gz")] + ".manifest.json":
+        return manifest, "data file name does not match the manifest name"
     payload, problem = importer._verify_file(manifest_path, manifest)
     if problem or payload is None:
         return manifest, problem or "unreadable data file"
@@ -273,7 +323,10 @@ def _check_batch(manifest_path: Path, manifest: dict[str, Any] | None = None,
     lo, hi = int(manifest["lo"]), int(manifest["hi"])
     holes = normalise_holes(manifest["holes"], lo, hi)
     expected = hi - lo + 1 - hole_size(holes)
-    lines = payload.decode("utf-8", errors="strict").splitlines()
+    try:
+        lines = payload.decode("utf-8", errors="strict").splitlines()
+    except UnicodeDecodeError:
+        return manifest, "data file is not valid UTF-8"
     if len(lines) != expected or int(manifest["row_count"]) != expected:
         return manifest, f"row count {len(lines)} differs from span minus holes {expected}"
     previous = lo - 1
@@ -283,10 +336,10 @@ def _check_batch(manifest_path: Path, manifest: dict[str, Any] | None = None,
         fields = line.split(",")
         if len(fields) < 2 or fields[0] != manifest["symbol"]:
             return manifest, "row with wrong symbol or shape"
-        try:
-            trade_id = int(fields[1])
-        except ValueError:
-            return manifest, "row with non-numeric trade id"
+        text = fields[1]
+        if not (text.isascii() and text.isdigit()) or (len(text) > 1 and text[0] == "0"):
+            return manifest, "row with non-canonical trade id"
+        trade_id = int(text)
         if trade_id <= previous or trade_id > hi:
             return manifest, "trade ids not strictly increasing inside the batch range"
         while hole is not None and trade_id > hole[1]:
@@ -309,6 +362,7 @@ class ColdStore:
     Otherwise the write is refused (fail closed), so an absent mount never fills the parent disk.
     """
 
+    @_io_errors
     def __init__(self, root: str | Path, *, usage: Callable[[str], Any] = shutil.disk_usage,
                  is_mount: MountCheck = os.path.ismount) -> None:
         self.root = Path(os.path.abspath(root))
@@ -336,13 +390,17 @@ class ColdStore:
                 found = _read_bytes(VOLUME_MARKER, mount_fd).decode("utf-8").strip()
         except (OSError, ArchiveSyncError, UnicodeDecodeError):
             found = ""
-        if found != self.volume["volume_id"]:
+        if not _VOLUME_ID.fullmatch(str(self.volume.get("volume_id", ""))) or found != self.volume["volume_id"]:
             raise ArchiveSyncError(f"wrong volume mounted at {mount}; nothing written")
         try:
             self.root.relative_to(mount)
         except ValueError:
             raise ArchiveSyncError("store root lies outside its volume") from None
-        if os.stat(self.root, follow_symlinks=False).st_dev != os.stat(mount, follow_symlinks=False).st_dev:
+        try:
+            same_device = os.stat(self.root, follow_symlinks=False).st_dev == os.stat(mount, follow_symlinks=False).st_dev
+        except OSError:
+            same_device = False
+        if not same_device:
             raise ArchiveSyncError("store root is not on the bound volume; nothing written")
         image = self.volume.get("image")
         if image:
@@ -381,6 +439,7 @@ class ColdStore:
             os.close(fd)
 
     @classmethod
+    @_io_errors
     def init(cls, root: str | Path, *, limit_bytes: int = DEFAULT_LIMIT_BYTES, volume_mount: str | Path | None = None,
              parent: str | Path | None = None, image: str | Path | None = None,
              is_mount: MountCheck = os.path.ismount, **kwargs: Any) -> "ColdStore":
@@ -393,6 +452,10 @@ class ColdStore:
                     existing = json.loads(_read_bytes(STORE_FILE, root_fd).decode("utf-8"))
                     if int(existing.get("limit_bytes", -1)) != int(limit_bytes):
                         raise ArchiveSyncError("store exists with another limit; change it explicitly, not by init")
+                    bound = existing.get("volume") or {}
+                    wanted = str(os.path.abspath(volume_mount)) if volume_mount is not None else None
+                    if bound.get("mount") != wanted:
+                        raise ArchiveSyncError("store exists with another volume binding; refusing")
                     return cls(root, is_mount=is_mount, **kwargs)
                 if os.listdir(root_fd):  # checked before anything is written, the marker included
                     raise ArchiveSyncError(f"{root} is not empty; a cold store needs its own directory")
@@ -407,23 +470,28 @@ class ColdStore:
                 raise ArchiveSyncError("store root must lie inside the volume") from None
             if root == mount:
                 raise ArchiveSyncError("store root must be a sub-directory of the volume")
+            if str(mount) == os.path.abspath(os.sep):
+                raise ArchiveSyncError("the root file system cannot be an archive volume")
+            usage = kwargs.get("usage", shutil.disk_usage)
+            if int(limit_bytes) > usage(str(mount)).total * (1 - MIN_FREE_RATIO):
+                raise ArchiveSyncError("limit exceeds what the volume can hold with its 15% reserve")
             with _dir(mount) as mount_fd:
                 if _lstat(VOLUME_MARKER, mount_fd) is not None:
                     volume_id = _read_bytes(VOLUME_MARKER, mount_fd).decode("utf-8").strip()
+                    if not _VOLUME_ID.fullmatch(volume_id):
+                        raise ArchiveSyncError("volume marker is empty or malformed; check the volume by hand")
                 else:
                     volume_id = str(uuid.uuid4())
-                    # O_EXCL + O_NOFOLLOW: never replaces or follows a planted marker.
-                    fd = os.open(VOLUME_MARKER, os.O_WRONLY | os.O_CREAT | os.O_EXCL | _NOFOLLOW | _CLOEXEC,
-                                 0o444, dir_fd=mount_fd)
-                    with os.fdopen(fd, "wb") as handle:
-                        handle.write((volume_id + "\n").encode())
-                        handle.flush()
-                        os.fsync(handle.fileno())
-                    _fsync_fd(mount_fd)
+                    # Written whole and published by link: never empty, never replaces or follows a marker.
+                    text = (volume_id + "\n").encode()
+                    _write_new(mount_fd, VOLUME_MARKER, [text], hashlib.sha256(text).hexdigest(), internal=True)
             volume = {"mount": str(mount), "volume_id": volume_id,
                       "parent": str(os.path.abspath(parent)) if parent else None,
                       "image": str(os.path.abspath(image)) if image else None}
-        with _dir(root, create=True) as root_fd:
+        with _dir(root.parent) as parent_fd:  # only the store directory itself is created
+            with contextlib.suppress(FileExistsError):
+                os.mkdir(root.name, 0o755, dir_fd=parent_fd)
+        with _dir(root) as root_fd:
             if os.listdir(root_fd):
                 raise ArchiveSyncError(f"{root} is not empty; a cold store needs its own directory")
             os.mkdir("batches", 0o755, dir_fd=root_fd)
@@ -451,7 +519,12 @@ class ColdStore:
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError:
-                raise ArchiveSyncError(f"ledger line {number} is unreadable; refusing to continue") from None
+                entry = None
+            if not isinstance(entry, dict):
+                following = lines[number] if number < len(lines) else ""
+                if '"event":"torn_tail_discarded"' in following:
+                    continue  # the torn rest of a crashed append, closed and logged by the next append
+                raise ArchiveSyncError(f"ledger line {number} is unreadable; refusing to continue")
             if "event" in entry:
                 continue
             if not isinstance(entry.get("path"), str) or not _LEDGER_PATH.fullmatch(entry["path"]) \
@@ -469,12 +542,12 @@ class ColdStore:
                 raise ArchiveSyncError("ledger has extra hard links; refusing to write")
             data = handle.read()
             torn_tail = b""
+            lines = b""
             if data and not data.endswith(b"\n"):
                 # A torn tail is a half-written entry of a write that never completed; its file is
-                # re-recorded by this ingest. Cut it back to the last full line and log that we did.
+                # re-recorded by this ingest. Nothing is cut: the line is closed and the event logged.
                 torn_tail = data[data.rfind(b"\n") + 1:]
-                handle.truncate(len(data) - len(torn_tail))
-            lines = b""
+                lines += b"\n"
             if torn_tail:
                 lines += json.dumps({"event": "torn_tail_discarded", "at": _now(), "bytes": len(torn_tail),
                                      "sha256": hashlib.sha256(torn_tail).hexdigest()},
@@ -484,6 +557,7 @@ class ColdStore:
             handle.flush()
             os.fsync(handle.fileno())
 
+    @_io_errors
     def used_bytes(self) -> int:
         """The larger of what the ledger records and what is really on disk below batches/
         (left-over temporary files included)."""
@@ -492,25 +566,26 @@ class ColdStore:
         return max(recorded, on_disk)
 
     def _symbol_dir(self, symbol: str) -> Path:
-        if not symbol.isalnum():
-            raise ArchiveSyncError(f"unsafe symbol {symbol!r}")
+        _safe_symbol(symbol)
         with _dir(self.root / "batches") as batches_fd:
-            with contextlib.suppress(FileExistsError):
+            try:
                 os.mkdir(symbol, 0o755, dir_fd=batches_fd)
+                _fsync_fd(batches_fd)
+            except FileExistsError:
+                pass
         path = self.root / "batches" / symbol
         _no_symlinks(path)
         return path
 
     # ------------------------------------------------------------------ ingest
+    @_io_errors
     def ingest_directory(self, inbox: str | Path, *, symbol: str, min_free_ratio: float = MIN_FREE_RATIO) -> dict[str, Any]:
-        if not symbol.isalnum():
-            raise ArchiveSyncError(f"unsafe symbol {symbol!r}")
+        _safe_symbol(symbol)
         with self._locked():
             return self._ingest(Path(inbox), symbol=symbol, min_free_ratio=min_free_ratio)
 
     def _ingest(self, inbox: Path, *, symbol: str, min_free_ratio: float) -> dict[str, Any]:
-        if not symbol.isalnum():
-            raise ArchiveSyncError(f"unsafe symbol {symbol!r}")
+        _safe_symbol(symbol)
         self.check_volume()
         results: list[dict[str, Any]] = []
         halted: str | None = None
@@ -537,8 +612,15 @@ class ColdStore:
                                 "reason": "a different file with this name is already stored"})
                 halted = "CONFLICT"
                 continue
-            recorded = {e["path"] for e in self.ledger()}
+            entries = self.ledger()
+            recorded = {e["path"] for e in entries}
             rel = {n: f"batches/{symbol}/{n}" for n, *_ in files}
+            elsewhere = {e["path"] for e in entries if e.get("batch_id") == manifest["batch_id"]} - set(rel.values())
+            if elsewhere:
+                results.append({"manifest": name, "status": "CONFLICT",
+                                "reason": "this batch is already stored under another name"})
+                halted = "CONFLICT"
+                continue
             missing = [n for n, *_ in files if not present[n]]
             unrecorded = [n for n, *_ in files if present[n] and rel[n] not in recorded]
             if not missing and not unrecorded:
@@ -561,7 +643,7 @@ class ColdStore:
                     continue
                 if stored_name in missing:
                     self.check_volume()
-                    _copy_verified(inbox / stored_name, target_dir / stored_name, sha, data=data)
+                    _copy_verified(inbox / stored_name, target_dir / stored_name, sha, data=data, size=size)
                 self._append({
                     "stored_at": _now(), "symbol": symbol, "path": rel[stored_name],
                     "bytes": size, "sha256": sha, "batch_id": manifest["batch_id"],
@@ -596,7 +678,12 @@ class ColdStore:
                         return manifest, raw, "symbolic link refused"
         except ArchiveSyncError as error:
             return None, None, str(error)
-        manifest, problem = _check_batch(manifest_path, manifest, symbol)
+        except OSError as error:  # vanished or unreadable between listing and reading
+            return None, None, f"inbox file unreadable ({errno.errorcode.get(error.errno or 0, 'OSError')})"
+        try:
+            manifest, problem = _check_batch(manifest_path, manifest, symbol)
+        except OSError as error:
+            return manifest, raw, f"data file unreadable ({errno.errorcode.get(error.errno or 0, 'OSError')})"
         return manifest, raw, problem
 
     @staticmethod
@@ -608,8 +695,15 @@ class ColdStore:
             return "unreachable"
 
     # ------------------------------------------------------------------ verify
+    @_io_errors
     def verify(self) -> dict[str, Any]:
-        """Re-hash every ledger entry and look for anything below batches/ the ledger does not know."""
+        """Re-hash every ledger entry and look for anything below batches/ the ledger does not know.
+
+        Takes the writer lock, so a running ingest is never reported as a half-written file."""
+        with self._locked():
+            return self._verify()
+
+    def _verify(self) -> dict[str, Any]:
         entries = self.ledger()
         problems: list[str] = []
         known = set()
@@ -648,6 +742,7 @@ class ColdStore:
                 "used_bytes": self.used_bytes(), "limit_bytes": self.limit_bytes, "problems": problems}
 
 
+@_io_errors
 def migrate_store(source: str | Path, target: str | Path, *, volume_mount: str | Path | None = None,
                   parent: str | Path | None = None, is_mount: MountCheck = os.path.ismount,
                   source_is_mount: MountCheck = os.path.ismount) -> dict[str, Any]:
@@ -659,10 +754,16 @@ def migrate_store(source: str | Path, target: str | Path, *, volume_mount: str |
 
 def _migrate(old: "ColdStore", target: Path, *, volume_mount: str | Path | None, parent: str | Path | None,
              is_mount: MountCheck) -> dict[str, Any]:
-    before = old.verify()
+    before = old._verify()
     if before["status"] != "OK":
         raise ArchiveSyncError("source store does not verify; fix that before migrating")
     target = Path(os.path.abspath(target))
+    for inner, outer in ((target, old.root), (old.root, target)):
+        try:
+            inner.relative_to(outer)
+        except ValueError:
+            continue
+        raise ArchiveSyncError("migration target and source must not contain each other")
     if os.path.lexists(target):
         with _dir(target) as target_fd:
             if os.listdir(target_fd):
@@ -673,7 +774,10 @@ def _migrate(old: "ColdStore", target: Path, *, volume_mount: str | Path | None,
         symbol = entry["path"].split("/")[1]
         new._symbol_dir(symbol)
         new.check_volume()
-        _copy_verified(old.root / entry["path"], new.root / entry["path"], entry["sha256"])
+        gate = disk_gate(new.root, int(entry["bytes"]), min_free_ratio=MIN_FREE_RATIO, usage=new._usage)
+        if not gate.passed:
+            raise ArchiveSyncError(f"migration target below {MIN_FREE_RATIO:.0%} free; stopped, source untouched")
+        _copy_verified(old.root / entry["path"], new.root / entry["path"], entry["sha256"], size=int(entry["bytes"]))
         new._append({**entry, "migrated_at": _now(), "migrated_from": str(old.root)})
         copied += 1
     after = new.verify()

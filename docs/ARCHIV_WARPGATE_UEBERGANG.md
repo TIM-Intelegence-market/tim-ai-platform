@@ -128,11 +128,19 @@ Die Übertragung läuft über den vorhandenen Weg Mac → Warpgate → Server:
   Diese zählen auch zur Belegung.
 - `migrate_store` kopiert nur in einen leeren Zielordner, prüft dort alles nach und schreibt
   `MIGRATION.json`. Die Quelle bleibt unverändert.
+- **Nach der zweiten Gegenprüfung (25.11.):** Eine Kopie bricht ab, sobald die Quelle größer als
+  angegeben wird. Ungültiges UTF-8 und nicht eindeutige Trade-IDs (`+1`, `01`) sind FILE_INVALID statt
+  Absturz. Derselbe Batch unter zweitem Namen ist ein CONFLICT. Die Markierung muss eine UUID sein,
+  eine leere Markierung zählt als falsches Volumen. Die Grenze darf höchstens 85 % des Volumens
+  sein. Ein Store auf `/` wird abgelehnt. `init` legt nur den Store-Ordner selbst an. Ein
+  abgerissener Ledger-Rest wird nicht mehr abgeschnitten, sondern abgeschlossen und protokolliert.
+  Datei-Systemfehler wie ENOSPC oder EROFS kommen als sauberer Abbruch an. Der Umzug prüft das
+  15-%-Tor am Ziel und lehnt ineinander liegende Ordner ab. `verify` nimmt die Schreibsperre.
 - **Keine Löschfunktion:** Ein Test stellt sicher, dass das Modul nur seine eigene, gerade mit
   `O_EXCL` angelegte `.tmp-`-Datei entfernt und nichts umbenennt oder ersetzt.
 - Kommandos: `cold-init`, `cold-ingest`, `cold-verify`, `cold-migrate`.
 
-Tests: `tests/test_archive_cold_store.py` mit 66 Fällen, ohne Datenbank: Negativtests, ein
+Tests: `tests/test_archive_cold_store.py` mit 78 Fällen, ohne Datenbank: Negativtests, ein
 Schnappschuss-Test, dass außerhalb von Store und Umzugsziel nichts geschrieben wird, und 25
 Zufallsläufe mit festen Startwerten für Budget und Unversehrtheit. Echtdatenprobe am Mac
 mit den drei Batches vom 22.11. (Stand 18f70e5e):
@@ -336,8 +344,10 @@ Platten die Mac-Datenbank und deren Batch-Exporte. Die Stufen:
    Wiederherstellung ist ein neuer Export vom Mac plus `cold-ingest`. Solange der RAID-Level der
    Platte unbekannt ist (Frage an Chris), gilt das Übergangsarchiv nicht als Sicherung.
 5. **Unterbrochener Schreibvorgang:** Ein abgerissener Ledger-Rest wird beim nächsten Lauf
-   abgeschnitten und protokolliert. Eine liegengebliebene `.tmp-`-Datei meldet `verify` und
-   zählt zur Belegung. Entfernt wird sie nur von Hand nach Prüfung.
+   abgeschlossen und protokolliert, nichts wird abgeschnitten. Eine liegengebliebene `.tmp-`-Datei meldet `verify` und
+   zählt zur Belegung. `verify` meldet dann FAIL, und der Umzug wartet. Entfernt wird sie nur von
+   Hand nach Prüfung: Ist die gleichnamige gespeicherte Datei laut Ledger vollständig, ist die
+   `.tmp-`-Datei ein zweiter Name derselben Daten. Sonst ist sie ein abgebrochener Rest.
 
 ## 13 Speicherinventar aller TIM-Geräte (nur lesend, 25.11. ca. 00:45)
 
