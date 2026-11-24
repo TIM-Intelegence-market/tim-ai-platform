@@ -1,16 +1,20 @@
-"""Gamma zones confirmed by the order book: display and shadow log, no signal, no order.
+"""Gamma levels with an order-book wall nearby: display and shadow log, no signal, no order.
 
 Uzi 21.11.2026: "die besonderen Gamma-Preiszonen einzeichnen mithilfe des Orderbuches". The options levels of
 :mod:`src.dashboard.gamma_data` (Deribit) alone were hardly reliable as price levels (review of 17.11.2026). The
-order book shows where large resting orders really stand right now. A gamma level counts as a confirmed zone
-when a standing wall of our own Binance perpetual recording (:mod:`src.research_lab.orderbook.walls`, at least
-30 minutes old) lies within ``TOLERANCE_PCT`` of it.
+order book shows where large resting orders really stand right now. A gamma level is drawn as a zone when a
+standing wall of our own Binance perpetual recording (:mod:`src.research_lab.orderbook.walls`, at least
+30 minutes old) lies within ``TOLERANCE_PCT`` of it. That says a wall stands near the level, not that a gamma
+effect is confirmed.
+
+Both sources must be fresh and plausible before any zone is shown (1.2, 24.11.2026): the order book (``walls_as_of``)
+and the gamma snapshot (``gamma_as_of``). Every view carries both times, so the UI and the API can show them.
 
 Three parts:
 
-* ``refresh`` follows the recorder's archive and stores walls and confirmed zones in ``state.gamma_zones``.
-* ``chart_drawings`` draws each confirmed zone as a band (group "gamma_ob").
-* ``track`` / ``update`` keep a shadow log of every visit to a confirmed zone: gehalten (price left on the side
+* ``refresh`` follows the recorder's archive and stores walls and zones in ``state.gamma_zones``.
+* ``chart_drawings`` draws each zone as a band (group "gamma_ob").
+* ``track`` / ``update`` keep a shadow log of every visit to a zone: gehalten (price left on the side
   it came from) or gebrochen (price went through), and whether the wall was pulled during the visit.
 
 The rule is frozen (``RULESET``) before any outcome was seen. Order-flow rules cannot be backtested here (no
@@ -27,14 +31,24 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from src.dashboard import gamma_data
 from src.research_lab.orderbook import walls as wall_rules
 
-RULESET = "gamma-orderbuch/1.1"  # 1.1 (22.11.2026): every standing wall counts, not only the 5 largest per side
+# 1.1 (22.11.2026): every standing wall counts, not only the 5 largest per side.
+# 1.2 (24.11.2026): zones only when the gamma snapshot is fresh too (no old, missing or future ``as_of``) and the book
+# time is not in the future. Visits of 1.2 carry ``ruleset``; older visits stay in the log untouched and are counted
+# apart (``summary``), never mixed into the 1.2 count.
+RULESET = "gamma-orderbuch/1.2"
 SCHEMA = "tim_gamma_zone_watch/1"
 LEVEL_KEYS = ("flip", "call_wall", "put_wall", "oi_call", "oi_put")  # expected move and max pain are no gamma levels
 TOLERANCE_PCT = 0.003   # wall within 0.3 % of the gamma level
 PAD_PCT = 0.001         # a visit ends when the price is 0.1 % outside the zone
 STALE_AFTER = timedelta(minutes=10)  # walls older than this are not drawn (recorder or reader stands still)
+GAMMA_STALE_AFTER = gamma_data.STALE_AFTER  # gamma snapshot older than this: no zones (same limit as the gamma lines)
+FUTURE_SKEW = timedelta(seconds=60)  # a source time more than this ahead of now is a clock or data error
+# Statuses with a fresh book: the price is known, so the runtime may advance the shadow log (open visits close by
+# price). Only "OK" ever opens a visit (``track``).
+WATCH_STATUSES = ("OK", "NO_GAMMA", "STALE_GAMMA", "FUTURE_GAMMA")
 VERDICT_FROM = 30       # closed visits before the first verdict
 MAX_VISITS = 500
 DEFAULT_PATH = Path("data/journal/tim_gamma_zone_watch.json")
@@ -80,22 +94,59 @@ def confirm(levels: Sequence[Mapping[str, Any]], walls: Sequence[Mapping[str, An
     return merged
 
 
+def _parse_time(value: Any) -> datetime | None:
+    """ISO time with a zone, else None (a naive or unparsable time cannot be compared with now)."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
+
+
+def gamma_check(gamma: Mapping[str, Any] | None, now: datetime) -> tuple[str, str | None, dict[str, Any]]:
+    """Status of the gamma snapshot for the zones: OK, NO_GAMMA, STALE_GAMMA or FUTURE_GAMMA, a note and its times."""
+    times: dict[str, Any] = {"gamma_as_of": None, "gamma_age_seconds": None}
+    if not gamma or not gamma.get("levels"):
+        return "NO_GAMMA", "kein Gamma-Stand", times
+    moment = _parse_time(gamma.get("as_of"))
+    if moment is None:
+        return "NO_GAMMA", "Gamma-Stand ohne gültige Zeit, Zonen ausgeblendet", times
+    age = now - moment
+    times = {"gamma_as_of": moment.isoformat(), "gamma_age_seconds": int(age.total_seconds())}
+    if age < -FUTURE_SKEW:
+        return "FUTURE_GAMMA", "Gamma-Stand liegt in der Zukunft, Zonen ausgeblendet", times
+    if age > GAMMA_STALE_AFTER:
+        return "STALE_GAMMA", "Gamma-Stand ist alt, Zonen ausgeblendet", times
+    return "OK", None, times
+
+
 def build(gamma: Mapping[str, Any] | None, walls_view: Mapping[str, Any] | None, now: datetime | None = None) -> dict[str, Any]:
-    """View for state, API and chart from a gamma snapshot and the walls view of :class:`walls.Tail`."""
+    """View for state, API and chart from a gamma snapshot and the walls view of :class:`walls.Tail`.
+
+    Only status OK carries zones. Every view carries ``gamma_as_of``, ``gamma_age_seconds`` and ``walls_as_of``
+    (None when unknown). Book checks come first (without a fresh book nothing is known), then the gamma checks.
+    """
     now = now or datetime.now(timezone.utc)
+    gamma_status, gamma_note, gamma_times = gamma_check(gamma, now)
     out: dict[str, Any] = {"ruleset": RULESET, "walls_ruleset": wall_rules.RULESET, "as_of": now.isoformat(),
-                           "status": "OK", "note": None, "walls": [], "zones": [], "mid": None}
+                           "status": "OK", "note": None, "walls": [], "zones": [], "mid": None,
+                           "walls_as_of": None, **gamma_times}
     if not walls_view or walls_view.get("last_event_ms") is None:
         return {**out, "status": "MISSING", "note": "kein Orderbuch-Archiv gefunden oder noch kein Stand"}
     out["mid"] = walls_view.get("mid")
-    out["walls_as_of"] = datetime.fromtimestamp(walls_view["last_event_ms"] / 1000, timezone.utc).isoformat()
+    walls_at = datetime.fromtimestamp(walls_view["last_event_ms"] / 1000, timezone.utc)
+    out["walls_as_of"] = walls_at.isoformat()
+    if walls_at - now > FUTURE_SKEW:
+        return {**out, "status": "FUTURE_BOOK", "note": "Orderbuch-Zeit liegt in der Zukunft, Zonen ausgeblendet"}
     if not walls_view.get("caught_up"):
         return {**out, "status": "CATCHING_UP", "note": "Orderbuch-Archiv wird noch eingelesen"}
-    if now - datetime.fromisoformat(out["walls_as_of"]) > STALE_AFTER or not walls_view.get("synced"):
+    if now - walls_at > STALE_AFTER or not walls_view.get("synced"):
         return {**out, "status": "STALE", "note": "Orderbuch-Stand ist alt oder ohne Anschluss, Zonen ausgeblendet"}
     out["walls"] = [dict(w) for w in walls_view.get("walls") or []]   # the largest per side, for the display
-    if not gamma or not gamma.get("levels"):
-        return {**out, "status": "NO_GAMMA", "note": "kein Gamma-Stand"}
+    if gamma_status != "OK":
+        return {**out, "status": gamma_status, "note": gamma_note}
     # Offline check 22.11.2026 (5 h real book): with only the 5 largest walls per side a smaller wall right at the
     # put wall dropped out, zones were missing in 130 of 319 minutes and flickered. Zones look at every standing wall.
     every = walls_view.get("walls_all")
@@ -150,7 +201,7 @@ def chart_drawings(view: Mapping[str, Any] | None, watch: Mapping[str, Any] | No
     notes = []
     counts = summary(watch) if watch else None
     if view.get("status") == "OK":
-        text = f"Gamma-Zonen mit Orderbuch: {len(drawings)} bestätigt"
+        text = f"Gamma-Level mit Orderbuch-Mauer: {len(drawings)}"
         if counts and counts["closed"]:
             text += f", Berührungen {counts['closed']} ({counts['held']} gehalten, {counts['broken']} gebrochen), Urteil ab {VERDICT_FROM}"
         notes.append(text + ".")
@@ -179,11 +230,17 @@ def _save(state: Mapping[str, Any], path: Path) -> None:
 
 
 def summary(state: Mapping[str, Any] | None) -> dict[str, int]:
-    visits = (state or {}).get("visits") or []
-    return {"open": len((state or {}).get("open") or []), "closed": len(visits),
+    """Counts of the current ``RULESET`` only. Visits of an earlier ruleset (1.1 visits carry no ``ruleset``) stay
+    in the log untouched and are counted apart in ``earlier_open`` / ``earlier_closed``."""
+    every = (state or {}).get("visits") or []
+    every_open = (state or {}).get("open") or []
+    visits = [v for v in every if v.get("ruleset") == RULESET]
+    opened = [v for v in every_open if v.get("ruleset") == RULESET]
+    return {"open": len(opened), "closed": len(visits),
             "held": sum(1 for v in visits if v["outcome"] == "gehalten"),
             "broken": sum(1 for v in visits if v["outcome"] == "gebrochen"),
-            "pulled": sum(1 for v in visits if v.get("wall_pulled"))}
+            "pulled": sum(1 for v in visits if v.get("wall_pulled")),
+            "earlier_open": len(every_open) - len(opened), "earlier_closed": len(every) - len(visits)}
 
 
 def track(state: Mapping[str, Any] | None, view: Mapping[str, Any], price: float, at: str) -> dict[str, Any]:
@@ -192,7 +249,11 @@ def track(state: Mapping[str, Any] | None, view: Mapping[str, Any], price: float
     A visit opens when the price stands in a confirmed zone and the price of the step before lay outside it (so
     the side it came from is known). The zone is frozen at that moment. The visit closes when the price is more
     than the pad outside: on the side it came from = gehalten, on the other side = gebrochen. If the zone is no
-    longer confirmed while the visit runs, ``wall_pulled`` is set; the visit still ends by price.
+    longer shown while the visit runs, ``wall_pulled`` is set; the visit still ends by price.
+
+    Invalid states (any status but OK: book missing, old or in the future, gamma missing, old or in the future)
+    never open a visit. Open visits go on: they still close by price, and ``wall_pulled`` is not set, because the
+    zones are unknown then (not gone). New visits carry ``ruleset``; visits of earlier rulesets are kept as they are.
     """
     previous = state or {}
     out = {"schema": SCHEMA, "ruleset": RULESET, "started_at": previous.get("started_at") or at, "open": [],
@@ -221,7 +282,7 @@ def track(state: Mapping[str, Any] | None, view: Mapping[str, Any], price: float
                             "low": zone["low"], "high": zone["high"], "side": zone["side"], "wall_low": zone["wall_low"],
                             "wall_qty": zone["wall_qty"], "wall_usd": zone["wall_usd"], "wall_ratio": zone["wall_ratio"],
                             "pad": price * PAD_PCT, "entry_price": price, "from": "unten" if last < zone["low"] else "oben",
-                            "wall_pulled": False})
+                            "wall_pulled": False, "ruleset": RULESET})
     out["visits"] = out["visits"][-MAX_VISITS:]
     return out
 

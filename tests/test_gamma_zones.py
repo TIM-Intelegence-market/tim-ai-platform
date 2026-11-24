@@ -130,10 +130,17 @@ def test_confirm_only_gamma_levels_near_a_wall_and_merges_levels_on_one_wall() -
     assert gamma_zones.confirm([LEVELS[3]], [WALL]) == []  # max pain is not a gamma level
 
 
+def _walls_view(now: datetime, **over) -> dict:
+    return {"last_event_ms": int(now.timestamp() * 1000) - 5_000, "caught_up": True, "synced": True,
+            "mid": 99_500.0, "walls": [WALL], **over}
+
+
+def _gamma(now: datetime, age: timedelta = timedelta(minutes=2)) -> dict:
+    return {"levels": LEVELS, "as_of": (now - age).isoformat()}
+
+
 def _view(now: datetime, **over) -> dict:
-    walls_view = {"last_event_ms": int(now.timestamp() * 1000) - 5_000, "caught_up": True, "synced": True,
-                  "mid": 99_500.0, "walls": [WALL], **over}
-    return gamma_zones.build({"levels": LEVELS}, walls_view, now)
+    return gamma_zones.build(_gamma(now), _walls_view(now, **over), now)
 
 
 def test_build_hides_zones_when_the_book_is_old_or_still_read_in() -> None:
@@ -149,11 +156,12 @@ def test_build_hides_zones_when_the_book_is_old_or_still_read_in() -> None:
 
 def test_chart_drawing_is_a_band_with_a_plain_note() -> None:
     now = datetime(2027, 1, 15, 12, tzinfo=timezone.utc)
-    drawings, notes = gamma_zones.chart_drawings(_view(now), {"visits": [{"outcome": "gehalten"}, {"outcome": "gebrochen"}]}, now)
+    watch = {"visits": [{"outcome": "gehalten", "ruleset": gamma_zones.RULESET}, {"outcome": "gebrochen", "ruleset": gamma_zones.RULESET}]}
+    drawings, notes = gamma_zones.chart_drawings(_view(now), watch, now)
     (drawing,) = drawings
     assert drawing["group"] == "gamma_ob" and drawing["band"] == [99_000.0, 99_200.0] and drawing["price"] == 99_000.0
     assert "Kaufmauer" in drawing["note"] and "zurückgezogen" in drawing["note"]
-    assert notes == ["Gamma-Zonen mit Orderbuch: 1 bestätigt, Berührungen 2 (1 gehalten, 1 gebrochen), Urteil ab 30."]
+    assert notes == ["Gamma-Level mit Orderbuch-Mauer: 1, Berührungen 2 (1 gehalten, 1 gebrochen), Urteil ab 30."]
     assert gamma_zones.chart_drawings(_view(now), None, now + timedelta(minutes=11)) == ([], [])
 
 
@@ -178,7 +186,8 @@ def test_shadow_log_counts_held_broken_and_pulled() -> None:
     assert state["open"][0]["wall_pulled"] is True
     state = step(state, 98_800.0, 6, pulled)              # through
     assert state["visits"][-1]["outcome"] == "gebrochen" and state["visits"][-1]["wall_pulled"] is True
-    assert gamma_zones.summary(state) == {"open": 0, "closed": 2, "held": 1, "broken": 1, "pulled": 1}
+    assert gamma_zones.summary(state) == {"open": 0, "closed": 2, "held": 1, "broken": 1, "pulled": 1,
+                                          "earlier_open": 0, "earlier_closed": 0}
     state = step(state, 99_500.0, 7)
     state = step(state, 99_100.0, 30)                     # 23 minutes without a step: side unknown, no visit
     assert state["open"] == []
@@ -190,7 +199,8 @@ def test_refresh_and_update_write_only_state_and_their_own_file(tmp_path: Path) 
     now = datetime.fromtimestamp((T0 + 39 * 60_000) / 1000, timezone.utc)
     with gzip.open(folder / "2027-01-15.100.jsonl.gz", "xb") as fh:
         fh.write(("\n".join(json.dumps(r) for r in [_snapshot_row(T0)] + _rows(T0, 40, "9")) + "\n").encode())
-    state = SimpleNamespace(lock=RLock(), gamma={"BTCUSDT": {"levels": [{"key": "put_wall", "name": "Put Wall", "price": 99_100.0, "note": ""}]}}, gamma_zones={})
+    state = SimpleNamespace(lock=RLock(), gamma={"BTCUSDT": {"as_of": (now - timedelta(minutes=3)).isoformat(),
+                                                             "levels": [{"key": "put_wall", "name": "Put Wall", "price": 99_100.0, "note": ""}]}}, gamma_zones={})
     gamma_zones._TAILS.clear()
     view = gamma_zones.refresh(state, "BTCUSDT", root=tmp_path / "book", now=now)
     assert view["status"] == "OK" and state.gamma_zones["BTCUSDT"]["zones"][0]["name"] == "Put Wall"
@@ -242,7 +252,7 @@ def test_zone_uses_every_standing_wall_not_only_the_five_largest() -> None:
     assert any(w["low"] == 99_000.0 for w in every) and len(every) == 6
     now = datetime(2027, 1, 15, 12, tzinfo=timezone.utc)
     view = _view(now, walls=shown, walls_all=every)
-    assert view["ruleset"] == "gamma-orderbuch/1.1" and len(view["walls"]) == 5
+    assert view["ruleset"] == "gamma-orderbuch/1.2" and len(view["walls"]) == 5
     (zone,) = view["zones"]
     assert zone["wall_low"] == 99_000.0 and "Put Wall" in zone["name"]
     assert _view(now, walls=shown)["zones"] == []               # an old reader without walls_all keeps the old answer
@@ -253,11 +263,150 @@ def test_public_page_gets_the_zones_in_english() -> None:
     from src.dashboard.public_en import english_chart_model
 
     now = datetime(2027, 1, 15, 12, tzinfo=timezone.utc)
-    drawings, notes = gamma_zones.chart_drawings(_view(now), {"visits": [{"outcome": "gehalten"}, {"outcome": "gebrochen"}]}, now)
+    watch = {"visits": [{"outcome": "gehalten", "ruleset": gamma_zones.RULESET}, {"outcome": "gebrochen", "ruleset": gamma_zones.RULESET}]}
+    drawings, notes = gamma_zones.chart_drawings(_view(now), watch, now)
     model = english_chart_model({"drawings": drawings, "notes": notes, "groups": {"gamma_ob": "x"}})
     (drawing,) = model["drawings"]
     assert drawing["label"].startswith("Gamma zone ") and drawing["band"] == [99_000.0, 99_200.0]
     assert drawing["note"].startswith("Gamma level ") and "buy wall" in drawing["note"] and "pulled at any time" in drawing["note"]
-    assert model["notes"] == ["Gamma zones with an order book wall: 1 confirmed, touches 2 (1 held, 1 broken), verdict from 30. Display only, not a signal."]
+    assert model["notes"] == ["Gamma levels with an order book wall nearby: 1, touches 2 (1 held, 1 broken), verdict from 30. Display only, not a signal."]
     script = (Path(__file__).resolve().parents[1] / "src/dashboard/public_server.py").read_text(encoding="utf-8")
     assert "gamma_zones=gamma_zones" in script
+
+
+# --- 1.2: both sources fresh (24.11.2026) -------------------------------------------------------------------------
+
+NOW = datetime(2027, 1, 15, 12, tzinfo=timezone.utc)
+
+
+def _status(gamma, walls_view, now: datetime = NOW) -> dict:
+    view = gamma_zones.build(gamma, walls_view, now)
+    if view["status"] != "OK":
+        assert view["zones"] == [], view["status"]
+    return view
+
+
+def test_missing_gamma_or_gamma_without_a_valid_time_hides_the_zones() -> None:
+    for gamma in (None, {}, {"levels": []}, {"levels": LEVELS}, {"levels": LEVELS, "as_of": None},
+                  {"levels": LEVELS, "as_of": "gestern"}, {"levels": LEVELS, "as_of": "2027-01-15T11:58:00"}):  # naive: no zone
+        view = _status(gamma, _walls_view(NOW))
+        assert view["status"] == "NO_GAMMA" and view["gamma_as_of"] is None and view["gamma_age_seconds"] is None
+        assert view["walls_as_of"] is not None and view["walls"]          # the book is fresh, its walls are still shown
+
+
+def test_stale_gamma_with_a_fresh_book_is_not_ok() -> None:
+    """The bug of 1.1: an old gamma snapshot plus a fresh book gave status OK and zones."""
+    limit = gamma_zones.GAMMA_STALE_AFTER
+    assert limit is gamma_zones.gamma_data.STALE_AFTER
+    old = _status(_gamma(NOW, limit + timedelta(seconds=1)), _walls_view(NOW))
+    assert old["status"] == "STALE_GAMMA" and old["gamma_age_seconds"] == int(limit.total_seconds()) + 1
+    at_limit = _status(_gamma(NOW, limit), _walls_view(NOW))
+    assert at_limit["status"] == "OK" and len(at_limit["zones"]) == 1
+
+
+def test_future_gamma_is_not_ok_but_a_small_clock_skew_is() -> None:
+    skew = gamma_zones.FUTURE_SKEW
+    ahead = _status(_gamma(NOW, -(skew + timedelta(seconds=1))), _walls_view(NOW))
+    assert ahead["status"] == "FUTURE_GAMMA" and ahead["gamma_age_seconds"] < 0
+    small = _status(_gamma(NOW, -skew), _walls_view(NOW))
+    assert small["status"] == "OK" and len(small["zones"]) == 1
+
+
+def test_old_book_and_future_book_are_not_ok() -> None:
+    old = _status(_gamma(NOW), _walls_view(NOW, last_event_ms=int((NOW - timedelta(minutes=11)).timestamp() * 1000)))
+    assert old["status"] == "STALE"
+    future_ms = int((NOW + gamma_zones.FUTURE_SKEW + timedelta(seconds=1)).timestamp() * 1000)
+    future = _status(_gamma(NOW), _walls_view(NOW, last_event_ms=future_ms))
+    assert future["status"] == "FUTURE_BOOK" and future["walls"] == []
+    near_ms = int((NOW + gamma_zones.FUTURE_SKEW).timestamp() * 1000)
+    assert _status(_gamma(NOW), _walls_view(NOW, last_event_ms=near_ms))["status"] == "OK"
+
+
+def test_every_view_carries_both_source_times() -> None:
+    gamma = _gamma(NOW)
+    for walls_view in (None, _walls_view(NOW), _walls_view(NOW, caught_up=False), _walls_view(NOW, synced=False)):
+        view = _status(gamma, walls_view)
+        assert {"gamma_as_of", "gamma_age_seconds", "walls_as_of"} <= set(view)
+        assert view["gamma_as_of"] == gamma["as_of"] and view["gamma_age_seconds"] == 120
+    assert _status(gamma, None)["walls_as_of"] is None
+    assert _status(gamma, _walls_view(NOW))["walls_as_of"] == (NOW - timedelta(seconds=5)).isoformat()
+
+
+def test_recovery_from_stale_gamma_gives_ok_again() -> None:
+    walls_view = _walls_view(NOW)
+    assert _status(_gamma(NOW, timedelta(minutes=30)), walls_view)["status"] == "STALE_GAMMA"
+    fresh = _status(_gamma(NOW, timedelta(seconds=10)), walls_view)
+    assert fresh["status"] == "OK" and len(fresh["zones"]) == 1 and fresh["gamma_age_seconds"] == 10
+
+
+def test_invalid_states_never_open_a_visit_and_open_visits_close_by_price() -> None:
+    ok = _view(NOW)
+    future_ms = int((NOW + timedelta(hours=1)).timestamp() * 1000)
+    invalid = [gamma_zones.build(_gamma(NOW, timedelta(hours=1)), _walls_view(NOW), NOW),
+               gamma_zones.build(_gamma(NOW, -timedelta(hours=1)), _walls_view(NOW), NOW),
+               gamma_zones.build(None, _walls_view(NOW), NOW),
+               gamma_zones.build(_gamma(NOW), _walls_view(NOW, synced=False), NOW),
+               gamma_zones.build(_gamma(NOW), _walls_view(NOW, last_event_ms=future_ms), NOW),
+               {**ok, "status": "STALE_GAMMA"}]                       # zones left over in the view: still no visit
+    assert [v["status"] for v in invalid] == ["STALE_GAMMA", "FUTURE_GAMMA", "NO_GAMMA", "STALE", "FUTURE_BOOK", "STALE_GAMMA"]
+
+    def at(minute: int) -> str:
+        return (NOW + timedelta(minutes=minute)).isoformat()
+
+    for view in invalid:                                               # from above into the zone while invalid
+        state = gamma_zones.track(gamma_zones.track(None, view, 99_500.0, at(0)), view, 99_150.0, at(1))
+        assert state["open"] == [] and state["visits"] == [], view["status"]
+    state = gamma_zones.track(gamma_zones.track(None, ok, 99_500.0, at(0)), ok, 99_150.0, at(1))
+    assert len(state["open"]) == 1 and state["open"][0]["ruleset"] == gamma_zones.RULESET
+    state = gamma_zones.track(state, invalid[0], 99_100.0, at(2))     # gamma turns stale: the visit stays open
+    assert len(state["open"]) == 1 and state["open"][0]["wall_pulled"] is False   # zones unknown, not gone
+    state = gamma_zones.track(state, invalid[0], 99_450.0, at(3))     # and closes by price
+    assert state["open"] == [] and state["visits"][-1]["outcome"] == "gehalten"
+    assert set(gamma_zones.WATCH_STATUSES) == {"OK", "NO_GAMMA", "STALE_GAMMA", "FUTURE_GAMMA"}   # only with a fresh book
+
+
+def test_update_in_an_invalid_state_writes_no_visit(tmp_path: Path) -> None:
+    path = tmp_path / "watch.json"
+    stale = gamma_zones.build(_gamma(NOW, timedelta(hours=1)), _walls_view(NOW), NOW)
+    gamma_zones.update(path, stale, 99_500.0, NOW)
+    saved = gamma_zones.update(path, stale, 99_150.0, NOW + timedelta(minutes=1))
+    assert saved["open"] == [] and saved["visits"] == [] and gamma_zones.load(path)["open"] == []
+
+
+def test_earlier_ruleset_visits_are_kept_and_counted_apart(tmp_path: Path) -> None:
+    """A 1.1 log (visits without ``ruleset``) stays untouched; the summary counts only the current ruleset."""
+    old_visit = {"opened_at": "2026-11-22T10:00:00+00:00", "key": "put_wall", "name": "Put Wall", "level": 99_000.0,
+                 "low": 99_000.0, "high": 99_050.0, "side": "bid", "wall_low": 99_000.0, "pad": 99.0, "from": "oben",
+                 "wall_pulled": False, "closed_at": "2026-11-22T10:10:00+00:00", "exit_price": 99_300.0, "left": "oben",
+                 "outcome": "gehalten"}
+    old_open = {**{k: v for k, v in old_visit.items() if k not in ("closed_at", "exit_price", "left", "outcome")},
+                "low": 105_000.0, "high": 105_050.0, "wall_low": 105_000.0}
+    path = tmp_path / "watch.json"
+    path.write_text(json.dumps({"schema": gamma_zones.SCHEMA, "ruleset": "gamma-orderbuch/1.1",
+                                "started_at": "2026-11-22T09:00:00+00:00", "open": [old_open], "visits": [old_visit] * 3,
+                                "last_price": 99_500.0, "updated_at": NOW.isoformat()}), encoding="utf-8")
+    assert gamma_zones.summary(gamma_zones.load(path)) == {"open": 0, "closed": 0, "held": 0, "broken": 0, "pulled": 0,
+                                                            "earlier_open": 1, "earlier_closed": 3}
+    ok = _view(NOW)
+    gamma_zones.update(path, ok, 99_150.0, NOW + timedelta(minutes=1))   # into the zone from above: a 1.2 visit
+    state = gamma_zones.update(path, ok, 99_450.0, NOW + timedelta(minutes=2))
+    assert state["visits"][:3] == [old_visit] * 3 and state["started_at"] == "2026-11-22T09:00:00+00:00"
+    closed_old = state["visits"][3]                                   # the 1.1 visit still open at the switch ends by price
+    assert "ruleset" not in closed_old and closed_old["opened_at"] == old_open["opened_at"] and state["open"] == []
+    assert state["visits"][4]["ruleset"] == gamma_zones.RULESET
+    assert gamma_zones.summary(state) == {"open": 0, "closed": 1, "held": 1, "broken": 0, "pulled": 0,
+                                          "earlier_open": 0, "earlier_closed": 4}
+    _, notes = gamma_zones.chart_drawings(ok, state, NOW)
+    assert notes == ["Gamma-Level mit Orderbuch-Mauer: 1, Berührungen 1 (1 gehalten, 0 gebrochen), Urteil ab 30."]
+
+
+def test_gamma_notes_are_english_on_the_public_page() -> None:
+    from src.dashboard.public_en import GROUPS_EN, english_note
+
+    assert "confirmed" not in GROUPS_EN["gamma_ob"]
+    cases = ((None, "no gamma snapshot"), (_gamma(NOW, timedelta(hours=1)), "gamma snapshot is old"),
+             (_gamma(NOW, -timedelta(hours=1)), "lies in the future"), ({"levels": LEVELS, "as_of": "x"}, "without a valid time"))
+    for gamma, english in cases:
+        _, notes = gamma_zones.chart_drawings(gamma_zones.build(gamma, _walls_view(NOW), NOW), None, NOW)
+        (note,) = notes
+        assert english in english_note(note), note

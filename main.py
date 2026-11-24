@@ -668,7 +668,7 @@ class TIMApplication:
     async def _gamma_zones_loop(self) -> None:
         # Gamma levels with a standing order book wall (Uzi 21.11.2026). Reads the recorder's archive and the gamma
         # snapshot, writes only its own shadow log; never on the ingestion path, no order.
-        from src.dashboard.gamma_zones import refresh as refresh_zones, update as update_zone_watch
+        from src.dashboard.gamma_zones import WATCH_STATUSES, refresh as refresh_zones, update as update_zone_watch
 
         while not self.worker_stop.is_set():
             pause = GAMMA_ZONES_INTERVAL_SECONDS
@@ -676,7 +676,7 @@ class TIMApplication:
                 view = await asyncio.to_thread(refresh_zones, self.dashboard_state, settings.symbol)
                 if view and view.get("status") == "CATCHING_UP":
                     pause = GAMMA_ZONES_CATCHUP_SECONDS
-                if view and view.get("status") in ("OK", "NO_GAMMA"):
+                if view and view.get("status") in WATCH_STATUSES:   # fresh book; only OK opens a visit
                     await asyncio.to_thread(update_zone_watch, self.dashboard_state.gamma_zone_watch_path, view, view.get("mid"))
             except asyncio.CancelledError:
                 raise
