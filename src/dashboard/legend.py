@@ -58,6 +58,8 @@ LAYERS: dict[str, list[Mark]] = {
     "vwap": [(_line("vwap"), "VWAP der laufenden Woche, des Monats, Quartals und Jahres (türkis)", "VWAP of the running week, month, quarter and year (teal)")],
     "vwap_bands": [(_line("vwap_bands"), "Bänder um den Wochen-VWAP: ±1σ und ±2σ (türkis gepunktet), dazwischen schattiert", "Bands around the weekly VWAP: ±1σ and ±2σ (teal, dotted), shaded in between")],
     "naked": [(_line("naked"), "naked POC: alter POC, den der Kurs seitdem nicht berührt hat (gelb gestrichelt, Magnet)", "Naked POC: an old POC price has not touched since (yellow, dashed; a magnet)")],
+    "absorb": [(_line("absorb"), "Summen-Blase: viele große Market Orders am selben Preis in wenigen Minuten, zusammengezählt (grün Käufe, rot Verkäufe; Zahl = BTC). Anzeige, kein Signal",
+                "Summed bubble: many large market orders at one price within minutes, added up (green buys, red sells; number = BTC). Display, no signal")],
     "running": [(_line("running"), "laufender POC von Tag und Woche, wandert noch (hellblau gepunktet)", "Running POC of day and week, still moving (light blue, dotted)")],
     "session": [(_line("session"), "Hoch und Tief der Sessions Asien, London, New York (grau gepunktet)", "High and low of the Asia, London and New York sessions (grey, dotted)")],
     "ib": [(_line("ib"), "Initial Balance: Hoch und Tief der ersten 90 Minuten des Handelstags ab 01:00 (Sommerzeit 02:00)", "Initial balance: high and low of the first 90 minutes of the trading day from 00:00 UTC")],

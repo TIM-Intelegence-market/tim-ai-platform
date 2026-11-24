@@ -19,9 +19,9 @@ BUSY_BARS = 48        # busiest price (most traded) over this many footprint bar
 REACT_BARS = 96       # earlier rejections counted over this many candles before the current one
 REACT_EACH, REACT_MAX = 0.5, 1.5
 ZONE_RULES = (f"marks within {RANGE_PCT} %", f"zone width <= {WIDTH_PCT} %", f"strong >= {STRONG}",
-              f"busiest price over {BUSY_BARS} bars = 2", f"rejection +{REACT_EACH} each, max {REACT_MAX}")
+              f"busiest price over {BUSY_BARS} bars = 2", "summed bubble line = 2", f"rejection +{REACT_EACH} each, max {REACT_MAX}")
 
-GROUP_WEIGHT = {"gamma_ob": 4.0, "year": 3.0, "quarter": 3.0, "month": 3.0, "week": 2.0, "naked": 2.0, "day": 1.5,
+GROUP_WEIGHT = {"gamma_ob": 4.0, "year": 3.0, "quarter": 3.0, "month": 3.0, "week": 2.0, "naked": 2.0, "absorb": 2.0, "day": 1.5,
                 "liq": 1.5, "running": 1.0, "session": 1.0, "ib": 1.0, "vwap": 1.0}
 
 
