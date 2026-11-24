@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import os
 from bisect import bisect_left
 from collections import deque
@@ -43,13 +42,12 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src.orderflow.pit_contract import RevisionLog, as_time
+from src.orderflow.pit_contract import RevisionLog, as_time, bucket_size
 from statistics import median
 from typing import Any
 
 from src.models.market_data import Trade
 
-_ABSENT = object()
 SCHEMA_VERSION = "orderflow-lage/3"  # 2: unknown aggressor side (Paket B); 3: point-in-time fields (Paket A)
 BUY, SELL, UNKNOWN = 1, -1, 0  # aggressor side of a trade
 DEFAULT_PATH = Path("data/orderflow/orderflow_lage.json")
@@ -236,14 +234,10 @@ class LiveOrderflowTracker:
             self._perp_log.observe(store["days"], max(now, updated))
         # The bucket size decides which buckets are closed by ``now``. It is taken from the store only: a missing or
         # unusable size is never replaced by an assumed one (F1, #372 Mission 07-FINAL), the perp block is unknown.
-        raw = store.get("bucket_seconds", _ABSENT)
-        usable = (not isinstance(raw, bool) and isinstance(raw, (int, float)) and math.isfinite(raw) and raw > 0
-                  and float(raw).is_integer())
-        if not usable:
-            return {"status": "Bucket-Größe unbekannt", "bucket_seconds": None,
-                    "bucket_seconds_status": "MISSING" if raw is _ABSENT or raw is None else "INVALID",
+        bucket, bucket_status = bucket_size(store)
+        if bucket is None:
+            return {"status": "Bucket-Größe unbekannt", "bucket_seconds": None, "bucket_seconds_status": bucket_status,
                     "updated_at": store.get("updated_at"), "store_time_known": updated is not None, "closed_buckets_only": True}
-        bucket = int(raw)
         days, counts = self._perp_log.rows_at(now, bucket)
         moment = _epoch(now)
         delta5 = delta15 = volume15 = 0.0
