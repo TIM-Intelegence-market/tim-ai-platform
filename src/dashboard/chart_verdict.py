@@ -70,13 +70,15 @@ def orderflow_view(lage: Mapping[str, Any] | None, at: datetime) -> dict[str, An
     taken = _time(lage["as_of"])
     if abs((taken - at).total_seconds()) > LAGE_MAX_AGE.total_seconds():
         return None
+    from src.dashboard.orderflow_shadow import side_fields
+
     wave = dict(lage.get("wave") or {})
     levels = [{"name": str(l.get("name")), "price": _num(l.get("price")), "absorption": bool(l.get("absorption")),
                "imbalance": l.get("imbalance")} for l in (lage.get("levels") or []) if _num(l.get("price")) is not None]
     return {"as_of": _iso(taken), "price": _num(lage.get("price")), "direction": wave.get("direction"),
             "strength": wave.get("strength"), "exhaustion": bool(wave.get("exhaustion")),
             "day_cvd": _num((lage.get("day") or {}).get("cvd")), "perp_delta_15m": _num((lage.get("perp") or {}).get("delta_15m")),
-            "levels": levels}
+            "levels": levels, **side_fields(lage)}   # R7 uses the shadow's gate: never without the known-side check
 
 
 def chart_lage(series: Mapping[str, Sequence[Mapping[str, Any]]], at: datetime, lage: Mapping[str, Any] | None = None,
@@ -128,7 +130,7 @@ def _near(a: float, b: float, pct: float) -> bool:
 def judge(direction: str, entry: float, chart: Mapping[str, Any] | None, stop: float | None = None,
           target: float | None = None) -> dict[str, Any]:
     """Points for and against a plan from the chart. Every point carries its rule and its reason."""
-    from src.dashboard.orderflow_shadow import BESTAETIGT, GEGEN, gate
+    from src.dashboard.orderflow_shadow import BESTAETIGT, GEGEN, UNBEKANNT, gate
 
     long = direction == "LONG"
     up = "UP" if long else "DOWN"
@@ -212,6 +214,8 @@ def judge(direction: str, entry: float, chart: Mapping[str, Any] | None, stop: f
             add("R7", FOR, f"Orderflow-Welle {'auf' if long else 'ab'}, Stärke {flow.get('strength')}")
         elif verdict == GEGEN:
             add("R7", AGAINST, f"Orderflow-Welle gegen den Plan ({flow.get('direction')}, Stärke {flow.get('strength')})")
+        elif verdict == UNBEKANNT:
+            skipped.append(f"R7 Seite der Trades nicht belegt ({flow.get('side_status') or 'ohne Prüfung'})")
         # R8 CVD des Tages und Perp-Delta 15 min
         cvd, perp = flow.get("day_cvd"), flow.get("perp_delta_15m")
         if cvd is not None and perp is not None and cvd != 0 and perp != 0:
