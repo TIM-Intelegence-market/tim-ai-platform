@@ -85,6 +85,25 @@ def check(obs: Observation, target: Any, *, source: str | None = None, symbol: s
     return OK
 
 
+_ABSENT = object()
+BUCKET_OK, BUCKET_MISSING, BUCKET_INVALID = "OK", "MISSING", "INVALID"
+
+
+def bucket_size(store: Mapping[str, Any] | None, field: str = "bucket_seconds") -> tuple[int | None, str]:
+    """The bucket width a store states about itself, as ``(seconds, status)``.
+
+    The width decides which buckets are closed at ``t``, so it is evidence like any value: only a positive whole number
+    written in the store counts. A missing key or ``None`` is ``MISSING``; a bool, text, NaN, infinity, zero, a
+    negative or a fraction is ``INVALID``. In both cases the size is ``None``: no default stands in for it."""
+    raw = store.get(field, _ABSENT) if isinstance(store, Mapping) else _ABSENT
+    if raw is _ABSENT or raw is None:
+        return None, BUCKET_MISSING
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)) or not math.isfinite(raw) or raw <= 0 \
+            or not float(raw).is_integer():
+        return None, BUCKET_INVALID
+    return int(raw), BUCKET_OK
+
+
 def _key(day: str, row: Any) -> tuple[str, float, float] | None:
     try:
         return day, float(row[0]), float(row[1])
@@ -137,11 +156,16 @@ class RevisionLog:
 
         Returns ``(days, counts)``; counts say how many buckets were left out and why (``open``, ``unknown``: no
         revision seen by t, e.g. a later backfill or anything from before the first observation) and how many were
-        taken in an earlier revision because they changed after t (``revised_later``).
+        taken in an earlier revision because they changed after t (``revised_later``). Without a usable
+        ``bucket_seconds`` (see :func:`bucket_size`) nothing can be called closed: no rows, every bucket ``unknown``.
         """
         moment = as_time(target)
         counts = {"kept": 0, "open": 0, "unknown": 0, "revised_later": 0}
         if moment is None:
+            return {}, counts
+        if bucket_size({"bucket_seconds": bucket_seconds})[0] is None:
+            with self._lock:
+                counts["unknown"] = len(self._log)
             return {}, counts
         limit = moment.timestamp()
         days: dict[str, list[list[float]]] = {}
