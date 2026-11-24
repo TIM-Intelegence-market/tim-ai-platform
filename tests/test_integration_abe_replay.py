@@ -130,3 +130,48 @@ def test_rollback_reads_only_its_own_file_and_the_return_continues(tmp_path):
     shadow.update(path, [journal], None, now=later)                      # upgrade again: continues, mixes nothing
     state = shadow.load(shadow.current_path(path, SYMBOL))
     assert state["plans"]["p1"]["gate_at_plan"] == record["gate_at_plan"] and path.read_bytes() == OLD_BYTES
+
+
+def test_changing_the_handed_in_lage_afterwards_does_not_change_the_plan_record(tmp_path):
+    """Round 5 (Codex 7141057171) on the real path: the tracker's snapshot is mutated after it was observed."""
+    pit.reset()
+    journal, path = tmp_path / "tim_plan_journal_short.json", tmp_path / "shadow.json"
+    write_journal(journal)
+    tracker = _tracker_with_buyer_wave()
+    lage1 = tracker.snapshot(NOW1, perp_store=_perp(NOW1, bucket_seconds=300))
+    shadow.update(path, [journal], lage1, now=NOW1)
+    seen_direction = lage1["wave"]["direction"]
+    lage1["wave"]["direction"] = "ab"                             # nested mutation after the sighting
+    for window in lage1["windows"].values():
+        window["delta"] = -999.0
+    write_journal(journal, plan("OPEN", created_at=(NOW1 + timedelta(seconds=5)).isoformat()))
+    state = shadow.update(path, [journal], None, now=NOW1 + timedelta(seconds=6))
+    record = state["plans"]["p1"]
+    assert record["lage_at_plan_status"] == pit.OK
+    assert record["lage_at_plan"]["direction"] == seen_direction == "auf" and record["lage_at_plan"]["delta_5m"] != -999.0
+
+
+def _short_fill_then(tmp_path, exit_lage_of, now_of):
+    """A SHORT filled at CREATED inside the buyer wave; one later step with the Lage ``exit_lage_of(tracker, now)``."""
+    pit.reset()
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    journal, path = tmp_path / "tim_plan_journal_short.json", tmp_path / "shadow.json"
+    write_journal(journal)
+    tracker = _tracker_with_buyer_wave()
+    shadow.update(path, [journal], tracker.snapshot(NOW1), now=NOW1)
+    write_journal(journal, plan("FILLED", direction="SHORT", stop=75500.0, created_at=CREATED.isoformat(),
+                                filled_at=CREATED.isoformat(), fill_price=75000.0))
+    now = now_of(CREATED)
+    state = shadow.update(path, [journal], exit_lage_of(tracker, now), now=now)
+    return state["plans"]["p1"]
+
+
+def test_a_live_exit_needs_a_lage_from_between_the_fill_and_the_decision(tmp_path):
+    step = timedelta(seconds=20)
+    fresh = _short_fill_then(tmp_path / "ok", lambda t, now: t.snapshot(now), lambda c: c + step)
+    assert fresh["of_exit"]["reason"] == "Gegenwelle"            # positive control: the rule does fire on this wave
+    future = _short_fill_then(tmp_path / "future", lambda t, now: t.snapshot(now + timedelta(hours=1)), lambda c: c + step)
+    assert not future.get("of_exit")                              # dated after the decision time
+    old = _short_fill_then(tmp_path / "old", lambda t, now: t.snapshot(now - pit.MAX_AGE - timedelta(seconds=1)),
+                           lambda c: c + timedelta(minutes=10))
+    assert not old.get("of_exit")                                 # after the fill, but too old at the decision
