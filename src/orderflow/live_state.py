@@ -17,8 +17,11 @@ Wert (``None``, Text, Zahl) ist ``UNKNOWN``: er zählt ins Volumen und in ``unkn
 die Käufer-/Verkäuferanteile. ``buy_share`` hat als Nenner nur das Volumen mit bekannter Seite.
 
 Point-in-Time (Paket A, #372, 24.11.2026): ``snapshot(now)`` sieht nur Trades mit Eventzeit <= ``now`` UND Verfügbarkeit
-<= ``now``. Verfügbarkeit ist der Zeitpunkt, zu dem der Aufrufer den Trade bekam (``ingest(..., available_at=)``), sonst
-die Eventzeit. Fenster, Preis, Tageswerte (aus dem Stand je Trade), Level und Perp-Körbe enden bei ``now``; spätere Trades
+<= ``now``. Verfügbarkeit ist der Zeitpunkt, zu dem der Aufrufer den Trade bekam (``ingest(..., available_at=)``). Ohne diese Angabe
+ist die Verfügbarkeit UNKNOWN (gemeinsamer Vertrag ``src/orderflow/pit_contract.py``, Mission 07): solche Trades werden nie
+aus der Eventzeit erschlossen, sondern verworfen und als ``unavailable_dropped`` gezählt; die eigenen Tageswerte des Tages
+heißen dann ``UNVOLLSTÄNDIG``. Perp-Körbe laufen über ein ``RevisionLog``: ein Korb zählt bei ``now`` nur geschlossen und in
+der Fassung, die TIM bis ``now`` gesehen hat (ein Nachtrag nach ``now`` bleibt draußen). Fenster, Preis, Tageswerte (aus dem Stand je Trade), Level und Perp-Körbe enden bei ``now``; spätere Trades
 zählen nur als ``future_trades``. Zu spät gelieferte Trades mit älterer Eventzeit werden nicht rückwirkend eingefügt, sondern
 als ``late_dropped`` gezählt. Snapshots laufen zeitlich vorwärts; ein früheres ``now`` als ein schon gezeigtes ist ein Fehler.
 Gleicher Strom, ob in Stücken oder auf einmal eingelesen, ergibt so denselben Snapshot (``snapshot_hash``).
@@ -38,6 +41,8 @@ from collections import deque
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
+
+from src.orderflow.pit_contract import RevisionLog, as_time
 from statistics import median
 from typing import Any
 
@@ -100,6 +105,9 @@ class LiveOrderflowTracker:
         self._last_available: float | None = None  # availability is kept monotone: a trade is visible after all earlier
         self._carry: tuple[float, float, float, float, float, float] | None = None  # state after the last pruned trade
         self._last_snapshot: float | None = None
+        self.unavailable_dropped = 0  # trades handed in without available_at: availability UNKNOWN, never evidence
+        self._incomplete_days: set[float] = set()  # UTC days whose own values miss such trades
+        self._perp_log = RevisionLog()  # perp buckets with the moment each revision was first seen (pit contract)
         self.last_trade_id: int | None = None
         self.last_trade_time: datetime | None = None
         self.day_key: float | None = None
@@ -122,7 +130,14 @@ class LiveOrderflowTracker:
         added = 0
         if available_at is not None and available_at.tzinfo is None:
             raise ValueError("available_at needs a time zone (a naive time would be read as local time)")
-        available = _epoch(available_at) if available_at is not None else None
+        if available_at is None:
+            # Availability UNKNOWN (pit contract): never inferred from the event time. Not added, ids not advanced.
+            for trade in trades:
+                if trade.symbol == self.symbol:
+                    self.unavailable_dropped += 1
+                    self._incomplete_days.add(_day_start(trade.event_time))
+            return 0
+        available = _epoch(available_at)
         for trade in trades:
             if trade.symbol != self.symbol:
                 continue
@@ -145,7 +160,7 @@ class LiveOrderflowTracker:
             self.day_high = trade.price if self.day_high is None else max(self.day_high, trade.price)
             self.day_low = trade.price if self.day_low is None else min(self.day_low, trade.price)
             self._trades.append((moment, float(trade.price), float(trade.quantity), side))
-            own = max(moment, available) if available is not None else moment
+            own = max(moment, available)
             seen = own if self._last_available is None else max(own, self._last_available)
             if seen > own:
                 self.held_back += 1
@@ -204,6 +219,42 @@ class LiveOrderflowTracker:
                 buckets[index].append(item)
         return [self._window(bucket) for bucket in buckets]
 
+    def _perp(self, store: Mapping[str, Any] | None, now: datetime) -> dict[str, Any] | None:
+        """Perp delta of the last 5/15 minutes from closed buckets in the revision TIM had seen by ``now``.
+
+        The store is noted in the revision log at ``max(now, updated_at)``: live that is the moment TIM holds it, in a
+        replay a store written after ``now`` is never seen before it was written. A store without a readable
+        ``updated_at`` is not noted (its time is unknown); only what was seen before counts (Codex #377, Mission 07:
+        the 11:50 bucket written at 13:00 is not evidence at 12:00).
+        """
+        if not store or not store.get("days"):
+            return None
+        bucket = int(store.get("bucket_seconds") or 300)
+        updated = as_time(store.get("updated_at"))
+        if updated is not None:
+            self._perp_log.observe(store["days"], max(now, updated))
+        days, counts = self._perp_log.rows_at(now, bucket)
+        moment = _epoch(now)
+        delta5 = delta15 = volume15 = 0.0
+        seen = False
+        for rows in days.values():
+            for row in rows:
+                bucket_time, bid, ask = row[0], row[2], row[3]
+                if bucket_time < moment - 900 - bucket:
+                    continue
+                seen = True
+                delta15 += ask - bid
+                volume15 += ask + bid
+                if bucket_time >= moment - 300 - bucket:
+                    delta5 += ask - bid
+        meta = {"updated_at": store.get("updated_at"), "store_time_known": updated is not None,
+                "closed_buckets_only": True, "buckets_unknown": counts["unknown"], "buckets_revised_later": counts["revised_later"]}
+        if not seen:
+            return {"status": "keine Daten in den letzten 15 Minuten", **meta}
+        return {"symbol": store.get("symbol"), "bucket_seconds": bucket, "delta_5m": _round(delta5), "delta_15m": _round(delta15),
+                "volume_15m": _round(volume15), **meta}
+
+
     def snapshot(self, now: datetime, levels: Sequence[Mapping[str, Any]] = (),
                  perp_store: Mapping[str, Any] | None = None,
                  day_profile: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -235,12 +286,13 @@ class LiveOrderflowTracker:
         if day["high"] is not None:
             own_levels += [{"name": "Tages-Hoch", "price": day["high"]}, {"name": "Tages-Tief", "price": day["low"]}]
         level_rows = _levels(self._since(moment - WINDOWS["15m"], moment), own_levels, price, self.tick) if price else []
-        perp = _perp(perp_store, moment)
+        perp = self._perp(perp_store, now)
         stale = last_time is None or moment - _epoch(last_time) > 120
         state = {
             "schema": SCHEMA_VERSION, "symbol": self.symbol, "as_of": now.astimezone(timezone.utc).isoformat(),
             "price": price, "last_trade_at": last_time.isoformat() if last_time else None,
             "stale": stale, "future_trades": future, "late_dropped": self.late_dropped,
+            "unavailable_dropped": self.unavailable_dropped,
             "held_back": {"trades": self.held_back, "max_seconds": _round(self.held_back_max_seconds, 3)}, "windows": windows, "tempo": _round(tempo, 2) if tempo is not None else None,
             "day": day,
             "wave": wave, "levels": level_rows, "perp": perp, "thresholds": THRESHOLDS,
@@ -252,7 +304,7 @@ class LiveOrderflowTracker:
 
 def snapshot_hash(state: Mapping[str, Any]) -> str:
     """SHA-256 over the snapshot without its own hash and the bookkeeping counters that depend on how it was fed."""
-    body = {k: v for k, v in state.items() if k not in ("snapshot_hash", "future_trades", "late_dropped")}
+    body = {k: v for k, v in state.items() if k not in ("snapshot_hash", "future_trades", "late_dropped", "unavailable_dropped")}
     return hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
 
 
@@ -266,7 +318,7 @@ def _day_values(tracker: LiveOrderflowTracker, profile: Mapping[str, Any] | None
                "status": "UNKNOWN"}
     else:
         own = {"cvd": _round(at[2]), "high": at[4], "low": at[5], "unknown_volume": _round(at[3]),
-               "source": "seit Start der Runtime", "status": "OK"}
+               "source": "seit Start der Runtime", "status": "UNVOLLSTÄNDIG" if at[1] in tracker._incomplete_days else "OK"}
     if not profile or not profile.get("rows"):
         return own
     prices = [float(r["price"]) for r in profile["rows"] if r.get("volume")]
@@ -348,35 +400,6 @@ def _levels(trades: Sequence[tuple[float, float, float, int]], levels: Sequence[
                     "delta": _round(ask - bid), "imbalance": imbalance, "absorption": bool(absorption)})
     out.sort(key=lambda row: abs(row["distance_pct"]))
     return out
-
-
-def _perp(store: Mapping[str, Any] | None, now: float) -> dict[str, Any] | None:
-    if not store or not store.get("days"):
-        return None
-    bucket = int(store.get("bucket_seconds") or 300)
-    # A store written after ``now`` (replay) may hold trades after now in the running bucket: then only buckets that
-    # had ended by ``now`` count. Live the store is never newer than now, so the running bucket stays in. Without a
-    # readable ``updated_at`` the store time is unknown: closed buckets only (Codex #377).
-    updated = store.get("updated_at")
-    try:
-        newer = updated is None or datetime.fromisoformat(str(updated)).timestamp() > now
-    except ValueError:
-        newer = True
-    delta5 = delta15 = volume15 = 0.0
-    seen = False
-    for rows in store["days"].values():
-        for bucket_time, _level, bid, ask in rows:
-            if bucket_time < now - 900 - bucket or bucket_time > now or (newer and bucket_time + bucket > now):
-                continue
-            seen = True
-            delta15 += ask - bid
-            volume15 += ask + bid
-            if bucket_time >= now - 300 - bucket:
-                delta5 += ask - bid
-    if not seen:
-        return {"status": "keine Daten in den letzten 15 Minuten"}
-    return {"symbol": store.get("symbol"), "bucket_seconds": bucket, "delta_5m": _round(delta5), "delta_15m": _round(delta15),
-            "volume_15m": _round(volume15), "updated_at": store.get("updated_at"), "closed_buckets_only": newer}
 
 
 def describe(state: Mapping[str, Any]) -> str:

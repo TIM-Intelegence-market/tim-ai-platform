@@ -12,6 +12,11 @@ T0 = datetime(2026, 11, 8, 12, 0, tzinfo=timezone.utc)
 SYMBOL = "BTCUSDT"
 
 
+def _feed(tracker, trades):
+    """Synthetic trades: each one available at its own event time, said explicitly (the tracker never assumes it)."""
+    return sum(tracker.ingest([t], available_at=t.event_time) for t in trades)
+
+
 def trade(seconds: float, price: float, qty: float, buy: bool, tid: int) -> Trade:
     return Trade(SYMBOL, price, qty, T0 + timedelta(seconds=seconds), tid, buyer_is_maker=not buy)
 
@@ -23,17 +28,17 @@ def quiet_baseline(tracker: ls.LiveOrderflowTracker, minutes: int = 20, price: f
     for minute in range(minutes):
         trades.append(trade(minute * 60 + 10, price, 0.1, True, tid := tid + 1))
         trades.append(trade(minute * 60 + 40, price, 0.1, False, tid := tid + 1))
-    tracker.ingest(trades)
+    _feed(tracker, trades)
     return tid
 
 
 def test_ingest_tracks_day_cvd_extremes_and_skips_replayed_ids():
     tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
-    assert tracker.ingest([trade(0, 75000, 1.0, True, 1), trade(1, 75010, 0.5, False, 2)]) == 2
-    assert tracker.ingest([trade(1, 75010, 0.5, False, 2), trade(2, 74990, 0.25, True, 3)]) == 1
+    assert _feed(tracker, [trade(0, 75000, 1.0, True, 1), trade(1, 75010, 0.5, False, 2)]) == 2
+    assert _feed(tracker, [trade(1, 75010, 0.5, False, 2), trade(2, 74990, 0.25, True, 3)]) == 1
     assert tracker.day_cvd == pytest.approx(0.75)
     assert (tracker.day_high, tracker.day_low, tracker.last_trade_id) == (75010, 74990, 3)
-    assert tracker.ingest([Trade("ETHUSDT", 2000, 1, T0, 9, False)]) == 0
+    assert _feed(tracker, [Trade("ETHUSDT", 2000, 1, T0, 9, False)]) == 0
 
 
 def test_buyer_wave_building_with_strength_and_text():
@@ -45,7 +50,7 @@ def test_buyer_wave_building_with_strength_and_text():
         for k in range(4):
             trades.append(trade(base + minute * 60 + k * 10, 75000 + step * (minute + 1) + k, buy_qty / 4, True, tid := tid + 1))
         trades.append(trade(base + minute * 60 + 50, 75000 + step * (minute + 1), 0.2, False, tid := tid + 1))
-    tracker.ingest(trades)
+    _feed(tracker, trades)
     now = T0 + timedelta(seconds=base + 180)
     state = tracker.snapshot(now)
     assert state["wave"]["direction"] == "auf"
@@ -66,7 +71,7 @@ def test_fading_wave_flags_exhaustion_when_price_stalls():
     for minute, (sell_qty, price) in enumerate(((8.0, 74900.0), (4.0, 74890.0), (0.3, 74890.0))):
         for k in range(4):
             trades.append(trade(base + minute * 60 + k * 10, price - k, sell_qty / 4, False, tid := tid + 1))
-    tracker.ingest(trades)
+    _feed(tracker, trades)
     state = tracker.snapshot(T0 + timedelta(seconds=base + 180))
     assert state["wave"]["direction"] == "ab"
     assert state["wave"]["phase"] == "ebbt ab"
@@ -83,7 +88,7 @@ def test_levels_absorption_imbalance_and_perp_delta():
     for k in range(10):
         trades.append(trade(base + k * 5, 74952.0, 1.0, False, tid := tid + 1))
     trades.append(trade(base + 55, 74960.0, 0.1, True, tid := tid + 1))
-    tracker.ingest(trades)
+    _feed(tracker, trades)
     now = T0 + timedelta(seconds=base + 60)
     perp_store = {"symbol": "BTCUSDT", "bucket_seconds": 300, "updated_at": now.isoformat(),
                   "days": {"2026-11-08": [[now.timestamp() - 300, 74950.0, 3.0, 1.0], [now.timestamp() - 900, 74950.0, 1.0, 5.0],
@@ -121,7 +126,7 @@ def test_rejects_bad_parameters():
 
 def test_day_values_come_from_the_running_profile():
     tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
-    tracker.ingest([trade(0, 75000, 1.0, True, 1), trade(1, 75010, 0.5, False, 2)])
+    _feed(tracker, [trade(0, 75000, 1.0, True, 1), trade(1, 75010, 0.5, False, 2)])
     profile = {"running": True, "step": 50.0, "delta": -120.5, "poc": 74800.0,
                "rows": [{"price": 74000.0, "volume": 3.0}, {"price": 74500.0, "volume": 0.0}, {"price": 75500.0, "volume": 1.0}]}
     state = tracker.snapshot(T0 + timedelta(seconds=2), day_profile=profile)
@@ -146,7 +151,7 @@ def test_aggressor_side_only_accepts_real_bools(maker):
 
 def test_unknown_side_does_not_raise_buy_delta_or_cvd():
     tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
-    tracker.ingest([_raw(0, 2.0, None, 1)])
+    _feed(tracker, [_raw(0, 2.0, None, 1)])
     state = tracker.snapshot(T0 + timedelta(seconds=5))
     one = state["windows"]["1m"]
     assert one["delta"] == 0 and one["buy_share"] is None
@@ -157,7 +162,7 @@ def test_unknown_side_does_not_raise_buy_delta_or_cvd():
 
 def test_buy_share_denominator_is_known_volume_only():
     tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
-    tracker.ingest([_raw(0, 1.0, False, 1), _raw(1, 1.0, True, 2), _raw(2, 2.0, None, 3), _raw(3, 4.0, "false", 4)])
+    _feed(tracker, [_raw(0, 1.0, False, 1), _raw(1, 1.0, True, 2), _raw(2, 2.0, None, 3), _raw(3, 4.0, "false", 4)])
     one = tracker.snapshot(T0 + timedelta(seconds=10))["windows"]["1m"]
     assert one["buy_share"] == pytest.approx(0.5)  # 1 of 2 known, the 6 unknown are not in the denominator
     assert one["volume"] == pytest.approx(8.0) and one["delta"] == 0 and one["unknown_volume"] == pytest.approx(6.0)
@@ -165,7 +170,7 @@ def test_buy_share_denominator_is_known_volume_only():
 
 def test_levels_keep_unknown_out_of_bid_ask_and_delta():
     tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
-    tracker.ingest([_raw(0, 1.0, False, 1, 75000), _raw(1, 3.0, None, 2, 75000)])
+    _feed(tracker, [_raw(0, 1.0, False, 1, 75000), _raw(1, 3.0, None, 2, 75000)])
     state = tracker.snapshot(T0 + timedelta(seconds=10), [{"name": "L", "price": 75000.0}])
     row = state["levels"][0]
     assert (row["bid"], row["ask"], row["unknown"], row["delta"]) == (0.0, 1.0, 3.0, 1.0)
@@ -181,11 +186,11 @@ def _stream(n: int = 40) -> list[Trade]:
 def test_future_trade_does_not_change_an_earlier_snapshot():
     base = _stream(20)
     clean = ls.LiveOrderflowTracker(SYMBOL, 5.0)
-    clean.ingest(base)
+    _feed(clean, base)
     at = T0 + timedelta(seconds=19 * 30 + 5)
     expected = clean.snapshot(at)
     leaked = ls.LiveOrderflowTracker(SYMBOL, 5.0)
-    leaked.ingest(base + [trade(19 * 30 + 35, 76000, 2.0, True, 99)])  # 30 s after the snapshot moment
+    _feed(leaked, base + [trade(19 * 30 + 35, 76000, 2.0, True, 99)])  # 30 s after the snapshot moment
     state = leaked.snapshot(at)
     assert state["snapshot_hash"] == expected["snapshot_hash"]
     assert state["windows"] == expected["windows"] and state["price"] == expected["price"] and state["day"] == expected["day"]
@@ -194,7 +199,7 @@ def test_future_trade_does_not_change_an_earlier_snapshot():
 
 def test_codex_reproduction_future_trade_is_not_counted():
     tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
-    tracker.ingest([trade(30, 75000, 2.0, True, 1)])
+    _feed(tracker, [trade(30, 75000, 2.0, True, 1)])
     state = tracker.snapshot(T0)
     assert state["windows"]["1m"]["delta"] == 0 and state["price"] is None and state["stale"] is True
     assert state["future_trades"] == 1
@@ -209,8 +214,8 @@ def test_trade_is_invisible_before_it_was_available():
 
 def test_late_trade_is_counted_not_inserted_back_in_time():
     tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
-    tracker.ingest([trade(60, 75000, 1.0, True, 2)])
-    tracker.ingest([trade(30, 75000, 5.0, True, 3)])
+    _feed(tracker, [trade(60, 75000, 1.0, True, 2)])
+    _feed(tracker, [trade(30, 75000, 5.0, True, 3)])
     state = tracker.snapshot(T0 + timedelta(seconds=90))
     assert state["late_dropped"] == 1 and state["windows"]["5m"]["volume"] == pytest.approx(1.0)
 
@@ -218,7 +223,7 @@ def test_late_trade_is_counted_not_inserted_back_in_time():
 def test_replay_in_chunks_equals_all_at_once_at_every_step():
     stream = _stream()
     whole = ls.LiveOrderflowTracker(SYMBOL, 5.0)
-    whole.ingest(stream)
+    _feed(whole, stream)
     chunked = ls.LiveOrderflowTracker(SYMBOL, 5.0)
     fed = 0
     for step in range(1, 21):
@@ -236,14 +241,15 @@ def test_snapshot_time_cannot_go_backwards():
         tracker.snapshot(T0)
 
 
-def test_perp_buckets_after_now_are_ignored_and_running_bucket_dropped_for_newer_store():
+def test_perp_running_bucket_never_counts_and_a_store_from_after_now_is_not_seen():
     now = T0 + timedelta(minutes=10)
     t = int(now.timestamp())
     rows = [[t - 600, 75000.0, 1.0, 2.0], [t - 120, 75000.0, 0.0, 1.0], [t + 300, 75000.0, 0.0, 9.0]]
-    live = ls._perp({"days": {"d": rows}, "bucket_seconds": 300, "updated_at": now.isoformat()}, t)
-    assert live["delta_15m"] == pytest.approx(2.0) and live["closed_buckets_only"] is False
-    later = ls._perp({"days": {"d": rows}, "bucket_seconds": 300, "updated_at": (now + timedelta(hours=1)).isoformat()}, t)
-    assert later["delta_15m"] == pytest.approx(1.0) and later["closed_buckets_only"] is True
+    live = ls.LiveOrderflowTracker(SYMBOL, 5.0)._perp({"days": {"d": rows}, "bucket_seconds": 300, "updated_at": now.isoformat()}, now)
+    assert live["delta_15m"] == pytest.approx(1.0) and live["closed_buckets_only"] is True   # running bucket t-120 left out
+    later = ls.LiveOrderflowTracker(SYMBOL, 5.0)._perp(
+        {"days": {"d": rows}, "bucket_seconds": 300, "updated_at": (now + timedelta(hours=1)).isoformat()}, now)
+    assert later["status"] == "keine Daten in den letzten 15 Minuten" and later["buckets_unknown"] == 1
 
 
 # Codex #376: the consumer (Orderflow-Schatten) must not read unknown flow as neutral flow.
@@ -251,7 +257,7 @@ def test_pure_unknown_flow_is_unbekannt_in_the_shadow_not_neutral():
     from src.dashboard import orderflow_shadow as shadow
 
     tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
-    tracker.ingest([_raw(0, 5.0, None, 1)])
+    _feed(tracker, [_raw(0, 5.0, None, 1)])
     view = shadow.lage_view(tracker.snapshot(T0))
     assert view["known_share"] == 0.0
     assert shadow.gate("LONG", view) == shadow.UNBEKANNT and shadow.gate("SHORT", view) == shadow.UNBEKANNT
@@ -262,11 +268,11 @@ def test_mostly_unknown_flow_is_unbekannt_and_mostly_known_is_judged():
     from src.dashboard import orderflow_shadow as shadow
 
     mostly = ls.LiveOrderflowTracker(SYMBOL, 5.0)
-    mostly.ingest([_raw(0, 1.0, False, 1), _raw(1, 9.0, None, 2)])
+    _feed(mostly, [_raw(0, 1.0, False, 1), _raw(1, 9.0, None, 2)])
     view = shadow.lage_view(mostly.snapshot(T0 + timedelta(seconds=2)))
     assert view["known_share"] == pytest.approx(0.1) and shadow.gate("LONG", view) == shadow.UNBEKANNT
     known = ls.LiveOrderflowTracker(SYMBOL, 5.0)
-    known.ingest([_raw(0, 99.0, False, 1), _raw(1, 1.0, None, 2)])
+    _feed(known, [_raw(0, 99.0, False, 1), _raw(1, 1.0, None, 2)])
     view = shadow.lage_view(known.snapshot(T0 + timedelta(seconds=2)))
     assert view["known_share"] == pytest.approx(0.99) and shadow.gate("LONG", view) != shadow.UNBEKANNT
     assert shadow.known_share(None) is None and shadow.gate("LONG", None) == shadow.NEUTRAL  # no Lage: as before
@@ -343,12 +349,51 @@ def test_naive_available_at_is_refused():
         tracker.ingest([_raw(0, 1.0, False, 1)], available_at=T0.replace(tzinfo=None))
 
 
-def test_perp_store_without_updated_at_counts_closed_buckets_only():
+def test_perp_store_without_updated_at_is_not_evidence():
     now = T0 + timedelta(minutes=10)
     t = int(now.timestamp())
     rows = [[t - 600, 75000.0, 1.0, 2.0], [t - 120, 75000.0, 0.0, 1.0]]
-    out = ls._perp({"days": {"d": rows}, "bucket_seconds": 300}, t)
-    assert out["delta_15m"] == pytest.approx(1.0) and out["closed_buckets_only"] is True
+    out = ls.LiveOrderflowTracker(SYMBOL, 5.0)._perp({"days": {"d": rows}, "bucket_seconds": 300}, now)
+    assert out["status"] == "keine Daten in den letzten 15 Minuten" and out["store_time_known"] is False
+
+
+# Mission 07 (Codex #377): a perp bucket of 11:50 that is first written at 13:00 is no evidence at 12:00.
+def test_perp_backfill_after_the_decision_does_not_change_the_snapshot_at_the_decision():
+    noon = datetime(2026, 11, 24, 12, 0, tzinfo=timezone.utc)
+    t = int(noon.timestamp())
+    early = [[t - 600, 75000.0, 1.0, 2.0]]
+    backfill = early + [[t - 300, 75000.0, 0.0, 50.0]]          # the 11:55 bucket, written only at 13:00
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    at_noon = tracker._perp({"days": {"d": early}, "bucket_seconds": 300, "updated_at": noon.isoformat()}, noon)
+    assert at_noon["delta_15m"] == pytest.approx(1.0)
+    # Replay of the same decision with the store as it looks at 13:00: the backfilled bucket stays out.
+    replay = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    replay._perp({"days": {"d": early}, "bucket_seconds": 300, "updated_at": noon.isoformat()}, noon)
+    again = replay._perp({"days": {"d": backfill}, "bucket_seconds": 300,
+                          "updated_at": (noon + timedelta(hours=1)).isoformat()}, noon)
+    assert again["delta_15m"] == pytest.approx(1.0) and again["buckets_unknown"] == 1
+    # A revision of a known bucket after the decision: the decision keeps the old value.
+    revised = [[t - 600, 75000.0, 1.0, 40.0]]
+    kept = replay._perp({"days": {"d": revised}, "bucket_seconds": 300,
+                         "updated_at": (noon + timedelta(hours=1)).isoformat()}, noon)
+    assert kept["delta_15m"] == pytest.approx(1.0) and kept["buckets_revised_later"] == 1
+    # After a restart the log is empty: what was before is seen from the first look on, never earlier.
+    fresh = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    late = fresh._perp({"days": {"d": backfill}, "bucket_seconds": 300,
+                        "updated_at": (noon + timedelta(hours=1)).isoformat()}, noon)
+    assert late["status"] == "keine Daten in den letzten 15 Minuten"
+
+
+def test_trades_without_available_at_are_unknown_and_never_evidence():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    assert tracker.ingest([_raw(-30, 2.0, False, 1), _raw(-20, 1.0, True, 2)]) == 0
+    state = tracker.snapshot(T0)
+    assert state["unavailable_dropped"] == 2 and state["windows"]["5m"]["trades"] == 0 and state["price"] is None
+    # The same trades with a known availability are taken (ids were not advanced by the refused batch).
+    assert _feed(tracker, [_raw(-30, 2.0, False, 1), _raw(-20, 1.0, True, 2)]) == 2
+    later = tracker.snapshot(T0 + timedelta(seconds=1))
+    assert later["windows"]["5m"]["trades"] == 2 and later["day"]["status"] == "UNVOLLSTÄNDIG"
+    assert "unavailable_dropped" not in json.dumps({k: v for k, v in later.items() if k == "snapshot_hash"})
 
 
 def test_head_of_line_delay_of_the_prefix_rule_is_reported():
