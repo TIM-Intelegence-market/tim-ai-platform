@@ -2,7 +2,7 @@
 
 Stand 26.10.2026 (Einstieg für Menschen: `docs/TIM_IN_10_MINUTEN.md`; Systemstand: `docs/SYSTEMSTAND.md`; Merge-Regeln: `CI.md`).
 
-TIM provides a local, observation-only BTCUSDT research pipeline: public Binance aggregate trades, deterministic multi-timeframe candle aggregation, TimescaleDB persistence, BOS and Broncx context observations, plus optional explanation-only Ollama summaries.
+TIM provides a local, observation-only BTCUSDT research pipeline: public Binance aggregate trades, deterministic multi-timeframe candle aggregation, TimescaleDB persistence, BOS and Mentor context observations, plus optional explanation-only Ollama summaries.
 
 ## Repository governance
 
@@ -32,7 +32,7 @@ All Week 2 components remain research-only. They contain no trading, prediction,
 ## Intelligence V1 modules
 
 - `src/news`: authorized news records and deterministic links to historical observations.
-- `src/knowledge`: authorized GoatHub/personal material with searchable citations and hashes.
+- `src/knowledge`: authorized Signalgruppe/personal material with searchable citations and hashes.
 - `src/assistant`: OBSERVE-only short-term evidence explanation.
 - `src/paper`: disabled-by-default TEST_ONLY research journaling; no exchange interface.
 - `docs/VISION_2030.md`: roadmap and governance.

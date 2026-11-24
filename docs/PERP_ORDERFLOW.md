@@ -1,6 +1,6 @@
 # Perp-Orderflow im TIM-Chart (F5 aus dem Beirat vom 29.10.2026)
 
-Broncx liest Orderflow auf dem BTC-Perp (Binance Futures). Dort läuft 8- bis 12-mal so viel Volumen wie
+Mentor liest Orderflow auf dem BTC-Perp (Binance Futures). Dort läuft 8- bis 12-mal so viel Volumen wie
 auf Spot, und das Delta kann gegen Spot laufen (27.10.2026: Spot +2534 BTC, Perp −1844 BTC). Bis F5 sah
 TIM nur Spot. Alles hier ist Anzeige, nichts davon handelt, schreibt einen Plan oder ändert eine Bewertung.
 

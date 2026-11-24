@@ -29,14 +29,14 @@ Tests geladen. *in ops/CI*: ein Skript dieses Pakets oder das Paket selbst wird 
 | `v2_completion` | 1729 | 0 | 1723 | 6 | mac_live_install.py,v2_backfill_candidate.py,v2_qualification_daily.py,v2_qualification_monitor.py… | ja | WERKZEUG (teils unerreicht) | Claude (in ops/CI genutzt) |
 | `task_engine` | 1639 | 0 | 1586 | 53 | m09_p1_10_repair_proof.py,m09_p1_14_self_heal_proof.py |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `operational` | 1370 | 330 | 1036 | 4 | acceptance_check.py,operational_validation.py,tim_candle_backfill.py,tim_history_recovery.py… | ja | LIVE+WERKZEUG | Betrieb (Uzi), Pflege Claude |
-| `knowledge` | 1268 | 0 | 1265 | 3 | broncx_discord_bot.py,goathub_discord_bot.py,passive_ingest.py | ja | WERKZEUG (teils unerreicht) | Claude (in ops/CI genutzt) |
+| `knowledge` | 1268 | 0 | 1265 | 3 | mentor_discord_bot.py,signalgruppe_discord_bot.py,passive_ingest.py | ja | WERKZEUG (teils unerreicht) | Claude (in ops/CI genutzt) |
 | `agents` | 1241 | 0 | 1206 | 35 | tim_monitoring_agent.py,tim_priority_agent.py,tim_review_agent.py | ja | WERKZEUG (teils unerreicht) | Claude (in ops/CI genutzt) |
 | `research` | 1172 | 1106 | 29 | 37 | audit_historical_gap_closure.py,backfill_gaps.py,classify_ingestion_gaps.py,demo_trader_report.py… | ja | LIVE | Betrieb (Uzi), Pflege Claude |
 | `market_data` | 1047 | 0 | 1045 | 2 | openmarket_api_proof.py,openmarket_store_key.py |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `agent_infra` | 915 | 0 | 915 | 0 | agent_infra_acceptance.py,agent_infra_long_context.py,tim_monitoring_agent.py,tim_priority_agent.py… | ja | WERKZEUG | Claude (in ops/CI genutzt) |
 | `obsidian_vault` | 787 | 0 | 781 | 6 | agent_infra_acceptance.py,agent_infra_long_context.py,tim_monitoring_agent.py |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `tim_v2` | 777 | 0 | 0 | 777 |  |  | UNERREICHT | BEHALTEN als Entwurf (V2-Kern laut `docs/tim_v2/architecture.md`), Frist 30.11.: Einstieg oder Archiv; Uzi |
-| `sources` | 729 | 0 | 726 | 3 | broncx_discord_bot.py,goathub_discord_bot.py,passive_ingest.py | ja | WERKZEUG (teils unerreicht) | Claude (in ops/CI genutzt) |
+| `sources` | 729 | 0 | 726 | 3 | mentor_discord_bot.py,signalgruppe_discord_bot.py,passive_ingest.py | ja | WERKZEUG (teils unerreicht) | Claude (in ops/CI genutzt) |
 | `repair_diagnosis` | 693 | 0 | 637 | 56 |  |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `research_intelligence` | 670 | 0 | 669 | 1 |  |  | WERKZEUG (teils unerreicht) | Claude; Nutzung bis 30.11. nachweisen, sonst Archiv |
 | `server_readiness` | 660 | 0 | 0 | 660 |  |  | UNERREICHT | ARCHIVIERT 26.10.2026: mit Tests aus `platform-main` entfernt, Stand 06c8bc2 im Zweig `archiv/unerreichte-pakete-2026-10-26`; Claude |
@@ -126,3 +126,31 @@ solange die Pakete ruhen oder archiviert werden; ein Zusammenlegen ohne Nutzer w
 
 Bis V2.8 kein neues Top-Level-Paket unter `src/` ohne Eintrag in dieser Tabelle mit Verantwortlichem, Einstufung und
 Bezug zu einem Schritt V1 bis V10 des Gesamtplans. Das PR-Gate kann das prüfen (neue Verzeichnisse unter `src/`).
+
+## Nachweis vom 15.11.2026 (Thread „Entwirren der Codebase“, U3)
+
+Statische Suche im Repo (Stand `077ff43`) plus Suche auf dem Mac (Crontab, `~/Library/LaunchAgents`, Skripte unter
+`~/Documents/TIM` außer `tim/` und `worktrees/`, `~/TIM-live/scripts|ops|main.py`, Hermes, `~/Library/Logs/TIM`).
+PS5/PS4 wurden nicht durchsucht. Nichts entfernt.
+
+| Paket | Zeilen | Aufrufer im Repo (ohne Tests) | Mac (Cron, launchd, Skripte, Logs) | Einstufung | Empfehlung |
+|---|---:|---|---|---|---|
+| `research_intelligence` | 670 | keiner (nur Bereichsliste in `src/tim_graph_view/build.py`) | keiner | WERKZEUG, ungenutzt | `expansion.volume_profile` wird von `tests/test_mid_replay_proof.py` gebraucht. Vor einem Archiv diese Funktion nach `src/research_lab` verschieben, dann Paket per Zweig sichern und entfernen (Frist 30.11. bleibt). |
+| `reflection` | 593 | keiner (nur CLI `python -m src.reflection.cli`) | keiner, kein Log | WERKZEUG, ruhend | Wochenbericht aus `docs/TIM_REFLEXION.md` läuft nirgends. Entweder als Wochen-Job anschließen oder archivieren; nicht mit `research_lab/workshop/trade_reflection.py` verwechseln. |
+| `multi_symbol` | 656 | keiner (absichtlich, Test prüft das) | keiner | PROTOTYP, aus | Bleibt als isolierter Prototyp laut `docs/MULTI_SYMBOL_ARCHITEKTUR.md`; neu einstufen, wenn Mehr-Symbol (S32-Korb) gebaut wird. |
+
+### Ausführung vom 15.11.2026 (Uzis „löschen“)
+
+- `src/research_intelligence/` samt `tests/test_research_intelligence.py`, `tests/test_mission08_expansion.py` und dem einen
+  Test `test_volume_profile_runs_on_reconstructed_minutes` in `tests/test_mid_replay_proof.py` entfernt (der Test prüfte nur
+  diese Paketfunktion; die übrigen Replay-Tests bleiben). Bereichsliste in `src/tim_graph_view/build.py` angepasst,
+  Archiv-Hinweis in `docs/mission07_research_intelligence.md` und `docs/mission08_verified_expansion.md`.
+- Sicherung: Zweig `archiv/research-intelligence-2026-11-15` auf `33879ec`.
+- Abweichung von der Empfehlung oben: `volume_profile` wurde nicht nach `src/research_lab` verschoben, weil es dort keinen
+  Nutzer hätte und Hilfsfunktionen aus `engine.py` mitziehen würde. Bei Bedarf aus dem Archivzweig holen.
+- `reflection` bleibt vorerst: `src/research_lab/workshop` liest ihren Wochenbericht (`--reflection FILE`,
+  `sources.import_reflection`) als Ideenquelle der Lernschleife. Entscheidung „anschließen oder archivieren“ offen.
+
+Die übrigen am 15.11. geprüften kleinen Pakete (`control_portal`, `orchestration`, `ops_mcp`, `acceptance`,
+`tim_graph_view`, `paper`, `news`, `benchmark`, `analytics`, `assistant`, `liquidation_map`, `repair_repro`) haben
+mindestens einen Aufrufer im Repo oder eine Anbindung (`.mcp.json`, Skripte). Kein Handlungsbedarf aus dieser Prüfung.

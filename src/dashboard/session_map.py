@@ -1,6 +1,6 @@
 """Session preparation map ("Vorbereitungs-Karte") from TIM's own candles.
 
-Builds the trader's preparation in the order the Broncx bootcamp teaches it
+Builds the trader's preparation in the order the Mentor bootcamp teaches it
 (HTF bias -> auction context -> locations), read-only and paper only:
 
 - HTF structure on 4h, 1D and 1W, aggregated from TIM's 1h candles,
@@ -51,7 +51,7 @@ SESSIONS = (
 LOCATION_TEXT = {
     "ABOVE_ACCEPTED": ("über Vortages-Value, angenommen",
                        "AMT-Regel 3: angenommen außerhalb der Balance, neuer Value wird gesucht. "
-                       "Broncx-Intraday-Modell Long: Rücklauf zum Vortages-VAH als Ort, Stop unter dem Swing."),
+                       "Mentor-Intraday-Modell Long: Rücklauf zum Vortages-VAH als Ort, Stop unter dem Swing."),
     "ABOVE_NOT_ACCEPTED": ("über Vortages-VAH, noch nicht angenommen",
                            "Noch keine zwei 30m-Schlüsse darüber: Gefahr einer Failed Auction zurück in den Value (AMT-Regel 1)."),
     "IN_VALUE": ("im Vortages-Value",
@@ -61,7 +61,7 @@ LOCATION_TEXT = {
                            "Noch keine zwei 30m-Schlüsse darunter: Gefahr einer Failed Auction zurück in den Value (AMT-Regel 1)."),
     "BELOW_ACCEPTED": ("unter Vortages-Value, angenommen",
                        "AMT-Regel 3: angenommen außerhalb der Balance, neuer Value wird gesucht. "
-                       "Broncx-Intraday-Modell Short: Rücklauf zum Vortages-VAL als Ort, Stop über dem Swing."),
+                       "Mentor-Intraday-Modell Short: Rücklauf zum Vortages-VAL als Ort, Stop über dem Swing."),
     "UNKNOWN": ("unbekannt", "Kein vollständiges Vortagesprofil vorhanden."),
 }
 MIN_TODAY_CANDLES = 4  # 30m candles (two hours) before today's developing value is compared
@@ -133,7 +133,7 @@ def structure(candles: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 
 
 def htf_bias(states: Mapping[str, str]) -> dict[str, Any]:
-    """1D and 4h decide; 1W only confirms. LTF never overrides this (Broncx)."""
+    """1D and 4h decide; 1W only confirms. LTF never overrides this (Mentor)."""
     daily, four = states.get("1D", "UNKNOWN"), states.get("4h", "UNKNOWN")
     if daily == four == "UP":
         bias = "LONG"
@@ -340,8 +340,31 @@ def _level(levels: list[dict[str, Any]], label: str, price: float | None, source
                    "distance_pct": round((price - last) / last * 100, 3), "side": "über" if price > last else "unter" if price < last else "am Kurs"})
 
 
-def build_session_map(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None) -> dict[str, Any]:
-    """Everything the preparation page shows, as JSON-ready data."""
+def real_day_profiles(days: Sequence[dict[str, Any]], profiles: Sequence[Mapping[str, Any]] | None) -> list[str]:
+    """Put the day profiles from TIM's own trades in place of the candle estimate; returns the days replaced.
+
+    ``profiles`` is ``footprint_data.volume_profiles``. Only complete stored days and the running day count;
+    a past day the store read only in part keeps the estimate. The POC is the centre of the fullest row,
+    as the chart draws it.
+    """
+    real = {p["day"]: p for p in profiles or [] if p.get("complete") or p.get("running")}
+    replaced = []
+    for day in days:
+        key = day["period"].isoformat()
+        found = real.get(key)
+        if found and None not in (found.get("vah"), found.get("val"), found.get("poc")):
+            day["profile"] = {"poc": found.get("poc_mid", found["poc"]), "vah": found["vah"], "val": found["val"], "step": found["step"]}
+            replaced.append(key)
+    return replaced
+
+
+def build_session_map(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | None = None,
+                      profiles: Sequence[Mapping[str, Any]] | None = None) -> dict[str, Any]:
+    """Everything the preparation page shows, as JSON-ready data.
+
+    ``profiles`` (``footprint_data.volume_profiles`` of TIM's trade store) replaces the candle-estimated
+    day profiles for display. The plan journals call this without it, so their frozen rules keep the estimate.
+    """
     now = now or datetime.now(timezone.utc)
     hours = clean_candles(series.get("1h") or [], "1h")
     base_tf = "30m" if series.get("30m") else "15m"
@@ -368,6 +391,12 @@ def build_session_map(series: Mapping[str, Sequence[Mapping[str, Any]]], now: da
     model["htf"]["1M"] = structure([c for c in clean_candles(series.get("1M") or [], "1M") if c["close_time"] <= now])
 
     days = _periods(quarter, lambda moment: _utc(moment).date(), 48 if base_tf == "30m" else 96)
+    real_days = real_day_profiles(days, profiles)
+    # "echte Trades" only when the prior day, which the value area and the location read, came from the store.
+    prior_key = (_utc(now).date() - timedelta(days=1)).isoformat()
+    model["profile_source"] = "echte Trades" if prior_key in real_days else "Kerzen-Schätzung"
+    if real_days:
+        model["provenance"] = "PUBLIC_MARKET_DATA (Binance Spot, TIM-Runtime); Tagesprofile aus TIMs Trades, Wochenprofile aus Kerzen geschätzt"
     today_date = _utc(now).date()
     previous = [d for d in days if d["period"] < today_date and d["complete"]]
     today = next((d for d in days if d["period"] == today_date), None)
@@ -403,7 +432,8 @@ def build_session_map(series: Mapping[str, Sequence[Mapping[str, Any]]], now: da
         "playbook": value_playbook(context, model["previous_day"], nakeds, last,
                                    prev_day["period"].isoformat() if prev_day else None),
         "confirmation": CONFIRMATION_TEXT,
-        "source": "Reel tradingelder 'Volume profile + orderflow' (Uzi 03.11.2026); Profile aus Kerzen geschätzt, UTC-Tag statt RTH",
+        "source": "Reel tradingelder 'Volume profile + orderflow' (Uzi 03.11.2026); "
+                  + ("Tagesprofile aus TIMs Trades" if real_days else "Profile aus Kerzen geschätzt") + ", UTC-Tag statt RTH",
     }
 
     levels: list[dict[str, Any]] = []

@@ -88,6 +88,21 @@ class Config:
     # Funding per 8-h mark (00, 08, 16 UTC) a trade is open across, share of the entry price, charged in both
     # directions (a short is never credited: stricter than reality). 0 = OF2 1.0 (trades there end within 24 h).
     funding_per_8h: float = 0.0
+    # Multi-day balance filter (Fabervaale video 16.11.2026, plan package P4). False = OF2 1.0. True: fade models
+    # (M1, M3, M4, M6, M7) never trade against an imbalance of the last days or against yesterday's acceptance
+    # beyond the joint value of ``bias_days`` days ("once value is accepted below, buying is not the way");
+    # continuation models (M2, M5) never trade against an imbalance. All values PROVISORISCH, training only.
+    balance_filter: bool = False
+    balance_days: int = 3            # value areas compared for BALANCE
+    balance_overlap: float = 0.5     # minimum overlap of consecutive value areas (share of the narrower one)
+    bias_days: int = 2               # days whose value areas form the joint value for the acceptance bias
+    # M8 transition candle + retest (plan package P3). False = OF2 1.0. All values PROVISORISCH, training only.
+    m8: bool = False
+    m8_balance: int = 16             # closed 15m candles that form the balance (4 h)
+    m8_range_max: float = 0.03       # balance range <= 3 % of price (wider than intraday noise, stop must pass the cost gate)
+    m8_stop_depth: float = 0.5       # stop this share of the range back inside (0 = at the edge)
+    m8_retest: int = 8               # the limit rests for 8 candles (2 h)
+    m8_void_max: float = 0.5         # volume per bin between entry and target <= 0,5 x the day's mean
     # Study window (UTC days, inclusive). Holdout 2025 is refused by the store before any byte is read.
     first_day: str = "2020-01-01"
     training_end: str = "2022-12-31"
@@ -116,6 +131,12 @@ class Config:
                 del d[name]
         if not d["funding_per_8h"]:
             del d["funding_per_8h"]
+        if not d["balance_filter"]:   # off: OF2 1.0 digest unchanged
+            for name in ("balance_filter", "balance_days", "balance_overlap", "bias_days"):
+                del d[name]
+        if not d["m8"]:   # off: OF2 1.0 digest unchanged
+            for name in [k for k in d if k.startswith("m8")]:
+                del d[name]
         return d
 
     def hold_limit_minutes(self, tf: int) -> int:
@@ -129,6 +150,8 @@ class Config:
     def __post_init__(self) -> None:
         if self.swing_tf not in (0, 240, 1440) or self.swing_level not in ("W", "M"):
             raise ValueError("swing_tf must be 0, 240 or 1440 and swing_level W or M")
+        if self.balance_filter and not (2 <= self.balance_days <= self.npoc_days + 2 and 1 <= self.bias_days <= self.npoc_days + 2):
+            raise ValueError("balance_days must be 2..npoc_days+2 and bias_days 1..npoc_days+2 (the engine keeps that many days)")
 
     def digest(self) -> str:
         """SHA-256 over the frozen parameter set; written into every result file."""

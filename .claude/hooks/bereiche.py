@@ -32,7 +32,7 @@ AREAS = {
     "bereich-chart-link": ("chart", "link", "tim-online", "volume profile", "vp", "footprint", "gamma", "gex", "wall",
                            "poc", "vah", "val", "heatmap", "tpo", "dashboard", "journal"),
     "bereich-echtgeld": ("echtgeld", "kraken", "live-trader", "echt traden", "position", "order", "trade", "$", "dollar"),
-    "bereich-allgemein": ("plan", "gesamtplan", "broncx", "goathub", "discord", "telegram", "gutachten", "obsidian"),
+    "bereich-allgemein": ("plan", "gesamtplan", "mentor", "signalgruppe", "discord", "telegram", "gutachten", "obsidian"),
 }
 
 

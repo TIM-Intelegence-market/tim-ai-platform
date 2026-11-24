@@ -44,7 +44,7 @@ Journal-Einträge behalten ihre Version.
 
 Die Äquivalenztabelle `RULE_EQUIVALENCES` ist leer. Grund: Die Pipeline-Szenarien
 (`BREAKOUT_ACCEPTANCE`, `REJECTION_FAILED_BREAKOUT`, …) entstehen aus anderen Regeln als die
-registrierten Strategien T1–T3 (`BOSDetector`, `BroncxRules`). Namensähnlichkeit ist keine Äquivalenz;
+registrierten Strategien T1–T3 (`BOSDetector`, `MentorRules`). Namensähnlichkeit ist keine Äquivalenz;
 `entry_model` erzeugt nie eine Zuordnung. Jede Zuordnung wird als Codeänderung mit Test und
 neuer `EVIDENCE_MAPPING_VERSION` eingetragen. Jeder Status trägt `register_head_hash`,
 `register_events`, `mapping_version` und `protocol_version`. Eine gebrochene Hash-Kette des Registers

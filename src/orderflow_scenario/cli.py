@@ -22,8 +22,8 @@ from .config import default_config
 from .domain import MarketContext
 from .schema_validation import validate_analysis
 from .setup_draft import build_setup_draft
-from src.knowledge.broncx_feed import BroncxFeedStore
-from src.knowledge.goathub_feed import GoatHubFeedStore
+from src.knowledge.mentor_feed import MentorFeedStore
+from src.knowledge.signalgruppe_feed import SignalgruppeFeedStore
 from src.market_data.providers.openmarket.errors import OpenMarketError
 
 
@@ -207,10 +207,10 @@ def main(argv: list[str] | None = None) -> int:
     footprint.add_argument("--download", action="store_true", help="download missing archive days from data.binance.vision (not reachable from the cloud)")
     footprint.add_argument("--database-url", default=None, help="PostgreSQL URL for --footprint-source db (default: TIM settings)")
     parser.add_argument("--validate", action="store_true", help="also print schema validation status")
-    parser.add_argument("--broncx-feed", type=Path, default=None, help="Broncx Discord feed directory (external guidance: weights scenario scores, adds level scenarios, never confirms)")
-    parser.add_argument("--broncx-max-age-hours", type=float, default=24.0, help="Broncx posts older than this are shown as stale and not used")
-    parser.add_argument("--goathub-feed", type=Path, default=None, help="GoatHub community feed directory (good calls shown in the report; no score weight, never confirms)")
-    parser.add_argument("--goathub-max-age-hours", type=float, default=24.0, help="GoatHub calls older than this are not shown")
+    parser.add_argument("--mentor-feed", type=Path, default=None, help="Mentor Discord feed directory (external guidance: weights scenario scores, adds level scenarios, never confirms)")
+    parser.add_argument("--mentor-max-age-hours", type=float, default=24.0, help="Mentor posts older than this are shown as stale and not used")
+    parser.add_argument("--signalgruppe-feed", type=Path, default=None, help="Signalgruppe community feed directory (good calls shown in the report; no score weight, never confirms)")
+    parser.add_argument("--signalgruppe-max-age-hours", type=float, default=24.0, help="Signalgruppe calls older than this are not shown")
     parser.add_argument("--setup-draft", type=Path, default=None, help="write a Discord-ready setup draft (text only, TIM never posts it) to this file")
     args = parser.parse_args(argv)
 
@@ -262,25 +262,25 @@ def main(argv: list[str] | None = None) -> int:
                     + json.dumps({"missing_fields": list(evidence.missing_fields), "notes": list(evidence.extra_notes)}, sort_keys=True)
                     + "\n"
                 )
-        if args.broncx_feed is not None:
-            if args.broncx_max_age_hours <= 0:
-                raise ValueError("--broncx-max-age-hours must be positive")
-            if not args.broncx_feed.expanduser().is_dir():
-                raise ValueError(f"--broncx-feed directory not found: {args.broncx_feed}")
+        if args.mentor_feed is not None:
+            if args.mentor_max_age_hours <= 0:
+                raise ValueError("--mentor-max-age-hours must be positive")
+            if not args.mentor_feed.expanduser().is_dir():
+                raise ValueError(f"--mentor-feed directory not found: {args.mentor_feed}")
             pipeline_inputs = dataclasses.replace(
                 pipeline_inputs,
-                external_posts=tuple(BroncxFeedStore(args.broncx_feed.expanduser()).load()),
-                external_max_age=timedelta(hours=args.broncx_max_age_hours),
+                external_posts=tuple(MentorFeedStore(args.mentor_feed.expanduser()).load()),
+                external_max_age=timedelta(hours=args.mentor_max_age_hours),
             )
-        if args.goathub_feed is not None:
-            if args.goathub_max_age_hours <= 0:
-                raise ValueError("--goathub-max-age-hours must be positive")
-            if not args.goathub_feed.expanduser().is_dir():
-                raise ValueError(f"--goathub-feed directory not found: {args.goathub_feed}")
+        if args.signalgruppe_feed is not None:
+            if args.signalgruppe_max_age_hours <= 0:
+                raise ValueError("--signalgruppe-max-age-hours must be positive")
+            if not args.signalgruppe_feed.expanduser().is_dir():
+                raise ValueError(f"--signalgruppe-feed directory not found: {args.signalgruppe_feed}")
             pipeline_inputs = dataclasses.replace(
                 pipeline_inputs,
-                community_messages=tuple(GoatHubFeedStore(args.goathub_feed.expanduser()).load()),
-                community_max_age=timedelta(hours=args.goathub_max_age_hours),
+                community_messages=tuple(SignalgruppeFeedStore(args.signalgruppe_feed.expanduser()).load()),
+                community_max_age=timedelta(hours=args.signalgruppe_max_age_hours),
             )
         analysis = Pipeline(default_config()).run(pipeline_inputs)
         output = analysis.to_dict()

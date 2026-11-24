@@ -1,0 +1,438 @@
+"""Signalgruppe community feed: store, call grading, memory export, Discord reader and TIM report.
+
+Message texts here are test fixtures, not real Signalgruppe posts.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from pathlib import Path
+
+import pytest
+
+from config.secrets import SecretValue
+from src.knowledge.signalgruppe_feed import (
+    SignalgruppeFeedStore,
+    SignalgruppeMessage,
+    extract_call,
+    good_calls,
+    render_summary_markdown,
+    write_memory_export,
+)
+from src.models.market_data import Candle
+from src.orderflow_scenario.domain import MarketContext
+from src.orderflow_scenario.engines.pipeline import Pipeline, PipelineInputs
+from src.orderflow_scenario.report import build_report
+from src.orderflow_scenario.schema_validation import validate_analysis
+from src.sources.mentor_discord import DiscordFeedError
+from src.sources.signalgruppe_discord import SignalgruppeChannel, SignalgruppeConfig, SignalgruppeReader, message_to_signalgruppe
+
+NOW = datetime(2026, 10, 12, 12, 0, tzinfo=timezone.utc)
+CHANNEL = "123456789012345678"
+OWNER = "223456789012345678"
+MEMBER = "323456789012345678"
+
+
+def message(message_id: str, content: str, posted_at: datetime = NOW - timedelta(hours=2), **extra) -> SignalgruppeMessage:
+    return SignalgruppeMessage(message_id=message_id, channel_id=CHANNEL, posted_at=posted_at, content=content,
+                          received_at=posted_at, author_id=MEMBER, author_name="trader1", channel_name="calls", **extra)
+
+
+def candle(index: int, close: float) -> Candle:
+    open_time = NOW - timedelta(minutes=15 * (60 - index))
+    return Candle(symbol="BTCUSDT", timeframe="15m", open_time=open_time, close_time=open_time + timedelta(minutes=15),
+                  open=close, high=close + 20, low=close - 20, close=close, volume=100.0, trade_count=1000)
+
+
+def pipeline_inputs(**extra) -> PipelineInputs:
+    candles = tuple(candle(i, 84000 - i * 12) for i in range(60))
+    return PipelineInputs(
+        market_context=MarketContext(symbol="BTCUSDT", venue="BINANCE", market_type="FUTURES", timeframe="15m", timestamp=NOW),
+        candles=candles, price_now=Decimal(str(candles[-1].close)), price_timestamp=NOW,
+        net_delta=Decimal("120"), aggressive_buy_volume=Decimal("400"), aggressive_sell_volume=Decimal("520"),
+        total_volume=Decimal("920"), open_interest_with_price="RISING_WITH_PRICE_DOWN", source_name="TEST",
+        observed_at=NOW, **extra,
+    )
+
+
+# --- grading -----------------------------------------------------------------------------------
+
+def test_call_grades_follow_completeness() -> None:
+    full = extract_call(message("1", "btc short from 83800, tp 82000, invalid above 84500"), Decimal("83300"))
+    assert full is not None and full.grade == "A" and full.is_good
+    no_stop = extract_call(message("2", "btc long 83000 tp 85k"), Decimal("83300"))
+    assert no_stop is not None and no_stop.grade == "B"
+    no_symbol = extract_call(message("3", "shorting here, tp 82000"), Decimal("83300"))
+    assert no_symbol is not None and no_symbol.grade == "C" and not no_symbol.is_good
+
+
+def test_conversation_and_closed_positions_are_no_calls() -> None:
+    assert extract_call(message("1", "gm everyone")) is None
+    assert extract_call(message("2", "closed my short on btc at 82000")) is None
+    assert extract_call(message("3", "btc short squeeze incoming")) is None
+
+
+def test_good_calls_never_use_messages_from_after_the_analysis() -> None:
+    late = message("9", "btc short 83800 invalid above 84500", posted_at=NOW + timedelta(minutes=5))
+    old = message("8", "btc short 83800 invalid above 84500", posted_at=NOW - timedelta(days=3))
+    fresh = message("7", "btc long 83000 invalid below 82500")
+    found = good_calls([late, old, fresh], observed_at=NOW, max_age=timedelta(hours=24))
+    assert [call.message.message_id for call in found] == ["7"]
+
+
+# --- storage and export ------------------------------------------------------------------------
+
+def test_store_is_idempotent_per_channel_and_keeps_cursors(tmp_path: Path) -> None:
+    store = SignalgruppeFeedStore(tmp_path)
+    assert store.append(message("1", "hello")) is True
+    assert SignalgruppeFeedStore(tmp_path).append(message("1", "hello")) is False
+    with store.messages_path.open("a", encoding="utf-8") as stream:
+        stream.write('{"message_id": "torn')
+    assert [item.message_id for item in SignalgruppeFeedStore(tmp_path).load()] == ["1"]
+    store.set_cursor(CHANNEL, "5")
+    store.set_cursor("923456789012345678", "7")
+    assert SignalgruppeFeedStore(tmp_path).cursors() == {CHANNEL: "5", "923456789012345678": "7"}
+
+
+def test_memory_export_holds_every_message_verbatim(tmp_path: Path) -> None:
+    store = SignalgruppeFeedStore(tmp_path / "feed")
+    texts = ["gm", "btc short from 83800, tp 82000, invalid above 84500", "line one\n\nline two"]
+    for index, text in enumerate(texts):
+        store.append(message(str(index + 1), text, posted_at=NOW - timedelta(hours=3 - index)))
+    written = write_memory_export(store, [tmp_path / "a", tmp_path / "b"], generated_at=NOW)
+    assert len(written) == 6
+    full = (tmp_path / "a" / "SIGNALGRUPPE_KANAL.md").read_text(encoding="utf-8")
+    for text in texts:
+        for line in text.splitlines():
+            assert line in full
+    assert "## #calls" in full and "| trader1 | A |" in full
+    calls = json.loads((tmp_path / "b" / "signalgruppe_calls.json").read_text(encoding="utf-8"))
+    assert calls["messages"] == 3 and [call["message_id"] for call in calls["calls"]] == ["2"]
+    assert len((tmp_path / "a" / "SIGNALGRUPPE_KURZ.md").read_bytes()) < 4096
+
+
+def test_summary_stays_under_the_memory_limit() -> None:
+    messages = [message(str(index), f"btc short {83000 + index} invalid above 85000 " + "x" * 200) for index in range(200)]
+    summary = render_summary_markdown(messages, NOW, "/x/SIGNALGRUPPE_KANAL.md")
+    assert len(summary.encode("utf-8")) <= 3800 and "200 Nachrichten" in summary
+
+
+# --- Discord reader ----------------------------------------------------------------------------
+
+class FakeDiscord:
+    def __init__(self, responses: list[tuple[int, object, dict]]) -> None:
+        self.responses = responses
+        self.urls: list[str] = []
+
+    def __call__(self, url: str, headers: dict[str, str]):
+        self.urls.append(url)
+        return self.responses.pop(0)
+
+
+def discord_message(message_id: int, author: str, content: str, *, bot: bool = False, reactions: int = 0) -> dict:
+    return {"id": str(message_id), "timestamp": "2026-10-12T10:00:00+00:00", "content": content,
+            "author": {"id": author, "username": "member", "global_name": "Member One", "bot": bot},
+            "reactions": [{"count": reactions, "emoji": {"name": "fire"}}] if reactions else []}
+
+
+def reader(tmp_path: Path, fake: FakeDiscord, mode: str = "direct") -> SignalgruppeReader:
+    config = SignalgruppeConfig((SignalgruppeChannel(CHANNEL, "calls"),), mode, frozenset({OWNER}) if mode == "forward" else frozenset())
+    return SignalgruppeReader(SecretValue("test-secret"), config, SignalgruppeFeedStore(tmp_path), http_get=fake, clock=lambda: NOW, sleep=lambda _: None)
+
+
+def test_direct_mode_reads_whole_history_page_by_page(tmp_path: Path) -> None:
+    first_page = [discord_message(100000000000000000 + index, MEMBER, f"msg {index}") for index in range(100)]
+    second_page = [discord_message(200000000000000000, MEMBER, "btc short 83800 invalid above 84500", reactions=4),
+                   discord_message(200000000000000001, "999999999999999999", "bot says hi", bot=True)]
+    fake = FakeDiscord([(200, first_page, {}), (200, second_page, {})])
+    result = reader(tmp_path, fake).sync()[0]
+    assert (result.fetched, result.stored, result.rejected_author, result.complete) == (102, 101, 1, True)
+    assert "after=0&" in fake.urls[0] and "after=100000000000000099&" in fake.urls[1]
+    stored = SignalgruppeFeedStore(tmp_path).load()
+    assert stored[-1].author_name == "Member One" and stored[-1].reactions == 4
+    # The next sync starts at the cursor and stores nothing twice.
+    fake.responses = [(200, [], {})]
+    again = reader(tmp_path, fake).sync()[0]
+    assert again.stored == 0 and "after=200000000000000001&" in fake.urls[-1]
+
+
+def test_forward_mode_only_accepts_the_owner(tmp_path: Path) -> None:
+    forward = {"id": "300000000000000001", "timestamp": "2026-10-12T11:00:00+00:00", "content": "", "author": {"id": OWNER},
+               "message_reference": {"type": 1, "message_id": "300000000000000000"},
+               "message_snapshots": [{"message": {"content": "btc long 83000", "timestamp": "2026-10-12T10:59:00+00:00"}}]}
+    fake = FakeDiscord([(200, [forward, discord_message(300000000000000002, MEMBER, "spam")], {})])
+    result = reader(tmp_path, fake, mode="forward").sync()[0]
+    assert (result.stored, result.rejected_author) == (1, 1)
+    stored = SignalgruppeFeedStore(tmp_path).load()[0]
+    assert stored.message_id == "300000000000000000" and stored.author_label.startswith("weitergeleitet")
+
+
+def test_reader_errors_never_contain_the_secret(tmp_path: Path) -> None:
+    fake = FakeDiscord([(401, {}, {})])
+    with pytest.raises(DiscordFeedError) as error:
+        reader(tmp_path, fake).sync()
+    assert "test-secret" not in str(error.value)
+
+
+def test_config_validation(tmp_path: Path) -> None:
+    with pytest.raises(DiscordFeedError):
+        SignalgruppeConfig((SignalgruppeChannel(CHANNEL),), "forward", frozenset())
+    with pytest.raises(DiscordFeedError):
+        SignalgruppeChannel("general")
+    with pytest.raises(DiscordFeedError):
+        SignalgruppeConfig((SignalgruppeChannel(OWNER),), "forward", frozenset({OWNER}))
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"channels": [{"id": CHANNEL, "name": "calls"}], "mode": "direct"}), encoding="utf-8")
+    assert SignalgruppeConfig.load(path).channels[0].name == "calls"
+
+
+def test_typed_message_without_text_or_files_is_skipped() -> None:
+    assert message_to_signalgruppe(discord_message(1, MEMBER, "  "), SignalgruppeChannel(CHANNEL), NOW) is None
+
+
+# --- TIM report --------------------------------------------------------------------------------
+
+def test_community_calls_are_shown_but_change_nothing() -> None:
+    calls = (message("1", "btc short from 83800, tp 82000, invalid above 84500"), message("2", "eth long 2500 invalid below 2400"))
+    baseline = Pipeline().run(pipeline_inputs())
+    with_calls = Pipeline().run(pipeline_inputs(community_messages=calls))
+    before, after = baseline.to_dict(), with_calls.to_dict()
+    for key in ("decision", "orderflow", "market_state", "data_quality", "scenarios"):
+        assert after[key] == before[key], key
+    engine = next(item["result"] for item in after["audit"]["engines"] if item["engine"] == "community_calls")
+    assert engine["influences_scores"] is False and engine["source_class"] == "HUMAN_COMMUNITY_TRADING_RESEARCH" and [entry["message_id"] for entry in engine["entries"]] == ["1"]
+    assert {level["level"] for level in engine["entries"][0]["levels"]} >= {"83800", "82000"}
+    assert validate_analysis(after)[0]
+    report = build_report(with_calls)
+    assert "HUMAN-COMMUNITY-TRADING-RESEARCH (Signalgruppe" in report and "trader1 [A] SHORT BTC" in report
+
+
+def test_cli_reads_the_signalgruppe_directory(tmp_path: Path, capsys, monkeypatch) -> None:
+    from src.orderflow_scenario import cli
+
+    store = SignalgruppeFeedStore(tmp_path / "feed")
+    store.append(message("1", "btc short from 83800, invalid above 84500"))
+    source = tmp_path / "input.json"
+    source.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(cli, "_pipeline_inputs", lambda adapter, data: pipeline_inputs())
+    assert cli.main(["--input", str(source), "--signalgruppe-feed", str(store.root)]) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert any(item["engine"] == "community_calls" for item in output["audit"]["engines"])
+    assert cli.main(["--input", str(source), "--signalgruppe-feed", str(tmp_path / "typo")]) == 2
+    assert cli.main(["--input", str(source), "--signalgruppe-feed", str(store.root), "--signalgruppe-max-age-hours", "0"]) == 2
+
+
+def test_bot_export_command_writes_files(tmp_path: Path) -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("signalgruppe_discord_bot", Path(__file__).resolve().parents[1] / "scripts/signalgruppe_discord_bot.py")
+    bot = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bot)
+    SignalgruppeFeedStore(tmp_path / "feed").append(message("1", "gm"))
+    assert bot.main(["export", "--feed-dir", str(tmp_path / "feed"), "--memory-dir", str(tmp_path / "vault")]) == 0
+    assert (tmp_path / "feed" / "memory" / "SIGNALGRUPPE_KANAL.md").exists() and (tmp_path / "vault" / "SIGNALGRUPPE_KURZ.md").exists()
+
+
+def test_followed_announcement_channel_posts_are_accepted(tmp_path: Path) -> None:
+    crosspost = {"id": "400000000000000001", "timestamp": "2026-10-12T11:00:00+00:00", "content": "btc short 83800 invalid above 84500",
+                 "author": {"id": "400000000000000009", "username": "Gruppe #calls", "bot": True},
+                 "webhook_id": "400000000000000009", "flags": 2,
+                 "message_reference": {"channel_id": "500000000000000000", "guild_id": "600000000000000000", "message_id": "700000000000000000"}}
+    plain_bot = {**discord_message(400000000000000002, "400000000000000008", "bot noise", bot=True)}
+    fake = FakeDiscord([(200, [crosspost, plain_bot], {})])
+    result = reader(tmp_path, fake, mode="forward").sync()[0]
+    assert (result.stored, result.rejected_author) == (1, 1)
+    stored = SignalgruppeFeedStore(tmp_path).load()[0]
+    assert stored.source == "discord_follow" and stored.message_id == "700000000000000000"
+    assert stored.author_label == "Gruppe #calls"
+
+
+def test_screen_readings_import_once(tmp_path: Path) -> None:
+    from src.knowledge.signalgruppe_feed import import_screen_readings
+
+    store = SignalgruppeFeedStore(tmp_path)
+    payload = [{"channel_id": "kanal-3", "channel_name": "kanal-3", "author": "Autor B",
+                "posted_at": "2026-10-12T14:47:00+00:00", "content": "btc long 83000 invalid below 82000"}]
+    assert import_screen_readings(store, payload, NOW) == (1, 0)
+    assert import_screen_readings(store, payload, NOW) == (0, 1)
+    stored = SignalgruppeFeedStore(tmp_path).load()[0]
+    assert stored.source == "discord_screen" and stored.author_label == "Autor B"
+    with pytest.raises(ValueError):
+        import_screen_readings(store, [{**payload[0], "posted_at": "2026-10-12T14:47:00"}], NOW)
+
+
+@pytest.mark.parametrize(("text", "grade", "symbol", "levels"), [
+    ("Risky trade:\n\nLong HNT from here with SL 0.5\n5% of account", "B", "HNT", [("STOP", "0.5")]),
+    ("Gonna open a long on movr, with 0.5% of my account. SL on 1.5$", "B", "MOVR", [("STOP", "1.5")]),
+    ("Pull SL little lower to 0.48, long HNT", "B", "HNT", [("STOP", "0.48")]),
+    ("Risky plays: buy now, for 2-5% of account per coin, then buy 0.5-1% each 5% dip.\nNear\nFet\nSol\nBtc", "C", None, []),
+])
+def test_community_calls_name_any_coin_and_ignore_sizes(text: str, grade: str, symbol: str | None, levels: list) -> None:
+    call = extract_call(message("1", text))
+    assert call is not None and call.grade == grade
+    assert call.guidance.symbol == symbol
+    assert [(level.role, str(level.value)) for level in call.guidance.levels] == levels
+
+
+# --- channel roles (calls vs. knowledge only) ---------------------------------------------------
+
+KNOWLEDGE_CHANNEL = "133456789012345678"
+
+
+def test_knowledge_channel_messages_are_stored_but_never_calls(tmp_path: Path) -> None:
+    config = SignalgruppeConfig((SignalgruppeChannel(CHANNEL, "market-updates"), SignalgruppeChannel(KNOWLEDGE_CHANNEL, "education", "knowledge")), "direct")
+    text = "btc short from 83800, tp 82000, invalid above 84500"
+    fake = FakeDiscord([(200, [discord_message(300000000000000001, MEMBER, text)], {}),
+                        (200, [discord_message(300000000000000002, MEMBER, text)], {})])
+    SignalgruppeReader(SecretValue("test-secret"), config, SignalgruppeFeedStore(tmp_path), http_get=fake, clock=lambda: NOW, sleep=lambda _: None).sync()
+    stored = {item.channel_id: item for item in SignalgruppeFeedStore(tmp_path).load()}
+    assert stored[KNOWLEDGE_CHANNEL].channel_role == "knowledge" and stored[CHANNEL].channel_role == "calls"
+    assert extract_call(stored[KNOWLEDGE_CHANNEL], Decimal("83300")) is None
+    assert [call.message.channel_id for call in good_calls(stored.values(), reference_price=Decimal("83300"))] == [CHANNEL]
+    export = write_memory_export(SignalgruppeFeedStore(tmp_path), [tmp_path / "memory"])
+    full = next(path for path in export if path.name == "SIGNALGRUPPE_KANAL.md").read_text(encoding="utf-8")
+    assert "#education (nur Wissen, keine Calls)" in full and "1 gute Calls" in full
+
+
+def test_channel_role_is_validated_and_round_trips(tmp_path: Path) -> None:
+    with pytest.raises(DiscordFeedError):
+        SignalgruppeChannel(CHANNEL, "x", "signals")
+    path = tmp_path / "config.json"
+    config = SignalgruppeConfig((SignalgruppeChannel(CHANNEL, "a"), SignalgruppeChannel(KNOWLEDGE_CHANNEL, "b", "knowledge")), "direct")
+    path.write_text(json.dumps(config.to_dict()), encoding="utf-8")
+    assert SignalgruppeConfig.load(path) == config
+    path.write_text(json.dumps({"mode": "direct", "channels": [{"id": CHANNEL, "name": "old"}]}), encoding="utf-8")
+    assert SignalgruppeConfig.load(path).channels[0].role == "calls"  # configs from before roles keep reading calls
+
+
+def test_stored_lines_without_or_with_unknown_role_load_safely(tmp_path: Path) -> None:
+    store = SignalgruppeFeedStore(tmp_path)
+    tmp_path.mkdir(exist_ok=True)
+    base = message("1", "btc short from 83800, tp 82000, invalid above 84500").to_dict()
+    legacy = {key: value for key, value in base.items() if key != "channel_role"}
+    odd = {**base, "message_id": "2", "channel_role": "signals"}
+    store.messages_path.write_text(json.dumps(legacy) + "\n" + json.dumps(odd) + "\n", encoding="utf-8")
+    roles = {item.message_id: item.channel_role for item in store.load()}
+    assert roles == {"1": "calls", "2": "knowledge"}  # an unknown role never becomes a call
+    with pytest.raises(ValueError):
+        message("3", "gm", channel_role="signals")
+
+
+def test_bot_setup_marks_knowledge_only_channels(tmp_path: Path, capsys) -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("signalgruppe_discord_bot", Path(__file__).resolve().parents[1] / "scripts/signalgruppe_discord_bot.py")
+    bot = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bot)
+    config = tmp_path / "signalgruppe.json"
+    common = ["setup", "--config", str(config), "--secret-file", str(tmp_path / "secret")]
+    answers = iter([f"{CHANNEL}=market-updates, {KNOWLEDGE_CHANNEL}=education", "", KNOWLEDGE_CHANNEL, "direct", ""])
+    assert bot.main(common, ask=lambda _: next(answers)) == 0
+    roles = {channel.channel_id: channel.role for channel in SignalgruppeConfig.load(config).channels}
+    assert roles == {CHANNEL: "calls", KNOWLEDGE_CHANNEL: "knowledge"}
+    assert "knowledge_only=1" in capsys.readouterr().out
+    typo = iter([f"{CHANNEL}=market-updates", "", "999999999999999999", "direct", ""])
+    assert bot.main(common, ask=lambda _: next(typo)) != 0
+
+
+def test_switching_a_synced_channel_to_knowledge_covers_its_stored_messages(tmp_path: Path) -> None:
+    text = "btc short from 83800, tp 82000, invalid above 84500"
+    first = FakeDiscord([(200, [discord_message(300000000000000001, MEMBER, text)], {})])
+    calls_config = SignalgruppeConfig((SignalgruppeChannel(KNOWLEDGE_CHANNEL, "education"),), "direct")
+    SignalgruppeReader(SecretValue("s"), calls_config, SignalgruppeFeedStore(tmp_path), http_get=first, clock=lambda: NOW, sleep=lambda _: None).sync()
+    assert len(good_calls(SignalgruppeFeedStore(tmp_path).load(), reference_price=Decimal("83300"))) == 1
+    SignalgruppeFeedStore(tmp_path).set_cursor(CHANNEL, "1")  # other state survives role writes
+    second = FakeDiscord([(200, [], {})])
+    knowledge_config = SignalgruppeConfig((SignalgruppeChannel(KNOWLEDGE_CHANNEL, "education", "knowledge"),), "direct")
+    SignalgruppeReader(SecretValue("s"), knowledge_config, SignalgruppeFeedStore(tmp_path), http_get=second, clock=lambda: NOW, sleep=lambda _: None).sync()
+    store = SignalgruppeFeedStore(tmp_path)
+    assert good_calls(store.load(), reference_price=Decimal("83300")) == []
+    assert store.cursors() == {KNOWLEDGE_CHANNEL: "300000000000000001", CHANNEL: "1"}
+    assert second.urls[0].endswith("after=300000000000000001&limit=100")
+
+
+def test_screen_import_keeps_knowledge_messages_out_of_the_calls(tmp_path: Path) -> None:
+    from src.knowledge.signalgruppe_feed import import_screen_readings
+
+    store = SignalgruppeFeedStore(tmp_path)
+    payload = [{"channel_id": "education", "channel_name": "education", "author": "teacher", "channel_role": "knowledge",
+                "posted_at": "2026-10-12T10:00:00+00:00", "content": "Long BTC at 60000, SL 58000"}]
+    assert import_screen_readings(store, payload, NOW) == (1, 0)
+    assert good_calls(SignalgruppeFeedStore(tmp_path).load()) == []
+    other = [{**payload[0], "channel_id": "edu2", "channel_role": ""}]
+    store.set_channel_role("edu2", "knowledge")  # a channel known as knowledge from a sync
+    import_screen_readings(store, other, NOW)
+    assert good_calls(SignalgruppeFeedStore(tmp_path).load()) == []
+
+
+
+# --- categories (a Discord category stands for all its text channels) ------------------------------
+
+CATEGORY = "143456789012345678"
+EDU_CATEGORY = "153456789012345678"
+GUILD = "163456789012345678"
+
+
+def guild_channels() -> list[dict]:
+    return [
+        {"id": CATEGORY, "type": 4, "name": "MARKET UPDATES"},
+        {"id": "173456789012345678", "type": 0, "name": "btc-updates", "parent_id": CATEGORY, "position": 2},
+        {"id": "183456789012345678", "type": 5, "name": "announcements", "parent_id": CATEGORY, "position": 1},
+        {"id": "193456789012345678", "type": 2, "name": "voice", "parent_id": CATEGORY, "position": 3},
+        {"id": "203456789012345678", "type": 15, "name": "forum", "parent_id": CATEGORY, "position": 4},
+        {"id": "213456789012345678", "type": 0, "name": "lesson-1", "parent_id": EDU_CATEGORY, "position": 1},
+        {"id": "223456789012345679", "type": 0, "name": "general", "parent_id": None, "position": 0},
+    ]
+
+
+def test_category_expands_to_its_text_channels_with_the_category_role(tmp_path: Path) -> None:
+    config = SignalgruppeConfig((SignalgruppeChannel(CATEGORY, "market updates", kind="category"),
+                            SignalgruppeChannel(EDU_CATEGORY, "education", "knowledge", kind="category"),
+                            SignalgruppeChannel("173456789012345678", "btc-updates", "knowledge")), "direct")
+    fake = FakeDiscord([(200, {"id": CATEGORY, "type": 4, "guild_id": GUILD}, {}), (200, guild_channels(), {}),
+                        (200, {"id": EDU_CATEGORY, "type": 4, "guild_id": GUILD}, {}), (200, guild_channels(), {})])
+    channels = SignalgruppeReader(SecretValue("s"), config, SignalgruppeFeedStore(tmp_path), http_get=fake, clock=lambda: NOW, sleep=lambda _: None).resolve_channels()
+    assert [(item.channel_id, item.name, item.role) for item in channels] == [
+        ("173456789012345678", "btc-updates", "knowledge"),  # an explicit entry wins over its category
+        ("183456789012345678", "announcements", "calls"),
+        ("213456789012345678", "lesson-1", "knowledge"),
+    ]
+    assert fake.urls[1].endswith(f"/guilds/{GUILD}/channels")
+
+
+def test_category_sync_reads_each_child_and_stores_its_role(tmp_path: Path) -> None:
+    config = SignalgruppeConfig((SignalgruppeChannel(EDU_CATEGORY, "education", "knowledge", kind="category"),), "direct")
+    text = "btc short from 83800, tp 82000, invalid above 84500"
+    fake = FakeDiscord([(200, {"id": EDU_CATEGORY, "type": 4, "guild_id": GUILD}, {}), (200, guild_channels(), {}),
+                        (200, [discord_message(310000000000000001, MEMBER, text)], {})])
+    results = SignalgruppeReader(SecretValue("s"), config, SignalgruppeFeedStore(tmp_path), http_get=fake, clock=lambda: NOW, sleep=lambda _: None).sync()
+    assert [(item.channel_id, item.stored) for item in results] == [("213456789012345678", 1)]
+    stored = SignalgruppeFeedStore(tmp_path).load()
+    assert stored[0].channel_name == "lesson-1" and stored[0].channel_role == "knowledge"
+    assert good_calls(stored, reference_price=Decimal("83300")) == []
+
+
+def test_a_plain_channel_id_given_as_category_is_refused(tmp_path: Path) -> None:
+    config = SignalgruppeConfig((SignalgruppeChannel(CHANNEL, "oops", kind="category"),), "direct")
+    fake = FakeDiscord([(200, {"id": CHANNEL, "type": 0, "guild_id": GUILD}, {})])
+    reader_ = SignalgruppeReader(SecretValue("s"), config, SignalgruppeFeedStore(tmp_path), http_get=fake, clock=lambda: NOW, sleep=lambda _: None)
+    with pytest.raises(DiscordFeedError, match="not a category"):
+        reader_.resolve_channels()
+    with pytest.raises(DiscordFeedError):
+        SignalgruppeChannel(CHANNEL, "x", kind="folder")
+
+
+def test_bot_setup_stores_categories_and_round_trips(tmp_path: Path, capsys) -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("signalgruppe_discord_bot", Path(__file__).resolve().parents[1] / "scripts/signalgruppe_discord_bot.py")
+    bot = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bot)
+    config = tmp_path / "signalgruppe.json"
+    answers = iter(["", f"{CATEGORY}=market updates, {EDU_CATEGORY}=education", EDU_CATEGORY, "direct", ""])
+    assert bot.main(["setup", "--config", str(config), "--secret-file", str(tmp_path / "secret")], ask=lambda _: next(answers)) == 0
+    loaded = SignalgruppeConfig.load(config)
+    assert {(item.channel_id, item.kind, item.role) for item in loaded.channels} == {(CATEGORY, "category", "calls"), (EDU_CATEGORY, "category", "knowledge")}
+    assert "channels=0 categories=2 knowledge_only=1" in capsys.readouterr().out

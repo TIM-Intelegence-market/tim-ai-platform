@@ -72,7 +72,7 @@ def test_journal_survives_a_broken_file(state) -> None:
 
 
 def test_cockpit_shows_open_plans_result_and_chart(state) -> None:
-    _, page = render("/", state)
+    _, page = render("/cockpit", state)
     assert "<title>Cockpit · TIM</title>" in page and "<svg" in page
     assert "TIM-Regel 67.420" in page and "Struktur 66.950" in page and "im Trade" in page
     assert "Papier-Ergebnis" in page and "Heute zu tun" in page
@@ -113,7 +113,7 @@ def test_screens_and_fragments_are_served(state) -> None:
     srv.start()
     port = srv.server.server_address[1]
     try:
-        for path in ("/", "/trades", "/forschung", "/system"):
+        for path in ("/cockpit", "/trades", "/forschung", "/system"):
             with urlopen(f"http://127.0.0.1:{port}{path}", timeout=30) as response:
                 assert response.status == 200 and response.headers["Content-Security-Policy"] == SCREEN_CSP
             with urlopen(f"http://127.0.0.1:{port}{path}?fragment=1", timeout=30) as response:

@@ -1,6 +1,6 @@
 """S23: does open interest tell whether a broken swing level flips? (BTCUSDT, 1h, 2020-09 to 2024).
 
-Rules: docs/research_lab/studien/S23_OPEN_INTEREST_AM_FLIP_PRAEREGISTRIERUNG_ENTWURF.md (draft 0.1).
+Rules: docs/research_lab/studien/S23_OPEN_INTEREST_AM_FLIP_PRAEREGISTRIERUNG_ENTWURF.md (version 1.0, frozen 2026-11-23).
 Observation study without trades and without a register slot; the holdout from 2025-01-01 is never loaded.
 
     python -m src.research_lab.studies.s23 count    --root data/research_lab --out DIR [--fetch]
@@ -37,7 +37,7 @@ from src.research_lab.data.metrics import FIRST_DAY, MetricsRef, OpenInterest, d
 from src.research_lab.studies import s20
 from src.research_lab.studies.s20 import HOUR, Event
 
-VERSION = "0.1"
+VERSION = "1.0"
 SEED = 23
 WINDOW = 10  # S20's training choice, as in S21; not chosen again
 LOOKBACK_H = 336  # 14 days of hourly values for the two z-scores

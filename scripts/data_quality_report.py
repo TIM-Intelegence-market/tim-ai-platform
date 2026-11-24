@@ -26,6 +26,27 @@ def parse_record(row: dict):
     raise ValueError(f"Unsupported record_type: {kind!r}")
 
 
+HOLDOUT_FROM = datetime.fromisoformat("2025-01-01T00:00:00+00:00")
+
+
+def extra_issues(records: list, holdout_from: datetime = HOLDOUT_FROM) -> list[dict]:
+    """Checks the framework does not make: records in the locked holdout period and timestamps that run backwards
+    (input order). Reported as issues; nothing here changes the framework's own numbers."""
+    issues: list[dict] = []
+    previous = None
+    for record in records:
+        stamp = DataQualityFramework._timestamp(record)
+        record_id = type(record).__name__
+        if stamp.tzinfo is not None and stamp >= holdout_from:
+            issues.append({"code": "HOLDOUT_VIOLATION", "severity": "ERROR", "record_type": record_id,
+                           "detail": f"Record timestamp {stamp.isoformat()} is in the locked holdout (from {holdout_from.date()})."})
+        if previous is not None and stamp.tzinfo is not None and previous.tzinfo is not None and stamp < previous:
+            issues.append({"code": "TIMESTAMP_BACKWARD", "severity": "WARNING", "record_type": record_id,
+                           "detail": f"Timestamp {stamp.isoformat()} is earlier than the record before it ({previous.isoformat()})."})
+        previous = stamp
+    return issues
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate a deterministic TIM data-quality report")
     parser.add_argument("input", type=Path)
@@ -39,6 +60,7 @@ def main() -> int:
     payload = json.loads(args.input.read_text())
     records = [parse_record(row) for row in payload.get("records", payload)]
     report = DataQualityFramework(QualityPolicy(freshness_seconds=args.freshness_seconds)).validate(records, as_of=as_of).to_dict()
+    report["issues"] = list(report["issues"]) + extra_issues(records)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     encoded = json.dumps(report, indent=2, sort_keys=True) + "\n"
     args.output.write_text(encoded)

@@ -35,7 +35,7 @@ Schritt 2. Schritt 1 liefert die Umgebung, in der es messbar wird.
 - Keine Änderung an Core-1.0-Logik (Aggregator, Hashes, Outbox, Schema).
 - Kein Paper-, Shadow- oder Live-Trading, keine Exchange-API-Keys.
 - Keine neuen Datenquellen (Funding, OI, Orderbook sind Schritt 3).
-- Ollama/Qwen, Broncx-Bot und Research bleiben auf dem Mac.
+- Ollama/Qwen, Mentor-Bot und Research bleiben auf dem Mac.
 - Der Mac-Collector wird in Schritt 1 **nicht** abgeschaltet (Parallelbetrieb,
   siehe Risiko R4).
 
@@ -119,7 +119,7 @@ Neuer Ordner `ops/systemd/`, Gegenstücke zu den launchd-Diensten:
 | `tim-watchdog.service` | `com.tim.watchdog` | erst nach P4 aktivieren |
 
 Nicht portiert: `awake`, `power-state-telemetry` (Mac-only), `ollama`,
-`local-qwen-worker`, `broncx-discord-feed` (Mac-Rolle), die beiden
+`local-qwen-worker`, `mentor-discord-feed` (Mac-Rolle), die beiden
 `continuous-coverage*`-Dienste (hängen an der Kampagne vom 2026-09-24 auf dem
 Mac; für den Server kommt in P7 eine eigene Deklaration).
 

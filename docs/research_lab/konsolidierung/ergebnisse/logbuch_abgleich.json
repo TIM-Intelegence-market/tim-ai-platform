@@ -1,0 +1,395 @@
+{
+ "S1": {
+  "dateien": [
+   {
+    "datei": "repo:s1_cpi_volatility.json",
+    "sha256": "a75e85c0bd5b1e59acd46ce6a21978fe563b949577148c919c1d0a9b7cfbbe2b"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 1,
+  "davon_in_datei": 1,
+  "nicht_gefunden": []
+ },
+ "S4": {
+  "dateien": [
+   {
+    "datei": "repo:s4_count_2026-10-25T1620Z.json",
+    "sha256": "8e807bc6e97c6e17692926a652c0c1a2a2273b70f27c5f3caeabb37603619f92"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 2,
+  "davon_in_datei": 0,
+  "nicht_gefunden": [
+   "−0,12",
+   "−0,23"
+  ]
+ },
+ "S5": {
+  "dateien": [
+   {
+    "datei": "repo:s5_count_2026-10-25T1836Z.json",
+    "sha256": "8f36c45323908fe08c5eb1cd276783d5e49b3f43aaa614f48c61b8a380a5c28d"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 1,
+  "davon_in_datei": 1,
+  "nicht_gefunden": []
+ },
+ "S6": {
+  "dateien": [
+   {
+    "datei": "repo:s6_train_2026-10-25T2338Z.json",
+    "sha256": "672df1ee81ead5a528f8074fc9e5959f646dd3ecd0f70a6a2027422b95bd8849"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 2,
+  "davon_in_datei": 2,
+  "nicht_gefunden": []
+ },
+ "S7": {
+  "dateien": [
+   {
+    "datei": "repo:s7_train_2026-10-26T1049Z.json",
+    "sha256": "c4b75a10301c998b3adcd9d60f1f45a988e5f90ba09c35579131b0808474dc71"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 2,
+  "davon_in_datei": 2,
+  "nicht_gefunden": []
+ },
+ "S7b": {
+  "dateien": [
+   {
+    "datei": "repo:s7b_train_2026-10-26T1305Z.json",
+    "sha256": "ee2668aeaf6bad63c874d7ce93430aabfcd0ae53308328be6d879a3a46627f9e"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 3,
+  "davon_in_datei": 3,
+  "nicht_gefunden": []
+ },
+ "R4": {
+  "dateien": [
+   {
+    "datei": "repo:r4_2026-09-29T2219Z.json",
+    "sha256": "d02b894b5a15696d16fe336ac73c5623de4325064ea815882bc44e87b0ecfe04"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 2,
+  "davon_in_datei": 2,
+  "nicht_gefunden": []
+ },
+ "S10": {
+  "dateien": [
+   {
+    "datei": "repo:s10_count_2026-10-28T0105Z.json",
+    "sha256": "4f4fb42ad1d5c0dedcf3a6c6b6400ce57ed79d18c43de9e2aa21f9d2e7949765"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 3,
+  "davon_in_datei": 3,
+  "nicht_gefunden": []
+ },
+ "S13": {
+  "dateien": [
+   {
+    "datei": "repo:s13_run_2026-11-01T1844Z.json",
+    "sha256": "5dcef2cf907bf82d72aa90cca25230e11f98f06b020d2139bdc472afcb547a4e"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 6,
+  "davon_in_datei": 6,
+  "nicht_gefunden": []
+ },
+ "S14": {
+  "dateien": [
+   {
+    "datei": "repo:s14_run_2026-11-01T2308Z.json",
+    "sha256": "8b8fdb88af629e19b0a499e32d1390390cb590909abc057609f3f01ba5413314"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 9,
+  "davon_in_datei": 9,
+  "nicht_gefunden": []
+ },
+ "S15": {
+  "dateien": [
+   {
+    "datei": "repo:s15_run_2026-11-02T1815Z.json",
+    "sha256": "9122cc945e5619da2e5bd79c11bcedd65caa49ff4eba23374585ff86cee0e904"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 5,
+  "davon_in_datei": 5,
+  "nicht_gefunden": []
+ },
+ "S20": {
+  "dateien": [
+   {
+    "datei": "repo:s20_evaluate_2026-11-10T2345Z.json",
+    "sha256": "c5417207e8df8d78078092a5053e529b0e12fecddbb99aefa39b5b8407505745"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 6,
+  "davon_in_datei": 6,
+  "nicht_gefunden": []
+ },
+ "S21": {
+  "dateien": [
+   {
+    "datei": "repo:s21_evaluate_2026-11-11T1438Z.json",
+    "sha256": "e1604e0c9a495a86fa2198df7a4bc68c5da44125e3b7e9e1e7697b657ded14cd"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 15,
+  "davon_in_datei": 15,
+  "nicht_gefunden": []
+ },
+ "S25": {
+  "dateien": [
+   {
+    "datei": "repo:s25_run_2026-11-12T0926Z.json",
+    "sha256": "6934a9d8af09638d63fb96cbb9635cd2a145e6444de3e09e0eaa04c8ce60f444"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 7,
+  "davon_in_datei": 7,
+  "nicht_gefunden": []
+ },
+ "S22": {
+  "dateien": [
+   {
+    "datei": "ps5:s22/s22_evaluate_2026-11-11T1841Z.json",
+    "sha256": "b6f076901027d965a68946a872e2fe917dda1ca517d11cdc73a6d1f221fd4597"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 13,
+  "davon_in_datei": 13,
+  "nicht_gefunden": []
+ },
+ "S24": {
+  "dateien": [
+   {
+    "datei": "ps5:s24/s24_evaluate_2026-11-11T2200Z.json",
+    "sha256": "b504a26165b1beecb439b46377b20bdd000aaa534d81a42d7a1f6b83a76dbad4"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 10,
+  "davon_in_datei": 10,
+  "nicht_gefunden": []
+ },
+ "S26": {
+  "dateien": [
+   {
+    "datei": "ps5:s26/s26_evaluate_2026-11-12T0923Z.json",
+    "sha256": "dfcab67ae88e234b7588fa20113c0e062f0c234fbd7c4f623350b3ab84d63793"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 8,
+  "davon_in_datei": 8,
+  "nicht_gefunden": []
+ },
+ "S27": {
+  "dateien": [
+   {
+    "datei": "ps5:s27/s27_evaluate_2026-11-12T0934Z.json",
+    "sha256": "c42d4c6a8af5d293636f2d1338499e55a2a9943d166509d895b890a114417790"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 12,
+  "davon_in_datei": 12,
+  "nicht_gefunden": []
+ },
+ "S28": {
+  "dateien": [
+   {
+    "datei": "ps5:s28/s28_evaluate_2026-11-12T1535Z.json",
+    "sha256": "0ea2edc9993f800a3eb77fa9fe31eadda56c20d7ac6c4545e3f3c24d2d3f222e"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 8,
+  "davon_in_datei": 6,
+  "nicht_gefunden": [
+   "17.369",
+   "11.950"
+  ]
+ },
+ "S30": {
+  "dateien": [
+   {
+    "datei": "ps5:s30/s30_raster_train_2026-11-12.json",
+    "sha256": "81c6d0abf0dea37b55c01af3ccaac22da0a0218975980fd0c24120045f5f37cf"
+   },
+   {
+    "datei": "ps5:s30/s30_ausbruch_train_2026-11-12.json",
+    "sha256": "f17a017482a82a3ff416182fc280a2ce71e3498fc41f63243a30182509cdabb7"
+   },
+   {
+    "datei": "ps5:s30/s30_ausbruch_v02_train_2026-11-12.json",
+    "sha256": "f227cc71cf02cc399f89a3056b38db59773b9c5f5048ab912fe7b0ea2f98ddb9"
+   },
+   {
+    "datei": "ps5:s30/s30_train_2026-11-12.json",
+    "sha256": "60668639fba72a3b57a3b09315b1eb8edb411f2c1d0b954bb49e873758993e3d"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 2,
+  "davon_in_datei": 2,
+  "nicht_gefunden": []
+ },
+ "S31": {
+  "dateien": [
+   {
+    "datei": "ps5:s31/count_training.json",
+    "sha256": "2d6c99521c4ff3b81cdec1dc124a2ce19ccb469d7bcc5136b02ce795b8a65bf7"
+   },
+   {
+    "datei": "ps5:of2/run_aa853e1/training.json",
+    "sha256": "91eda09436fff64e9e32c7945d88d298743ee7cfb7df7787d16257aa6ab754e8"
+   },
+   {
+    "datei": "ps5:of2/run_aa853e1/random_training.json",
+    "sha256": "390aeba414beb6616a37f8f457786155419432af658c001844fc6d7aab18f745"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 7,
+  "davon_in_datei": 7,
+  "nicht_gefunden": []
+ },
+ "S31b": {
+  "dateien": [
+   {
+    "datei": "ps5:s31/countb_tf60.json",
+    "sha256": "dbe797812b695dcb074dd9d996259b0151eeb00ea791bfa5a5dc9d76d3bb4f5f"
+   },
+   {
+    "datei": "ps5:s31/countb_tf240.json",
+    "sha256": "3ec97b2f7d16b0b752534c5ab6977b4dc54f7797c85151a29d857374a66db97f"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 2,
+  "davon_in_datei": 2,
+  "nicht_gefunden": []
+ },
+ "S32": {
+  "dateien": [
+   {
+    "datei": "ps5:s32/validierung/s32_validierung_2026-11-14.json",
+    "sha256": "dc00bd4a3d686931e5f627b556ff254a519d57bbb0aa2f6b520bde76c49f028c"
+   },
+   {
+    "datei": "ps5:s32/s32_train_2026-11-12.json",
+    "sha256": "93845c895bc5a9994205a8630213e231369d3c346a2e5606c33c727285ee8bb4"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 11,
+  "davon_in_datei": 11,
+  "nicht_gefunden": []
+ },
+ "S33-Carry": {
+  "dateien": [
+   {
+    "datei": "ps5:s33/carry_train_2026-11-12.json",
+    "sha256": "b4e9bf8c960344c22688b2ae7b118cdc0d9af61f1e337886861b2d27b258a185"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 3,
+  "davon_in_datei": 1,
+  "nicht_gefunden": [
+   "0,0158",
+   "215.000"
+  ]
+ },
+ "S34": {
+  "dateien": [
+   {
+    "datei": "ps5:s34/s34_train_2026-11-14.json",
+    "sha256": "828cd209f286c28bbb6d4ed9ccc0b4bb0b0cdab11afe884031ff7d93b01f13e6"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 5,
+  "davon_in_datei": 5,
+  "nicht_gefunden": []
+ },
+ "S35a": {
+  "dateien": [
+   {
+    "datei": "ps5:s35a/s35a_train_2026-11-14.json",
+    "sha256": "0017ebdd39f9648eb402e3ff5d7db62babc790224585fd263a0b4617c5ec4a0f"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 4,
+  "davon_in_datei": 4,
+  "nicht_gefunden": []
+ },
+ "S36": {
+  "dateien": [
+   {
+    "datei": "ps5:s36/train.json",
+    "sha256": "b8d1686e525d2100bb1d612bfa8488426da222da1be80ece8ef0dedb7da046c6"
+   },
+   {
+    "datei": "ps5:s36/count3.json",
+    "sha256": "6cfaf4c140d9f41f36dc1eb9bdd45d19da52b7f8e664966fff065392dc70d402"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 8,
+  "davon_in_datei": 8,
+  "nicht_gefunden": []
+ },
+ "S37": {
+  "dateien": [
+   {
+    "datei": "ps5:s37/s37_train_2026-11-15.json",
+    "sha256": "d2fbf05b79dda14ff869b5e7d7aa059a275cc600367356e1bbd7510117de7ba6"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 0,
+  "davon_in_datei": 0,
+  "nicht_gefunden": []
+ },
+ "S38": {
+  "dateien": [
+   {
+    "datei": "ps5:s38/s38_train_2026-11-15.json",
+    "sha256": "3bba2474a45228ea115d267204812c412dea4dc8792bf9313f160ecac0408591"
+   }
+  ],
+  "dateien_fehlen": [],
+  "zahlen_im_logbuch": 11,
+  "davon_in_datei": 8,
+  "nicht_gefunden": [
+   "045 191",
+   "060 584",
+   "075 982"
+  ]
+ }
+}

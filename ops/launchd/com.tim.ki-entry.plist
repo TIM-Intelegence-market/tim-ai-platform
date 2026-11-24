@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.tim.ki-entry</string>
+  <!-- R-KI-1 (Papier): lokale KI entscheidet an starken Chart-Zonen LONG/SHORT/NICHTS
+       (src/research_lab/ki_entry, docs/research_lab/studien/KI_EINSTIEG_PRAEREGISTRIERUNG_ENTWURF.md).
+       Liest nur das Chart-Modell des lokalen Dashboards, handelt nie; der Live-Trader liest das Protokoll nicht. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/tim/TIM-live/.venv/bin/python</string>
+    <string>-m</string>
+    <string>src.research_lab.ki_entry</string>
+    <string>run</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/tim/TIM-live</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>/Users/tim</string>
+    <key>TIM_LIVE_TRADING</key><string>0</string>
+    <key>TIM_KI_MODEL</key><string>qwen3.5:9b</string>
+    <key>TIM_OLLAMA_URL</key><string>http://127.0.0.1:11434</string>
+    <key>PYTHONDONTWRITEBYTECODE</key><string>1</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>300</integer>
+  <key>Nice</key><integer>10</integer>
+  <key>StandardOutPath</key><string>/Users/tim/Library/Logs/TIM/ki-entry.log</string>
+  <key>StandardErrorPath</key><string>/Users/tim/Library/Logs/TIM/ki-entry.err.log</string>
+</dict>
+</plist>

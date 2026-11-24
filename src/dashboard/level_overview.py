@@ -218,7 +218,7 @@ def build(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime | Non
     return {"ruleset": RULESET, "as_of": data["as_of"], "price": price, "atr": data["atr"], "tolerance": round(tolerance, 2),
             "pad": round(pad, 2), "lines": len(data["lines"]), "zones": len(all_zones),
             "near": sum(1 for zone in all_zones if abs(zone["distance_pct"]) <= REACH_PCT * 100), "here": here,
-            "above": above[:SHOWN], "below": below[:SHOWN], "watch": {"upper": upper, "lower": lower}, "range": span,
+            "above": above[:SHOWN], "below": below[:SHOWN], "all": sorted(all_zones, key=lambda zone: -zone["high"]), "watch": {"upper": upper, "lower": lower}, "range": span,
             "structure": data["structure"], "bias": bias, "source": data["source"],
             "orderflow": {"direction": flow.get("direction"), "strength": flow.get("strength")} if flow else None,
             "long": _reading("LONG", lower, upper, pad, bias), "short": _reading("SHORT", upper, lower, pad, bias)}
@@ -269,6 +269,25 @@ def text(view: Mapping[str, Any] | None) -> str:
     return "\n".join(rows)
 
 
+def _all_zones_html(view: Mapping[str, Any]) -> str:
+    """Every zone with every line name, highest first, folded: the short lists above name only the nearest."""
+    from src.dashboard.helpers import _safe
+
+    items = view.get("all") or []
+    if not items:
+        return ""
+    rows = []
+    for zone in items:
+        span = _p(zone["low"]) if zone["high"] - zone["low"] < 1 else f"{_p(zone['low'])}–{_p(zone['high'])}"
+        here = " tc-levels__here" if zone["side"] == "am Kurs" else ""
+        flow = " · Absorption" if zone.get("absorption") else ""
+        rows.append(f"<tr class='tc-levels__row{here}'><td>{_safe(span)}</td><td>{zone['distance_pct']:+.2f} %</td>"
+                    f"<td>{_safe(zone['strength'])}{flow}</td><td>{_safe(', '.join(zone['labels']))}</td></tr>")
+    return (f"<details class='tc-levels__all'><summary>Alle {len(items)} Zonen mit allen Linien</summary>"
+            "<div class='table-wrap'><table><thead><tr><th>Zone</th><th>Abstand</th><th>Stärke</th><th>Linien</th></tr></thead>"
+            f"<tbody>{''.join(rows)}</tbody></table></div></details>")
+
+
 def render_de(view: Mapping[str, Any] | None, state: Mapping[str, Any] | None = None) -> str:
     """Section "Level-Übersicht" for the chart page: short, readable on a phone."""
     from src.dashboard.helpers import _safe
@@ -296,6 +315,7 @@ def render_de(view: Mapping[str, Any] | None, state: Mapping[str, Any] | None = 
         out.append(rows("Am Kurs", [view["here"]]))
     out.append(rows("Darüber", view["above"]))
     out.append(rows("Darunter", view["below"]))
+    out.append(_all_zones_html(view))
     out.append("<p><b>Lesart:</b></p><ul>" + f"<li>{_safe(_reading_text(view.get('long'), 'Long'))}</li>"
                + f"<li>{_safe(_reading_text(view.get('short'), 'Short'))}</li></ul>")
     if state:
@@ -306,7 +326,7 @@ def render_de(view: Mapping[str, Any] | None, state: Mapping[str, Any] | None = 
                f"{ZONE_ATR} × 1h-ATR, mindestens {ZONE_PCT * 100:.2f} % vom Kurs; Gewicht nach Zeitrahmen fest von Hand gesetzt, nicht "
                f"aus Daten gelernt. Stop nie enger als {MIN_STOP_PCT * 100:.0f} %, Kosten mit {COST_PCT * 100:.2f} % je Trade gerechnet (Studie E0). "
                "Level-Reaktionen haben in den Studien S22 bis S30 nach Kosten keinen belegten Vorteil gezeigt. "
-               f"Level aus {_safe(view.get('source', ''))}. Nicht enthalten: {_safe(', '.join(MISSING))}.</p>")
+               f"Linien aus {_safe(view.get('source', ''))}. Nicht enthalten: {_safe(', '.join(MISSING))}.</p>")
     return "".join(out) + "</section>"
 
 

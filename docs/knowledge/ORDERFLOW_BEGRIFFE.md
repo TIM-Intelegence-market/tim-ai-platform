@@ -7,7 +7,7 @@ und nirgends sonst anders. Die Zahlen in Abschnitt 2 werden von
 `tests/test_orderflow_begriffe.py` gegen den Code geprüft; eine Änderung im Code ohne
 Änderung hier lässt die Suite rot werden.
 
-**Keine der Schwellen ist an BTC gemessen.** Sie stammen aus dem Broncx-Bootcamp, aus ATAS
+**Keine der Schwellen ist an BTC gemessen.** Sie stammen aus dem Mentor-Bootcamp, aus ATAS
 und aus Lehrtexten. Ob sie für BTC passen, prüft Studie S19
 (`../research_lab/studien/S19_ORDERFLOW_SCHWELLEN_BTC_PRAEREGISTRIERUNG.md`),
 registriert vor dem ersten Datenzugriff; bis dahin bleiben sie, wie sie sind.
@@ -29,7 +29,7 @@ registriert vor dem ersten Datenzugriff; bis dahin bleiben sie, wie sie sind.
 | Volume Bubble | Eine Taker-Order (aggTrades derselben Millisekunde und Seite) mit Gegenwert ≥ `BUBBLE_MIN_USD` (BTC 100 000 $; XMR-Perp 10 000 $). Kreisfläche nach Größe, grün Käufer, rot Verkäufer. | keine Eingabe (`volume_bubbles` nur als Flag) | `footprint_data.volume_bubbles` (Spot), `perp_flow` (Perp); nur die größten im Fenster werden gezeichnet |
 | POC / Value Area (Volumen) | Preisstufe mit dem meisten Volumen; Value Area = kleinster Bereich um den POC mit `VALUE_AREA_SHARE` (70 %) des Volumens, wechselseitig nach oben und unten erweitert. **Zwei Quellen:** aus echten Trades (Chart-VP, Perp-Schatten-Journal) oder aus Kerzen geschätzt (Spot-Journale, Level-Pläne, Szenario-Engine ohne Footprint). | `profile.py` (aus Kerzen oder `VOLUME_PROFILE_AGG`) | `footprint_data.profile_from_rows` (Trades), `vp_plans` (Kerzen) |
 | TPO / Value Area (Zeit) | Market Profile je UTC-Tag aus 30-Minuten-Perioden (Buchstaben ab 00:00). POC = Stufe mit den meisten Perioden, Value Area = 70 % der Perioden um den POC, zeilenweise erweitert (nicht die CBOT-Zweierschritte). | nicht verwendet | `chart_live.tpo_profiles` |
-| Open Interest | Offene Kontrakte des Perp (Binance USD-M, 1h). Z-Score über `OI_WINDOW` Stunden (7,5 Tage, das Fenster von Broncx). Nur eine Börse (Issue #162). | Eingabe `open_interest_trend` RISING/FALLING/FLAT | `perp_flow.open_interest`, Band „OI“ |
+| Open Interest | Offene Kontrakte des Perp (Binance USD-M, 1h). Z-Score über `OI_WINDOW` Stunden (7,5 Tage, das Fenster von Mentor). Nur eine Börse (Issue #162). | Eingabe `open_interest_trend` RISING/FALLING/FLAT | `perp_flow.open_interest`, Band „OI“ |
 | Basis | Spot-Schluss minus Perp-Schluss derselben Kerze in $, Anzeige im Perp-Modus. Pläne rechnen auf Spot, gehandelt wird der Perp. | nicht verwendet | `chart_live` `model["basis"]` |
 | Score | Heuristische Konfidenz eines Szenarios: Basis 0,30 plus feste Zuschläge je Beleg (`probability.py`), Typ `UNCALIBRATED_CONFIDENCE`. **Keine Wahrscheinlichkeit.** Die Trefferquote je Score-Bucket steht im Plan-Journal (`summary.score_reliability`, Urteil ab 30 Plänen). | `probability.py` | Spalte „Score (Heuristik)“ |
 
@@ -53,7 +53,7 @@ Wert mit dem Code. Herkunft und Status stehen daneben.
 | `VALUE_AREA_SHARE` | `src.dashboard.footprint_data` | 0.7 | Value Area = 70 % des Volumens | Market-Profile-Standard | Definition |
 | `BUBBLE_MIN_USD` | `src.dashboard.footprint_data` | 100000.0 | Bubble ab 100 000 $ je Taker-Order (Spot) | Festlegung TIM 29.10.2026 | Anzeige, keine Regel |
 | `BUBBLE_MIN_USD` | `src.dashboard.perp_flow` | 100000.0 | gleiche Grenze auf dem Perp | wie oben | wie oben |
-| `OI_WINDOW` | `src.dashboard.perp_flow` | 180 | Z-Score-Fenster 180 Stunden (7,5 Tage) | Broncx | Anzeige |
+| `OI_WINDOW` | `src.dashboard.perp_flow` | 180 | Z-Score-Fenster 180 Stunden (7,5 Tage) | Mentor | Anzeige |
 
 Was hier **nicht** steht, weil es keine Zahl im Code ist: der Kerzenbild-Marktzustand
 `EXHAUSTION` (0,15 und 1,3 sind Literale in `market_state.py`) und `ABSORPTION_CONTEXT`

@@ -27,22 +27,29 @@ from src.dashboard.plan_journal import FILLED, OPEN, RULE_LEVEL, RULE_STRUCT, RU
 LOCAL = ZoneInfo("Europe/Berlin")
 DISCLAIMER = ("Research, not financial advice. Observation and paper tracking only: no orders, no recommendations. "
               "Data: public Binance candles and TIM's own analysis; the view can be delayed or incomplete.")
-NAV = (("/chart", "Chart"), ("/journal", "Paper journal"), ("/live", "Live account"))
+NAV = (("/chart", "Chart"), ("/reading", "Chart reading"), ("/journal", "Paper journal"), ("/live", "Live account"))
 REPO = "https://github.com/TIM-Intelegence-market/tim-ai-platform"
 
 GROUPS_EN = {
+    "usdtd_swing": "USDT.D: swing highs and lows with value", "usdtd_sr": "USDT.D: latest support and resistance",
+    "usdtd_ema": "USDT.D: EMA 20 and EMA 50",
     "day": "Day (1D)", "week": "Week (1W)", "month": "Month (1M)", "quarter": "Quarter (1Q)", "year": "Year (1Y)",
-    "vwap": "VWAP (week, month, quarter, year)", "vwap_bands": "VWAP bands week (±1σ, ±2σ)", "naked": "naked POC",
+    "vwap": "VWAP (week, month, quarter, year)", "vwap_bands": "VWAP bands week (±1σ, ±2σ, shaded)", "naked": "naked POC",
     "running": "running POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trend lines", "fib": "Fibonacci (last swing)", "tpo": "TPO (day profile)",
     "vp": "Volume Profile (day, real trades)", "fp": "Footprint (bid × ask)",
     "bubbles": "Volume bubbles (large market orders; perp: Binance + Bybit)",
+    "bubbles_exo": "Market order bubbles, Exo style (medium ×3, large ×4.5)",
+    "vp_range": "Volume profile range (240 candles, 130 rows, VA 70 %, nodes)",
+    "vpoc": "VPOC per candle (delta side, 50 % threshold, trapped)",
     "plans_short": "TIM plans SHORT 15m", "plans_mid": "TIM plans MID 1h", "plans_long": "TIM plans LONG 1D",
     "plans_old": "TIM plans, test versions 30m",
     "gamma": "Options gamma (Deribit)",
+    "gamma_ob": "Gamma zones with an order book wall (confirmed)",
+    "reading": "TIM reading, English (login only)", "reading_de": "TIM reading, German (login only)",
     "liq": "Liquidation heatmap (estimate)",
     "liqev": "Liquidations (real, Binance + Bybit)",
-    "cvd": "CVD spot vs. perp", "delta": "Delta volume per candle (chosen market)", "oi": "Open interest per venue (Binance, Bybit) + Z-score (7.5 d)",
+    "cvd": "CVD spot vs. perp", "delta": "Delta volume per candle (chosen market)", "oi": "Open interest per venue (Binance, Bybit) + Z-score (7.5 d, Binance only)",
     "funding": "Funding rate (Binance perp)", "premium": "Coinbase premium (USD vs. USDT)",
     "dominance": "BTC and USDT dominance (daily)",
     "macro": "Release dates (US CPI, FOMC)",
@@ -95,17 +102,31 @@ TEXT_EN: tuple[tuple[str, str], ...] = (
     (r"^(Opt )?EM tief ", r"\1EM low "),
     (r"^darüber dämpfen Händler eher, darunter verstärken sie Bewegungen$",
      "above it dealer hedging tends to dampen moves, below it to amplify them (estimate)"),
-    (r"^größtes Call-Gamma über dem Preis$", "largest call gamma above the price (estimate)"),
-    (r"^größtes Put-Gamma unter dem Preis$", "largest put gamma below the price (estimate)"),
+    (r"^größtes Call-Gamma über dem Preis, wandert mit dem Preis$", "largest call gamma above the price, moves with the price (estimate)"),
+    (r"^größtes Put-Gamma unter dem Preis, wandert mit dem Preis$", "largest put gamma below the price, moves with the price (estimate)"),
+    (r"^(Opt )?Call-OI-Wand$", r"\1Call OI wall"),
+    (r"^(Opt )?Put-OI-Wand$", r"\1Put OI wall"),
+    (r"^größter offener (Call|Put)-Bestand über dem Preis \((\d+) (\w+)\)$", r"largest \1 open interest above the price (\2 \3)"),
+    (r"^größter offener (Call|Put)-Bestand unter dem Preis \((\d+) (\w+)\)$", r"largest \1 open interest below the price (\2 \3)"),
     (r"^Hauptverfall (\S+) \((\d+) % des OI\)$", r"main expiry \1 (\2 % of open interest)"),
     (r"^erwartete Bewegung bis Verfall, ATM-IV ([\d.]+) %$", r"expected move until expiry, ATM IV \1 %"),
+    # Gamma zones with an order book wall (gamma_zones.py).
+    (r"^Gamma-Zone ", "Gamma zone "),
+    (r"^Gamma-Level (.+?) bei ([\d.,]+) mit Kaufmauer im Orderbuch: ([\d.,]+) BTC \(([\d,]+) Mio \$\), ([\d,]+)-fach über üblich, steht seit (\S+) (\S+) Uhr\. Aufträge können jederzeit zurückgezogen werden\.$",
+     r"Gamma level \1 at \2 with a buy wall in the order book: \3 BTC (\4 m$), \5× the usual size, standing since \6 \7. Orders can be pulled at any time."),
+    (r"^Gamma-Level (.+?) bei ([\d.,]+) mit Verkaufsmauer im Orderbuch: ([\d.,]+) BTC \(([\d,]+) Mio \$\), ([\d,]+)-fach über üblich, steht seit (\S+) (\S+) Uhr\. Aufträge können jederzeit zurückgezogen werden\.$",
+     r"Gamma level \1 at \2 with a sell wall in the order book: \3 BTC (\4 m$), \5× the usual size, standing since \6 \7. Orders can be pulled at any time."),
     # Estimated liquidation clusters (liquidation_data.py).
-    (r"^Liq-Cluster oben$", "Liq cluster above"),
-    (r"^Liq-Cluster unten$", "Liq cluster below"),
+    (r"^Liq-Cluster oben \(Modell\)$", "Liq cluster above (model)"),
+    (r"^Liq-Cluster unten \(Modell\)$", "Liq cluster below (model)"),
     (r"^stärkste geschätzte Short-Liquidationen über dem Preis$", "strongest estimated short liquidations above the price"),
     (r"^stärkste geschätzte Long-Liquidationen unter dem Preis$", "strongest estimated long liquidations below the price"),
 )
 NOTES_EN: tuple[tuple[str, str], ...] = (
+    (r"^Gamma-Zonen mit Orderbuch: (\d+) bestätigt, Berührungen (\d+) \((\d+) gehalten, (\d+) gebrochen\), Urteil ab (\d+)\.$",
+     r"Gamma zones with an order book wall: \1 confirmed, touches \2 (\3 held, \4 broken), verdict from \5. Display only, not a signal."),
+    (r"^Gamma-Zonen mit Orderbuch: (\d+) bestätigt\.$", r"Gamma zones with an order book wall: \1 confirmed. Display only, not a signal."),
+    (r"^Gamma-Zonen: ", "Gamma zones: order book data not available, zones hidden."),
     (r"^Kerzen aus der TIM-Runtime", "Candles from the TIM runtime (exchange not reachable)."),
     (r"^Keine Kerzen", "No candles for this selection."),
     (r"^Keine Tages-/Wochenlevel", "No day/week levels yet: too few closed 30m and 1h candles."),
@@ -115,6 +136,20 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
     (r"^Monero über den Binance-Perpetual", "Monero via the Binance perpetual XMRUSDT (USD-M futures): Binance ended XMR spot "
                                             "in February 2024. The perp price can differ slightly from spot because of funding; "
                                             "display only, no paper trading."),
+    (r"^Nasdaq: Footprint, Volume Profile und CVD sind eine Näherung", "Nasdaq: footprint, volume profile and CVD are an approximation from 1m candles, not real trades "
+                                                                       "(volume spread evenly over the candle range, buy share from where the close sits). No bubbles, OI or funding."),
+    (r"^Nasdaq-100 in Indexpunkten: Kerzen von QQQ über Twelve Data \(eigener API-Key\) mal ([\d,]+)",
+     r"Nasdaq-100 in index points: QQQ candles via Twelve Data (TIM's own API key) times \1 (last common daily close ^NDX/QQQ, "
+     r"renewed every 6 h); usually within 0.1 % of the real index. Candles only in US trading hours (Mon-Fri 9:30-16:00 New York). "
+     r"Display only, for comparison with BTC."),
+    (r"^Nasdaq-100 über Twelve Data", "Nasdaq-100 via Twelve Data (TIM's own API key) as the ETF QQQ (tracks the Nasdaq-100, price about a fortieth of the index; "
+                                     "the free plan does not deliver the NDX index): candles only in US trading hours "
+                                     "(Mon-Fri 9:30-16:00 New York), none at weekends and overnight. No trades, no footprint, "
+                                     "no paper trading; display only, for comparison with BTC."),
+    (r"^Nasdaq-100 \(\^NDX\) von Yahoo", "Nasdaq-100 (^NDX) from Yahoo Finance (public, unofficial, partly delayed; no Twelve Data key stored): candles only in US trading hours "
+                                         "(Mon-Fri 9:30-16:00 New York), none at weekends and overnight. Index volume is 0, no trades, no footprint, "
+                                         "no paper trading; display only, for comparison with BTC."),
+    (r"^Nasdaq-100: Zeitrahmen (\w+) gibt es nicht", r"Nasdaq-100: timeframe \1 is not available (the source offers 1m, 5m, 15m, 30m, 1h, 2h, 4h, 1d, 1w, 1M)."),
     (r"^Gamma: Deribit-Stand ist (\d+) min alt", r"Gamma: Deribit data is \1 min old, levels hidden."),
     (r"^Liquidations-Heatmap: Binance-Stand ist (\d+) min alt", r"Liquidation heatmap: Binance data is \1 min old, hidden."),
     (r"^Liquidations-Heatmap: Modell aus Open Interest", "Liquidation heatmap: a model from open interest and price, not real liquidations (real events: issue #162)."),
@@ -142,6 +177,10 @@ NOTES_EN: tuple[tuple[str, str], ...] = (
 SOURCES_EN = {
     "TIM-Runtime (wie Plan-Journale)": "TIM runtime (same as the plan journals)",
     "Binance-Klines (nur Anzeige)": "Binance klines (display only)",
+    "Yahoo-Finance-Kerzen (nur Anzeige)": "Yahoo Finance candles (display only)",
+    "Twelve-Data-Kerzen (nur Anzeige)": "Twelve Data candles (display only)",
+    "Näherung aus 1m-Kerzen (keine Einzeltrades): Volumen gleich über die Kerzenspanne verteilt, Käuferanteil = Lage des Schlusses":
+        "Approximation from 1m candles (no single trades): volume spread evenly over the candle range, buy share = where the close sits",
     "Binance-Perp-Klines (nur Anzeige)": "Binance perp klines (display only)",
     "TIM agg_trades (Binance Spot aggTrades, eigene Datenbank)": "TIM agg_trades (Binance spot aggTrades, own database)",
     "Binance USD-M Perp aggTrades (BTCUSDT, öffentlich, TIM-Sammler)": "Binance USD-M perp aggTrades (BTCUSDT, public, TIM collector)",
@@ -202,8 +241,10 @@ def english_chart_model(model: Mapping[str, Any]) -> dict[str, Any]:
         if key in model:
             out[key] = SOURCES_EN.get(model[key], model[key])
     out["name"] = {"BTCUSDT": "Bitcoin", "ETHUSDT": "Ethereum", "SOLUSDT": "Solana", "XMRUSDT": "Monero (XMR perp)",
-                   "PAXGUSDT": "Gold (PAXG)"}.get(str(model.get("symbol")), model.get("name"))
+                   "PAXGUSDT": "Gold (PAXG)", "NDX": "Nasdaq-100", "USDTD": "USDT dominance (USDT.D)"}.get(str(model.get("symbol")), model.get("name"))
     return out
+
+from src.dashboard.pwa import HEAD_TAGS as PWA_HEAD_TAGS  # noqa: E402
 
 
 # --- pages -------------------------------------------------------------------
@@ -216,6 +257,7 @@ def shell(title: str, active: str, body: str, extra_css: str = "", disclaimer: s
     return (
         "<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<meta name='color-scheme' content='dark'><meta name='robots' content='noindex,nofollow'>"
+        f"{PWA_HEAD_TAGS}"
         f"<title>{_safe(title)} · TIM</title><style>{CSS}{EXTRA_CSS}{extra_css}</style></head><body>"
         "<a class='skip-link' href='#main-content'>Skip to content</a>"
         "<header class='topbar'><div class='topbar__inner'><a class='brand' href='/chart' aria-label='TIM home'>TIM"
@@ -272,7 +314,7 @@ def chart_page(symbol: str | None, timeframe: str | None, summary: str = "") -> 
         f"<section class='cc-section tc-live' id='tc-live' data-lang='en' data-symbol='{_safe(symbol)}' data-tf='{_safe(view)}'>"
         "<div class='tc-split' id='tc-split'>" + pane("", view) + pane("-2", second) + "</div>"
         + chart_legend("en") +
-        "<p class='cc-note'>Mouse wheel = zoom, drag = pan, drag the price axis = change height, double-click the axis = reset. "
+        "<p class='cc-note'>Mouse wheel = zoom, drag = pan, drag the price axis = change height, double-click the axis = reset. Phone: two fingers = zoom, one finger = move, drag the price axis = change height, double-tap the axis = reset. "
         "<b>BOS / MSS</b> count only on a close (a wick through the level is a sweep): BOS = break of the last swing in trend direction, "
         "MSS = close beyond the <b>Strong Low</b> (uptrend) or <b>Strong High</b> (downtrend), the low/high the last push came from. "
         "Dashed and running to now: the open Strong Low/High and the <b>BOS target</b>. Swings: 3 candles per side. "
@@ -414,7 +456,7 @@ def journal_csp() -> str:
     """The journal pages have their own style block (no script at all), so they get their own hash."""
     style_hash = base64.b64encode(hashlib.sha256(JOURNAL_STYLE.encode()).digest()).decode()
     return (f"default-src 'none'; style-src 'sha256-{style_hash}'; script-src 'none'; connect-src 'none'; img-src 'self' data:; "
-            "font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+            "font-src 'none'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 
 
 def _tone(value: Any) -> str:
@@ -809,6 +851,67 @@ def _live_timeframes(status: Mapping[str, Any] | None) -> tuple[str, ...]:
         if picked:
             return picked
     return LIVE_TIMEFRAMES
+
+
+READING_CSS = (
+    ".rd-bar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}"
+    ".rd-bar a{padding:6px 12px;border:1px solid var(--line);border-radius:8px;color:var(--text-soft);text-decoration:none}"
+    ".rd-bar a[aria-current]{border-color:var(--blue);color:var(--text);background:#101b2c}"
+    ".rd-chart{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#0b0f17}"
+    ".rd-svg{display:block;width:100%;height:auto}"
+    ".rd-list{margin:14px 0 0;padding:0;list-style:none;display:grid;gap:8px}"
+    ".rd-item{padding:10px 12px;border:1px solid var(--line);border-left-width:4px;border-radius:8px;background:var(--surface);line-height:1.45}"
+    ".rd-buy{border-left-color:#5b8cff}.rd-sell{border-left-color:#ff6b6b}.rd-warn{border-left-color:#ffc53d}"
+    ".rd-flat{border-left-color:#9aa4b2}.rd-level{border-left-color:#3ddc97}"
+    ".rd-now{margin:12px 0 4px;font-size:1.05rem}.rd-stamp{color:var(--text-soft);font-size:.9rem}"
+)
+READING_STYLE = CSS + EXTRA_CSS + READING_CSS
+READING_DISCLAIMER = ("Not financial advice / Keine Anlageberatung. TIM describes what the chart already shows; "
+                      "no signal, no recommendation, no orders.")
+
+
+def reading_csp() -> str:
+    """The reading page is the live chart (same scripts and data as /chart) plus its own style block."""
+    import re
+
+    from src.dashboard.pages.chart import CHART_CSP
+
+    style_hash = base64.b64encode(hashlib.sha256(READING_STYLE.encode()).digest()).decode()
+    return re.sub(r"style-src '[^']*'", f"style-src 'sha256-{style_hash}'", CHART_CSP, count=1)
+
+
+def reading_page(card: str, timeframe: str, lang: str) -> str:
+    """TIM chart reading (BTC) for logged-in traders, in English or German (Uzi 23.11.2026)."""
+    de = lang == "de"
+    title = "TIM Chart-Deutung" if de else "TIM chart reading"
+    intro = ("TIM liest den BTC-Chart automatisch und schreibt die wichtigsten Stellen als Kästen direkt in den Chart. "
+             "Darunter dasselbe als Text." if de else
+             "TIM reads the BTC chart automatically and writes the key spots as boxes straight onto the chart. The same as text below.")
+
+    def link(lg: str, label: str, current: bool) -> str:
+        return f"<a href='/reading?tf={timeframe}&amp;lang={lg}'" + (" aria-current='page'" if current else "") + f">{_safe(label)}</a>"
+
+    # Uzi 23.11.2026 ("wie ein Chart-Layout"): the real interactive chart, opened on the "TIM AI overlay" layout, so the
+    # boxes sit on the live candles. Own browser memory (data-space), so choices here never change /chart.
+    # One chart, one reading (Uzi 24.11.2026): no timeframe tabs here; the reading is the same on every timeframe.
+    frames = "<span class='tc-tabs__sep'>" + ("BTC 30m · großes Bild aus 4h" if de else "BTC 30m · big picture from 4h") + "</span>"
+    now_label, fit_label = ("Zu jetzt", "Alles zeigen") if de else ("Go to now", "Show all")
+    layers_label = "Ebenen einzeln" if de else "Single layers"
+    chart = (
+        f"<section class='cc-section tc-live' id='tc-live' data-lang='{'de' if de else 'en'}' data-symbol='BTCUSDT' data-tf='{_safe(timeframe)}'"
+        " data-layout='tim:ai' data-fp='delta' data-space='reading'><div class='tc-pane' id='tc-pane'>"
+        f"<nav class='tc-tabs' aria-label='Timeframe'>{frames}</nav>"
+        "<div class='tc-live__bar'><div class='tc-live__layoutbox'><div id='tc-live-layouts' class='tc-live__layouts'></div>"
+        f"<details class='tc-live__edit'><summary>{layers_label}</summary><div id='tc-live-layers' class='tc-live__layers'></div></details></div>"
+        f"<div class='tc-live__actions'><button type='button' class='tc-tab' data-action='now'>{now_label}</button>"
+        f"<button type='button' class='tc-tab' data-action='fit'>{fit_label}</button></div></div>"
+        "<div class='tc-live__frame'><p id='tc-live-legend' class='tc-live__legend'></p>"
+        "<div id='tc-live-chart' class='tc-live__chart' role='img' aria-label='TIM AI overlay chart'></div></div>"
+        f"<p id='tc-live-status' class='cc-note tc-live__status'>{'Chart lädt …' if de else 'Chart loading…'}</p></div>"
+        f"<script src='{LIB_PATH}'></script><script src='{APP_SRC}'></script></section>")
+    bar = "<div class='rd-bar'>" + link("en", "English", not de) + link("de", "Deutsch", de) + "</div>"
+    body = _hero(title, intro) + f"<section class='cc-section'>{bar}</section>" + chart + f"<section class='cc-section'>{card}</section>"
+    return shell(title, "/reading", body, extra_css=READING_CSS, disclaimer=READING_DISCLAIMER)
 
 
 def live_page(status: Mapping[str, Any] | None, now: Any = None) -> str:

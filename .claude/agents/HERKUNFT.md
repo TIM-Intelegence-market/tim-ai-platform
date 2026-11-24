@@ -11,3 +11,7 @@
 - Grenzen: nur lesend, kein Bash, kein Schreiben. Für Prüfungen, die Befehle brauchen, den
   Hauptagenten oder `general-purpose` nehmen.
 - Prüfen: nach einer Sitzung `/usage` aufrufen, dort steht der Verbrauch je Modell.
+
+# Herkunft: TIM-Subagenten (studien-pruefer, pr-reviewer, mac-server-waechter, daten-steward, journal-auswerter, quellen-abgleicher, chart-ui-pruefer, control-center-pruefer)
+
+- Eigene Entwürfe für TIM, keine fremden Prompts. Plan, Grenzen und Änderungen: `docs/SUBAGENTEN_PLAN.md`; Steuerung: `docs/SUBAGENTEN_MASTER_AUFTRAG.md`.

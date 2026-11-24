@@ -365,9 +365,9 @@ def test_lines_on_the_same_spot_share_one_name_and_one_axis_box():
     bubble numbers covered each other. Names merge, the axis box merges only at the same price."""
     script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
     block = script[script.index("function labelLines(groups) {"):script.index("function setLegend(bar)")]
-    assert "twin.marker.text += ' · ' + text;" in block
-    assert "boxes.find(b => samePrice(value, b.value))" in block  # a merged box shows one number: same price only
-    assert "lastValueVisible: false, title: ''" in block
+    assert "twin.marker.text = twin.names.slice(0, 2).join(' · ')" in block
+    # Uzi 21.11.2026: names only on the chart, no level boxes on the price axis (neither name nor number).
+    assert "item.series.applyOptions({ lastValueVisible: false, title: '' })" in block
     assert script.count("labelLines(groups);") == 2  # after drawing and after a layer tick changes
     bubbles = script[script.index("const bubbles = {"):script.index("candles.attachPrimitive(bubbles);")]
     assert "if (!texts.some(b =>" in bubbles
@@ -391,10 +391,10 @@ def test_layers_are_sorted_in_named_layouts():
     assert sorted(names) == sorted(chart_live.GROUP_NAMES) and len(names) == len(set(names))
     # Working layouts: one click each, and the levels and the structure join every one of them.
     assert "const BASE = ['day', 'week', 'month', 'naked', 'structure', 'trend'];" in script
-    assert "layout.groups ? BASE.concat(layout.groups) : model.default_groups" in script
+    assert "layout.groups ? (layout.clean ? layout.groups : BASE.concat(layout.groups)) : model.default_groups" in script
     layouts = script[script.index("const TIM_LAYOUTS = ["):script.index("function ownLayouts()")]
-    assert re.findall(r"id: '(tim:[a-z]+)'", layouts) == ["tim:orderflow", "tim:footprint", "tim:tpo", "tim:vp", "tim:positioning",
-                                                          "tim:macro", "tim:trades", "tim:pro", "tim:standard"]
+    assert re.findall(r"id: '(tim:[a-z]+)'", layouts) == ["tim:read", "tim:orderflow", "tim:footprint", "tim:tpo", "tim:vp", "tim:positioning",
+                                                          "tim:macro", "tim:trades", "tim:pro", "tim:exo", "tim:exovp", "tim:exotpo", "tim:usdtd", "tim:gammazones", "tim:ai", "tim:standard"]
     used = set(re.findall(r"'([a-z_]+)'", "".join(re.findall(r"groups: \[([^\]]*)\]", layouts))))
     assert used <= set(chart_live.GROUP_NAMES)
     # The footprint layout follows Uzi's reference (MMT "Footprint Delta"): delta bars per price row, delta per candle, open interest.
@@ -402,6 +402,12 @@ def test_layers_are_sorted_in_named_layouts():
     assert "id: 'tim:pro', name: L.pro, symbol: 'BTCUSDT', tf: '15m', market: 'perp', fp: 'profile', groups:" in layouts
     assert "if (fpStyle !== 'cells') { drawDeltaBars(ctx, mediaSize, scale, step, barWidth, perStep); return; }" in script
     assert "delta" in chart_live.GROUP_NAMES and "delta" not in chart_live.DEFAULT_GROUPS
+    # Exo layouts (PDF Resources_PDF, 15.11.2026): the trader's settings are kept as shown, and the new layers start hidden.
+    assert "bubbles: { small: 2, medium: 3, large: 4.5 }" in script
+    assert "vp: { lookback: 240, valueArea: 0.7, placement: 'right', rows: 130, width: 40, offset: 13" in script
+    assert "vpoc: { threshold: 0.5" in script
+    assert {"bubbles_exo", "vp_range", "vpoc"} <= set(chart_live.GROUP_NAMES)
+    assert not {"bubbles_exo", "vp_range", "vpoc"} & set(chart_live.DEFAULT_GROUPS)
     assert "tim-chart-layouts-v1" in script and "saveGroups(now); applyVisibility(now); layoutChanged();" in script
     html = _live_section("BTCUSDT", "30m")
     assert "id='tc-live-layouts'" in html
@@ -411,7 +417,7 @@ def test_layers_are_sorted_in_named_layouts():
 def test_chart_script_names_no_third_party_trader():
     """Uzi 09.11.2026: the name must not show anywhere on /chart."""
     script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
-    assert "broncx" not in script.lower() and "bronxc" not in script.lower()
+    assert "mentor" not in script.lower() and "bronxc" not in script.lower()
 
 
 def test_two_charts_side_by_side_are_independent() -> None:
@@ -458,3 +464,37 @@ def test_indicator_bands_live_in_their_own_window_below_the_chart() -> None:
     # The candles keep their height: the price scale of the upper chart no longer shrinks per band.
     assert "bottom: 0.18 + BAND" not in script
     assert "subscribeVisibleLogicalRangeChange" in script and "function alignSub()" in script
+
+
+def test_the_chart_head_names_the_age_of_the_last_candle_and_warns_when_stale() -> None:
+    """Hermes 17.11.2026: a 30m candle looks the same with a stopped supply as in a calm market."""
+    model = _model("BTCUSDT", "30m")
+    assert model["last_closed"] and model["stale_after_seconds"] == INTERVAL_SECONDS["30m"] + 300
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    assert "letzte Kerze ${at}, vor ${min} min" in script and "tc-live-status--stale" in script
+
+
+def test_a_first_visit_starts_in_the_lesen_layout_with_few_layers() -> None:
+    """Hermes 17.11.2026: 21 of 35 layers were on at the first visit; Lesen shows the base levels, sessions, VWAP, plans."""
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    assert "{ id: 'tim:read', name: L.read, groups: READ }" in script
+    assert "=== null ? (START_LAYOUT && !PANE ? START_LAYOUT : 'tim:read') : ''" in script
+    base = re.search(r"const BASE = \[([^\]]*)\]", script).group(1).count("'") // 2
+    read = re.search(r"const READ = \[([^\]]*)\]", script).group(1).count("'") // 2
+    assert base + read <= 9
+
+
+def test_the_nasdaq_index_gets_no_stale_warning_and_reset_keeps_tim_standard() -> None:
+    """Prüfung 17.11.2026: the delayed index has no candles after the US close; "Zurücksetzen" must stay on TIM Standard."""
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    reset = script[script.index("action.dataset.action === 'reset'"):]
+    assert "saveGroups(groups);" in reset[:400] and "removeItem(STORE)" not in reset[:400]
+    assert "return START_LAYOUT && !PANE ? START_LAYOUT : 'tim:read'; }  // no storage" in script
+
+
+def test_the_reading_page_keeps_its_own_browser_memory() -> None:
+    """Uzi 23.11.2026: /reading is the live chart on the AI overlay; its choices must not change /chart."""
+    script = (Path(__file__).resolve().parents[1] / "src/dashboard/assets/tim_chart.js").read_text(encoding="utf-8")
+    for key in ("tim-chart-layers-v1", "tim-chart-market-v1", "tim-chart-layers-known-v1", "tim-chart-layout-active-v1", "tim-chart-fp-style-v1"):
+        assert f"'{key}' + PANE + SPACE" in script, key
+    assert "viewRange(activeLayout() === 'tim:ai' ? 34 : 168)" in script

@@ -5,7 +5,7 @@ M1 Failed Auction / 80-%-Regel (Bootcamp p. 46/51, Dalton): price traded outside
    stop beyond the outside extreme, target the opposite value-area edge.
    Orderflow confirmation: the candle that made the outside extreme carried delta *against* the trade
    (aggressive sellers at the low who got trapped).
-M2 Akzeptanz + Retest (Bootcamp p. 46/53/103, Broncx' BTC intraday model): two consecutive 30-min closes
+M2 Akzeptanz + Retest (Bootcamp p. 46/53/103, Mentor' BTC intraday model): two consecutive 30-min closes
    beyond yesterday's VAH/VAL, limit entry at the retest of that edge within 8 candles, stop under the
    lowest low of the acceptance candles, target the nearest naked POC or one value-area width.
    Orderflow confirmation: positive delta over the acceptance candles and relative volume >= relvol_min.
@@ -328,3 +328,55 @@ def poor_edge(c15: Sequence[Candle], fp15: Sequence[Footprint], lv: Levels, cfg:
                           weak and poor, relvol=relvol, notes=(f"bins={fp.n_bins}", f"poor={poor}", f"ziel={target[0]}"),
                           tf=cfg.tf_sfp)
     return None
+
+
+# -- M8 transition candle + retest (Fabervaale video 16.11.2026, plan package P3) ----------------------------------
+def transition(c15: Sequence[Candle], fp15: Sequence[Footprint], lv: Levels, cfg: Config) -> Signal | None:
+    """M8: after a balance of ``m8_balance`` closed 15m candles (range <= ``m8_range_max`` of price) the last candle
+    closes beyond the range with relative volume >= ``relvol_min`` (transition / initiative candle, video W5/W6).
+    A limit rests at the breakout candle's delta peak (where the aggressive side defended, W8), clamped to the range
+    edge; the stop sits back inside the range below (above) the edge; the target is the first opposing level with
+    R:R >= ``min_rr``; a close back inside the range cancels the limit.
+    Orderflow confirmation (W6/W7/W14): the breakout candle's POC lies beyond the balance VAH (VAL), i.e. value was
+    accepted outside, and the volume traded today between entry and target is thin (``void_ratio`` <=
+    ``m8_void_max`` or no prints there at all)."""
+    from src.research_lab.of2.flow import candle_profile, delta_peak, void_ratio
+
+    n = cfg.m8_balance
+    if len(c15) < n + 1 or len(fp15) != len(c15):
+        return None
+    brk, fp = c15[-1], fp15[-1]
+    window = c15[-n - 1:-1]
+    if not brk.has_trades or fp.empty or not all(c.has_trades for c in window):
+        return None
+    hi, lo = max(c.high for c in window), min(c.low for c in window)
+    if lo <= 0 or (hi - lo) / lo > cfg.m8_range_max:
+        return None
+    if brk.close > hi:
+        direction, edge = 1, hi
+    elif brk.close < lo:
+        direction, edge = -1, lo
+    else:
+        return None
+    relvol = relative_volume(c15[:-1], brk, cfg.relvol_bars)
+    if relvol is None or relvol < cfg.relvol_min:
+        return None
+    peak = delta_peak([fp], direction)
+    trigger = edge if peak is None else (max(peak, edge) if direction > 0 else min(peak, edge))
+    inside = lo if direction > 0 else hi
+    back = edge - (edge - inside) * cfg.m8_stop_depth            # a share of the range back inside
+    stop = back - back * cfg.stop_buffer * direction
+    target = _first_target(lv, direction, trigger, stop, cfg)
+    if target is None:
+        return None
+    balance = candle_profile(list(fp15[-n - 1:-1]))
+    prof = candle_profile(fp)
+    accepted = balance is not None and prof is not None and (
+        prof.poc > balance.vah if direction > 0 else prof.poc < balance.val)
+    a, b = sorted((trigger, target[1]))
+    void = void_ratio(list(fp15), a, b)
+    thin = void is None or void <= cfg.m8_void_max
+    return Signal("M8", direction, brk.end, LIMIT, trigger, brk.end + cfg.m8_retest * cfg.tf_sfp * MINUTE_MS,
+                  stop, target[1], "BALANCE_RAND", edge, accepted and thin, relvol=relvol, cancel_beyond=edge,
+                  notes=(f"range={(hi - lo) / lo:.4f}", f"peak={peak}", f"void={void}", f"ziel={target[0]}"),
+                  tf=cfg.tf_sfp)

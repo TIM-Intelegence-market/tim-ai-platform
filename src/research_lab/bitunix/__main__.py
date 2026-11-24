@@ -2,7 +2,7 @@
 
     python -m src.research_lab.bitunix leverage --equity 1000 --risk 0.0025 --stop 0.013
     python -m src.research_lab.bitunix target --win-rate 0.39 --win-r 2.4 --trades-per-day 0.2
-    python -m src.research_lab.bitunix record --root ~/TIM-research/bitunix [--symbols BTCUSDT] [--seconds 600]
+    python -m src.research_lab.bitunix record --root ~/TIM-research/bitunix [--symbols BTCUSDT] [--seconds 600] [--channels trade,depth_book15]
     python -m src.research_lab.bitunix report --trades docs/research_lab/reports/bitunix/of2_training_of_trades_aa853e1.json --out <file>
     python -m src.research_lab.bitunix account [--days 90]   (key from the macOS keychain, read only)
     python -m src.research_lab.bitunix gate
@@ -35,6 +35,8 @@ def main(argv: list[str] | None = None) -> int:
     rc.add_argument("--root", type=Path, required=True)
     rc.add_argument("--symbols", default="BTCUSDT")
     rc.add_argument("--seconds", type=float)
+    rc.add_argument("--channels", default=",".join(recorder.CHANNELS),
+                    help="comma list, e.g. trade,depth_book1,depth_book15 (deeper book)")
     rp = sub.add_parser("report")
     rp.add_argument("--trades", type=Path, required=True)
     rp.add_argument("--out", type=Path, required=True)
@@ -80,7 +82,8 @@ def main(argv: list[str] | None = None) -> int:
 
         signal.signal(signal.SIGTERM, _term)
         try:
-            counts = asyncio.run(recorder.record(a.root.expanduser(), a.symbols.split(","), stop_after=a.seconds))
+            counts = asyncio.run(recorder.record(a.root.expanduser(), a.symbols.split(","), stop_after=a.seconds,
+                                                  channels=a.channels.split(",")))
         except recorder.StorageError as exc:
             print(json.dumps({"state": "failed", "error": str(exc)}), flush=True)
             return 2

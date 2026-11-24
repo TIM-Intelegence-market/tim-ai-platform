@@ -404,7 +404,9 @@ def test_cli_verify_gate_and_sides(tmp_path, capsys):
     _fill_window(tmp_path, T0)
     assert main(["--data-dir", str(tmp_path), "verify"]) == 0
     assert "1 states, 0 with problems" in capsys.readouterr().out
-    assert main(["--data-dir", str(tmp_path), "gate", "--start", "2026-11-02"]) == 0
+    # The CLI counts up to the real clock: a fixed start turned "pending" into a verdict 14 days later (16.11.2026).
+    today = datetime.now(timezone.utc).date().isoformat()
+    assert main(["--data-dir", str(tmp_path), "gate", "--start", today]) == 0
     assert json.loads(capsys.readouterr().out)["gate"] == "pending"
     assert main(["--data-dir", str(tmp_path), "manifest", "--day", "2026-11-02"]) == 0
     capsys.readouterr()

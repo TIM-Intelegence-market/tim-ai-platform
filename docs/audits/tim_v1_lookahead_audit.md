@@ -4,7 +4,7 @@ Decision: **PASS with documented metadata and transport caveats**.
 
 ## Verified boundaries
 
-- BOS and Broncx rules require a closed last candle.
+- BOS and Mentor rules require a closed last candle.
 - Observation hash validation queries only candles with `close_time <= observed_at`.
 - Orderflow metrics use half-open windows ending at observation time.
 - Outcome validation uses a baseline at/before observation time and evidence strictly after it.

@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from src.dashboard import critic_backlog
 from src.dashboard.daily_report import LOCAL
 from src.dashboard.orderflow_shadow import _iso, _save, _time, load
 
@@ -30,7 +31,7 @@ DEFAULT_PATH = Path("data/hermes/daily_critic.json")
 SLOT_HOUR = 7  # local
 WINDOW_HOURS = 3  # a slot missed by more than this is skipped, not written late
 KEEP = 14
-MAX_PROMPT = 5000
+MAX_PROMPT = 6000
 MAX_PREVIOUS = 900
 MAX_LINES = 45
 MERGE_DAYS = 7
@@ -144,18 +145,21 @@ def gather(sources: Mapping[str, Source]) -> list[str]:
     return lines[:MAX_LINES]
 
 
-def prompt(lines: Sequence[str], previous: str | None) -> str:
+def prompt(lines: Sequence[str], previous: str | None, backlog: Sequence[str] = ()) -> str:
     text = ("Du bist der tägliche Kritiker von TIM (Papier-Handel und Live-Chart für BTC). Nutze keine Werkzeuge und nur diese "
             "Fakten, erfinde nichts dazu, keine Handelsempfehlung. Schreibe auf Deutsch zwei Teile.\n"
             "PROJEKT: die drei größten Schwächen, je mit einem konkreten Verbesserungsvorschlag und kurzer Begründung; dazu ein "
             "Punkt, der gut läuft.\n"
             "CHART AUS NUTZERSICHT: du bist jemand, der den Chart täglich öffnet. Was fehlt, ist leer, veraltet, langsam oder "
             "unverständlich? Drei Punkte, je mit Vorschlag.\n"
-            "Wenn eine Kritik von gestern noch gilt, schreibe 'noch offen' davor statt sie neu zu erfinden.\nFakten:\n" + "\n".join(lines))
+            "Wenn eine Kritik von gestern noch gilt, schreibe 'noch offen' davor statt sie neu zu erfinden.\n" + critic_backlog.FORMAT
+            + "\nFakten:\n" + "\n".join(lines))
     if previous:
         text += "\nKritik von gestern:\n" + previous[:MAX_PREVIOUS]
     else:
         text += "\nEs gibt noch keine Kritik von gestern; erwähne das nicht."
+    if backlog:
+        text += critic_backlog.prompt_part(backlog)
     return text[:MAX_PROMPT]
 
 
@@ -170,7 +174,8 @@ def latest(path: Path | None, count: int = 1) -> list[dict[str, Any]]:
     return list(reversed(reports[-count:]))
 
 
-def update(path: Path, sources: Mapping[str, Source], now: datetime | None = None, ask: Ask | None = None) -> dict[str, Any] | None:
+def update(path: Path, sources: Mapping[str, Source], now: datetime | None = None, ask: Ask | None = None,
+           backlog: Path | None = None) -> dict[str, Any] | None:
     """Write today's critique, once. Returns it, or None when nothing is due."""
     now = now or datetime.now(timezone.utc)
     path = Path(path)
@@ -182,12 +187,14 @@ def update(path: Path, sources: Mapping[str, Source], now: datetime | None = Non
     lines = gather(sources)
     previous = next((r.get("text") for r in reversed(reports) if r.get("text")), None)
     try:
-        reply = (ask or _hermes)(prompt(lines, previous))
+        reply = (ask or _hermes)(prompt(lines, previous, critic_backlog.lines(backlog, now) if backlog else ()))
     except Exception as error:  # noqa: BLE001 - the facts stay as the record then
         reply = {"ok": False, "error": type(error).__name__}
     report = {"slot": key, "at": _iso(now), "facts": lines,
               "text": str(reply.get("answer") or "")[:4000] if reply.get("ok") else None,
               "error": None if reply.get("ok") else str(reply.get("error") or "keine Antwort")[:200]}
+    if backlog and report["text"]:
+        critic_backlog.apply(backlog, report["text"], now)
     reports.append(report)
     state["reports"] = reports[-KEEP:]
     _save(state, path)

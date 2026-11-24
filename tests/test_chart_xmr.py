@@ -14,7 +14,7 @@ from tests.test_chart_live import NOW, fake_fetch
 
 
 def test_xmr_is_a_display_symbol_between_sol_and_gold() -> None:
-    assert SYMBOLS[0] == "BTCUSDT" and SYMBOLS[-1] == "PAXGUSDT"  # BTC stays the default, gold stays last
+    assert SYMBOLS[0] == "BTCUSDT" and SYMBOLS.index("PAXGUSDT") == SYMBOLS.index("NDX") - 1  # BTC stays the default, gold before the index
     assert SYMBOLS.index("XMRUSDT") == SYMBOLS.index("SOLUSDT") + 1
     assert tab_label("XMRUSDT") == "XMR"
 

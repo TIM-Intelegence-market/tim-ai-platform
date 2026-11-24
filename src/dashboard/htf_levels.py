@@ -7,7 +7,7 @@ Fills the part of a trader's morning prep that is usually typed in by hand
   high/low,
 - anchored VWAPs: this week (Monday 00:00 UTC), this month, this quarter and
   this year (1st, 00:00 UTC), each with its volume-weighted standard deviation
-  (the chart draws ±1σ and ±2σ bands around the weekly VWAP, as Broncx does).
+  (the chart draws ±1σ and ±2σ bands around the weekly VWAP, as Mentor does).
 
 Everything comes from candles, not trades: profiles spread each candle's
 volume evenly over its range (``chart_model.volume_profile``), the VWAP uses
@@ -194,7 +194,7 @@ def build_htf_levels(series: Mapping[str, Sequence[Mapping[str, Any]]], now: dat
     month_anchor = _start(month_start(today))
     quarter_anchor = _start(quarter_start(today))
     year_anchor = _start(year_start(today))
-    # Anchored like Broncx' VWAPs (week, month, quarter, year); the quarter is left out while it
+    # Anchored like Mentor' VWAPs (week, month, quarter, year); the quarter is left out while it
     # starts with the month (same line twice), the year while it starts with the quarter.
     specs = [
         ("week", "1W", f"VWAP Woche ab {week_anchor:%d.%m.}", week_anchor, (("1h", hours), ("1d", days))),

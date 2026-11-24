@@ -1,6 +1,6 @@
 """Perp-Schatten: TIM's 15m and 1h plan rule on perpetual candles with a volume profile from real perp trades.
 
-Master-Analyse 09.11.2026 (Kundensicht Broncx, P1c + P5; Uzi: "das muss unbedingt gefixt werden"). The paper
+Master-Analyse 09.11.2026 (Kundensicht Mentor, P1c + P5; Uzi: "das muss unbedingt gefixt werden"). The paper
 journals SHORT (15m) and MID (1h) price everything on Binance spot candles and estimate POC/VAH/VAL from candles,
 while the account trades Kraken perpetuals and the trader reads the chart on the perp. This shadow runs the same
 rule (plan_journal.update, tim/1) a second time:
@@ -31,8 +31,8 @@ PATHS = {"15m": Path("data/journal/tim_plan_journal_perp_short.json"), "1h": Pat
 XMR = "XMRUSDT"
 XMR_SOURCE = "Monero auf Binance USD-M Perp (XMRUSDT), VP aus Perp-Trades, TIM-Regeln, nur Papier"
 XMR_PATHS = {"15m": Path("data/journal/tim_plan_journal_xmr_15m.json"), "1h": Path("data/journal/tim_plan_journal_xmr_1h.json")}
-# Per symbol: the view's source line and the market type of new plans (None keeps BTC exactly as before).
-SOURCES = {"BTCUSDT": (SOURCE, None), XMR: (XMR_SOURCE, "USDM")}
+# Per symbol: the view's source line and the market type of new plans. Since R1 (16.11.2026) BTC is USDM too, no longer SPOT.
+SOURCES = {"BTCUSDT": (SOURCE, "USDM"), XMR: (XMR_SOURCE, "USDM")}
 # What plan_journal.update reads: 1m for fills and stops, the plan timeframes, the rest for levels and vol_4h.
 SERIES = {"1m": 1000, "15m": 500, "30m": 500, "1h": 500, "4h": 500, "1d": 500}
 

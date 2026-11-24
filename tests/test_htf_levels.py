@@ -107,7 +107,7 @@ def _series() -> dict[str, list[dict]]:
 def test_build_htf_levels_lists_profiles_vwaps_and_sorted_levels() -> None:
     model = build_htf_levels(_series(), NOW, last=101.0)
     assert [p["tf"] for p in model["profiles"]] == ["1M", "1Q", "1Y"]
-    # Anchored like Broncx: week, month, year; the quarter starts with the month in October (same line).
+    # Anchored like Mentor: week, month, year; the quarter starts with the month in October (same line).
     assert [v["key"] for v in model["vwaps"]] == ["week", "month", "year"]
     week, month, year = model["vwaps"]
     assert week["source"] == "1h" and week["anchor"] == "2026-10-26T00:00:00+00:00"
@@ -165,7 +165,7 @@ def test_live_chart_draws_vwap_as_a_line_when_the_anchor_is_in_view() -> None:
     placed = place_drawings(drawn, times)[0]
     assert placed["t1"] == int(datetime(2026, 10, 26, tzinfo=timezone.utc).timestamp()) and placed["t2"] == times[-1]
     assert placed["p2"] == pytest.approx(placed["curve"][-1][1]) and placed["bars"] == len(placed["curve"]) - 1
-    # The weekly VWAP brings ±1σ/±2σ bands that run with the line (Broncx: weekly VWAP ±2σ).
+    # The weekly VWAP brings ±1σ/±2σ bands that run with the line (Mentor: weekly VWAP ±2σ).
     bands = [d for d in drawn if d["group"] == "vwap_bands"]
     assert [d["name"] for d in bands] == ["VWAP +2σ", "VWAP +1σ", "VWAP −1σ", "VWAP −2σ"]
     line = drawn[0]["curve"]

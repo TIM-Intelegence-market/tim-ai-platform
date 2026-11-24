@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "regel": "Zuerst das billigste passende Modell; hochstufen nur bei Bedarf.",
+  "stufen": {
+    "lokal_klein": {"modell": "qwen3.5:9b", "ort": "mac-ollama", "kosten": 0},
+    "lokal_gross": {"modell": "qwen3-coder:30b", "ort": "tim-core-01/mac-ollama", "kosten": 0},
+    "vision": {"modell": "claude-sonnet-5-5", "ort": "cloud", "kosten": 2},
+    "mittel": {"modell": "claude-sonnet-5-5", "ort": "cloud", "kosten": 2},
+    "reasoning": {"modell": "claude-opus-5-5", "ort": "cloud", "kosten": 3}
+  },
+  "hochstufen": {
+    "lokal_klein": "lokal_gross",
+    "lokal_gross": "mittel",
+    "mittel": "reasoning",
+    "vision": "reasoning"
+  },
+  "aufgabenarten": {
+    "bild": "vision",
+    "studie": "reasoning",
+    "architektur": "reasoning",
+    "review_kritisch": "reasoning",
+    "mehrstufig": "reasoning",
+    "routine": "mittel",
+    "code": "mittel",
+    "status": "lokal_klein",
+    "klassifizieren": "lokal_klein",
+    "zusammenfassen": "lokal_klein",
+    "privat": "lokal_gross"
+  },
+  "standard": "mittel"
+}

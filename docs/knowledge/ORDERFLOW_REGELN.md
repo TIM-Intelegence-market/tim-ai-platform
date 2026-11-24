@@ -1,6 +1,6 @@
 # Orderflow-Regeln für TIM: Absorption, Exhaustion und Umfeld
 
-Stand: 2026-10-26. Quellen: Broncx-Bootcamp (nicht öffentlich, Abschnitt „Footprint delta“) und die unter „Quellen“ genannten öffentlichen Texte. Das Dokument ist
+Stand: 2026-10-26. Quellen: Mentor-Bootcamp (nicht öffentlich, Abschnitt „Footprint delta“) und die unter „Quellen“ genannten öffentlichen Texte. Das Dokument ist
 Lernstoff und Regelbuch für die Orderflow-Engine, kein Handelssignal und kein Nachweis
 für einen Edge. Jede Regel ist eine Beobachtung mit Bedingungen; eine Entscheidung braucht
 weiterhin Ort (HTF-Level), zweite unabhängige Evidenz und eine Invalidierung
@@ -36,7 +36,7 @@ die **Anstrengung** hinter der Bewegung:
 | Bestätigung | Delta-Flip, gescheiterter Retest des Levels, Strukturbruch in Gegenrichtung. | Delta-Flip, anschließende Absorption oder Delta-Failure; allein kein Trade. |
 | Kann scheitern | Der passive Teilnehmer zieht seine Orders zurück, Level bricht. | Die Pause ist nur eine Pause, die Bewegung läuft weiter. |
 
-Broncx selbst: „Finished auction was deciding factor for reversal. Lots of sellers puking (high
+Mentor selbst: „Finished auction was deciding factor for reversal. Lots of sellers puking (high
 Delta)“ ist Absorption/Puken mit hohem Delta; „Sometimes signs are less obvious with exhaustion
 cases on lower delta, but it's generally just a confluence and wouldn't enter with it on my own.“
 Beide gelten bei ihm nur als Konfluenz am HTF-Level, nie als eigener Einstieg.
@@ -164,7 +164,7 @@ den `ofsc`-Archivpfad samt Fail-closed-Fällen ab, ohne Netz und ohne Datenbank.
 
 ## Quellen
 
-- Broncx-Bootcamp-PDF (Eigentümer-Kopie, nur Lernquelle): Footprint-, CVD-, OI-, AMT-, Profil-Abschnitte und Trade Breakdowns.
+- Mentor-Bootcamp-PDF (Eigentümer-Kopie, nur Lernquelle): Footprint-, CVD-, OI-, AMT-, Profil-Abschnitte und Trade Breakdowns.
 - LuxAlgo Library, „Absorption & Exhaustion“: https://www.luxalgo.com/library/concept/absorption-and-exhaustion/
 - Binance Public Data (Tagesarchive aggTrades, Spalten und Prüfsummen): https://github.com/binance/binance-public-data und https://data.binance.vision/
 - LuxAlgo Library, „Footprint Concepts“: https://www.luxalgo.com/library/concept/footprint-concepts/

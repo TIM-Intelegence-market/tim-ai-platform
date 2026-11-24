@@ -34,7 +34,7 @@ def overview(root: Path | str = ".", now: datetime | None = None) -> dict[str, A
                               "notes": notes, "ideas": [], "idea_counts": {}, "drafts_this_month": 0,
                               "trades": None, "schedule": {}, "shadows": [], "last_reflection": None,
                               "rule_tests": {"count": 0, "candidates": 0, "recent": []}, "self_improve": None,
-                              "forward": None, "of_paper": None}
+                              "forward": None, "of_paper": None, "of_live": None}
     try:
         ideas = list(IdeaQueue(research / "IDEEN.jsonl").ideas().values())
         result["idea_counts"] = dict(Counter(i["status"] for i in ideas))
@@ -116,6 +116,15 @@ def overview(root: Path | str = ".", now: datetime | None = None) -> dict[str, A
             result["of_paper"] = json.loads(paper_file.read_text(encoding="utf-8"))
     except Exception as error:  # noqa: BLE001
         notes.append(f"Orderflow-Papier-Journal nicht lesbar: {type(error).__name__}")
+    try:
+        from src.research_lab.forward import of_live_mirror
+        folder = Path(root) / of_live_mirror.FOLDER
+        if (folder / "status.json").exists():
+            result["of_live"] = {**json.loads((folder / "status.json").read_text(encoding="utf-8")),
+                                 "mirror": json.loads((folder / "mirror.json").read_text(encoding="utf-8"))
+                                 if (folder / "mirror.json").exists() else None}
+    except Exception as error:  # noqa: BLE001
+        notes.append(f"Orderflow-Live-Journal (PS5) nicht lesbar: {type(error).__name__}")
     reports = sorted((research / "reports").glob("forschung_*.md")) if (research / "reports").is_dir() else []
     if reports:
         result["last_reflection"] = reports[-1].stem.removeprefix("forschung_")

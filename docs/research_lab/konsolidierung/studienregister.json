@@ -1,0 +1,2731 @@
+{
+ "stand": "2026-11-16",
+ "zusammenfassung": {
+  "eintraege_gesamt": 74,
+  "gefundene_studien_und_berichte": 69,
+  "eigene_nachrechnungen": 5,
+  "nach_klasse": {
+   "BEDINGT VERWERTBAR": 31,
+   "EXPLORATIV": 30,
+   "NICHT REPRODUZIERBAR": 4,
+   "BELASTBAR": 4
+  },
+  "nach_pruefung": {
+   "A": 2,
+   "B": 8,
+   "C+": 23,
+   "C": 29,
+   "D": 7
+  },
+  "nach_cluster": {
+   "FRÜH": 8,
+   "OF-MIN": 10,
+   "CARRY": 2,
+   "TREND-4H": 6,
+   "PROSPEKTIV": 9,
+   "PROGNOSE": 10,
+   "INFRA": 6,
+   "BTC-1H": 9,
+   "LEVEL-INTRADAY": 7,
+   "OPTIONEN": 2
+  },
+  "nach_typ_grob": {
+   "Handelsregel oder Regelfamilie (gerechnet)": 23,
+   "Prognose-, Beobachtungs- oder Kalibrierstudie": 18,
+   "Filterstudie": 8,
+   "Prospektive oder reale Beobachtung": 8,
+   "Sonstiges (Entwurf, Gate, Zähllauf)": 4,
+   "Plattform, Prüfbericht, Meta": 7,
+   "Carry": 1
+  },
+  "nach_laborurteil": {
+   "failed": 22,
+   "confirmed": 2,
+   "not_testable": 8,
+   "candidate": 2,
+   "running": 11,
+   "reported": 13,
+   "waiting": 7,
+   "aborted": 1,
+   "no_proof": 1,
+   "not_proven": 1,
+   "stopped": 1
+  },
+  "belastbar_positiv": [],
+  "ungueltig": []
+ },
+ "cluster": {
+  "TREND-4H": "Binance USD-M 4h BTC/ETH/SOL 2020–2024, Donchian/SMA200-Regel (S7, S7b). S7b-Makro und S25 verwenden dieselbe Handelsliste, S32 dieselbe Regel auf anderen Märkten. Eine Evidenzquelle für die Regel, nicht fünf.",
+  "BTC-1H": "BTC 1h, S8-Minutenbalken-Datensatz (SHA-256 9083b6ae…), Standard-Trades. Die Validierung 2023–2024 wurde von S20–S28 wiederholt verwendet; die Studien sind nicht unabhängig voneinander.",
+  "OF-MIN": "S8-Minutenbalken (Orderflow/Footprint, BTC 2020–2024). OF2, S31 (B1–B5 sind OF2-Modelle), OFX, S19, S17 und die Move-Kalibrierung teilen dieselben Daten.",
+  "LEVEL-INTRADAY": "BTC/ETH/SOL 1m–15m aus Binance-Archiven, Training 2020–2022/23; S30, S34–S38 und die VWAP-Beschreibung testen Level-Ideen auf überlappenden Zeiträumen.",
+  "FRÜH": "Frühe Studien (Sept.–Nov. 2026) auf BTC/ETH/SOL 2020–2024 mit Protokoll 1.x: R4 (48 Varianten), S4, S6, S9, S10, S13, S14.",
+  "CARRY": "Funding-Carry: S5 (nicht testbar), S33-Carry (nur Training), eigene Prüfung T11.",
+  "PROSPEKTIV": "Papier-Journale, Schatten und Echtgeld-Mini-Test: einzelne Beobachtungsfenster ab Oktober/November 2026, kleine Stichproben.",
+  "OPTIONEN": "Deribit-Optionen/Gamma: Entwürfe, nur vorwärts; keine Historie.",
+  "PROGNOSE": "Prognose-, Verteilungs- und KI-Studien ohne oder mit Papiertrades: Risiko- und Anzeigebausteine, keine Gewinnaussage.",
+  "INFRA": "Plattform-, Daten- und Software-Abnahmen: prüfen Pipeline und Governance, nicht Profitabilität.",
+  "EIGEN": "Eigene Nachrechnungen dieser Konsolidierung (Protokoll 1.0, eingefroren)."
+ },
+ "nicht_zugaenglich": [
+  {
+   "quelle": "Mac-Dateien außerhalb des Repos",
+   "grund": "~/Documents/TIM/evidence/S33-*.md und E0E1-2026-11-12.md (Entwürfe und Bericht zu S30/S33-Carry), ~/TIM-live/data/journal/ (Roh-Journale, auto.jsonl), Hermes-Evals; nur über Berichte des Labors bekannt, nicht selbst gelesen."
+  },
+  {
+   "quelle": "Kraken-Echtgeldtest und Bitunix-Konto",
+   "grund": "Kontoauszüge, Orderlisten und Journal des Live-Traders nicht zugänglich; nur Berichte (Kraken-Kosten 04.11., Kapitalrechnung 12.11.)."
+  },
+  {
+   "quelle": "PS5/PS4-Rohdaten",
+   "grund": "S8-Minutenbalken und die vollen OFX-Läufe sind nur als Ergebnisdateien kopiert (OFX: Suchprotokoll vollständig gezählt); keine eigene Neuberechnung der Orderflow-Studien."
+  },
+  {
+   "quelle": "V2-Archiv und Hermes",
+   "grund": "V2-Kampagnenseiten (System → Archiv V2) und Hermes-Evals nicht im Repo; ohne Handelsbezug laut Gedächtnis."
+  },
+  {
+   "quelle": "Repos tim-ai-platform-private und tim-master",
+   "grund": "Dateilisten verglichen und die einschlägigen Berichte gelesen (V1-Juli, Plan-Journal-Evidenz); keine vollständige Durchsicht der 2.041 bzw. 23 Dateien. Das private Repo enthält die Forschungsdateien ebenfalls (94 Dateien nur dort, überwiegend Infrastrukturbelege)."
+  },
+  {
+   "quelle": "GitHub-Issues und Pull-Request-Diskussionen",
+   "grund": "nicht gelesen; Studienstände nur aus Repo, Logbuch und Ergebnisdateien."
+  },
+  {
+   "quelle": "Holdout ab 2025-01-01",
+   "grund": "bewusst nicht geladen (versiegelt; Freigabe nur durch Uzi, bei S7b auch Barti)."
+  },
+  {
+   "quelle": "S29, S12, S18, S8, L1, KI1, GEX-Wand, S33-Optionsflow, S23",
+   "grund": "kein Ergebnis vorhanden oder noch nicht ausgewertet; Status nicht prüfbar."
+  },
+  {
+   "quelle": "Projektordner /mnt/project-files/analysen",
+   "grund": "rund 70 Unterordner; die studienrelevanten (Bitunix-Edge, Ziel 50 USDT, Indikator-/Orderflow-Prüfung, Läufer, VWAP, OF2-Kostengrenze, Stop-Analyse, Kraken-Kosten) wurden gelesen, Chart-/Layout-/Control-Center-Ordner nicht."
+  },
+  {
+   "quelle": "Externe Quellen",
+   "grund": "Reels, Videos und Bootcamp-Material sind keine Messungen und wurden nur über TIMs Auswertungen (Bewertungsberichte) einbezogen."
+  }
+ ],
+ "eintraege": [
+  {
+   "id": "R4",
+   "titel": "48 Orderflow- und Struktur-Varianten mit Glückstest (SPA/StepM)",
+   "cluster": "FRÜH",
+   "typ": "Regelfamilie (Test)",
+   "datum": "2026-09-29",
+   "quellen": [
+    "docs/research_lab/reports/r4_2026-09-29T2219Z.md",
+    "docs/research_lab/reports/r4_2026-09-29T2219Z.json",
+    "docs/research_lab/REGISTER.jsonl",
+    "/mnt/project-files/analysen/glueckstest-r4-2026-10-24.md (Probelauf, nicht im Repo)"
+   ],
+   "daten": "BTC/ETH/SOL, Binance, 2020–2024",
+   "aufteilung": "Training / Validierung (Holdout ab 2025 gesperrt)",
+   "kosten": "Protokoll 1.x",
+   "register": "48 Registerplätze (L1 6, L2 6, M1 4, M2 4, M3 14, S1 4, S2 4, T1–T3 je 2), Stand Register: 42 im Training, 6 in der Validierung gescheitert, keine bestanden",
+   "stichprobe": "48 Varianten",
+   "ergebnis": "Kein Vorteil in Training und Validierung; SPA p 0,46 / 0,43, StepM wählt keine Variante.",
+   "laborurteil": "failed",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ",
+   "begruendung": "Die Zahlen des Logbuchs stehen in der Ergebnisdatei. Familie ist breit (48 Varianten) und mit Glückstest ausgewertet; nicht einzeln nachgerechnet.",
+   "maengel": [
+    "Nicht einzeln nachgerechnet",
+    "Teil der frühen Protokollversion; Kosten- und Stopmodell nach Protokoll 1.x"
+   ],
+   "aussagen": [
+    {
+     "text": "Kein Vorteil in Training und Validierung (SPA p 0,46 / 0,43)",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Zahlen des Logbuchs stehen in der Ergebnisdatei",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Registerstatus der 48 Varianten: 42 failed_train, 6 failed_validation",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Glückstest-Probelauf 24.10.: SPA p 0,36/0,46/0,53 (Training), 0,34/0,43/0,53 (Validierung), StepM keine Variante",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Negativbefund für Orderflow-/Struktur-Regeln der Familie; füllt 48 der 58 belegten Registerplätze (zählt für den Mehrfachtest-Zähler)."
+  },
+  {
+   "id": "S1",
+   "titel": "BTC-Schwankung an CPI-Terminen",
+   "cluster": "FRÜH",
+   "typ": "Beobachtungsstudie (Volatilität)",
+   "datum": "2026-10-13",
+   "quellen": [
+    "docs/research_lab/studien/S1_CPI_VOLATILITAET.md",
+    "docs/research_lab/reports/s1_cpi_volatility.md",
+    "docs/research_lab/reports/s1_cpi_volatility.json"
+   ],
+   "daten": "BTC 1h/4h/24h, CPI-Termine",
+   "aufteilung": "ein Fenster",
+   "kosten": "keine (beschreibend)",
+   "register": "kein Registerplatz (die Registerfamilien S1/S2 gehören zu R4 und sind andere Hypothesen)",
+   "stichprobe": "CPI-Termine, Anzahl siehe Bericht",
+   "ergebnis": "CPI-Stunde: Schwankung im Median 1,40-mal so groß wie sonst; 4h und 24h nicht bestätigt.",
+   "laborurteil": "confirmed",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "keine Handelsaussage",
+   "begruendung": "Beschreibende Volatilitätsaussage, keine Richtung und keine Rendite; für die Frage nach einem Handelsvorteil ohne Beitrag.",
+   "maengel": [
+    "Keine Handelsregel, keine Kosten"
+   ],
+   "aussagen": [
+    {
+     "text": "CPI-Stunde 1,40-fach (Median)",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Zahl steht in Ergebnisdatei",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Nur als Begründung für die Sperrzeit um Termine; nicht als Handelsvorteil gezählt."
+  },
+  {
+   "id": "S2",
+   "titel": "TIMs Live-Orderflow-Regeln als Hypothese",
+   "cluster": "OF-MIN",
+   "typ": "Regelfamilie (Test)",
+   "datum": "2026-10-22",
+   "quellen": [
+    "docs/research_lab/studien/S2_ORDERFLOW_REGELN_PRAEREGISTRIERUNG.md",
+    "docs/research_lab/reports/s2_count_2026-10-25T2249Z.md",
+    "docs/research_lab/reports/s2_power_2026-10-25T2345Z.md"
+   ],
+   "daten": "BTC, Orderflow-Merkmale (aggTrades)",
+   "aufteilung": "Training / Validierung",
+   "kosten": "Protokoll 1.x",
+   "register": "kein Registerplatz (die Registerfamilie S2 gehört zu R4)",
+   "stichprobe": "Zähllauf bestanden, Power-Gate nicht",
+   "ergebnis": "Nicht beurteilbar: keine der sechs gerichteten Arten erreicht in allen Szenarien 90 % Power; beendet auf Uzis Entscheid am 26.10.2026. Die Live-Orderflow-Regeln gelten als Beobachtungen, nicht als Signale.",
+   "laborurteil": "not_testable",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Das Power-Gate scheiterte: Die Studie konnte einen realistischen Effekt gar nicht nachweisen. Das ist weder Beleg noch Gegenbeleg.",
+   "maengel": [
+    "Zu geringe Teststärke"
+   ],
+   "aussagen": [
+    {
+     "text": "Power-Gate nicht bestanden",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Kein Beitrag; belegt nur, dass die Fallzahl nicht reichte."
+  },
+  {
+   "id": "S4",
+   "titel": "Trefferquote 75 % mit Ziel 0,75 R (Sweep, Delta, Regime)",
+   "cluster": "FRÜH",
+   "typ": "Regelfamilie (Gate + Erkundung)",
+   "datum": "2026-10-25",
+   "quellen": [
+    "docs/research_lab/studien/S4_TREFFERQUOTE_75_PRAEREGISTRIERUNG.md",
+    "docs/research_lab/reports/s4_count_2026-10-25T1620Z.md",
+    "docs/research_lab/reports/s4_explore_2026-10-25T1630Z.md",
+    "docs/research_lab/reports/s4_hitrate95_2026-10-25T1733Z.md"
+   ],
+   "daten": "BTC, 1h/4h",
+   "aufteilung": "Zähllauf auf Training; Erkundung danach",
+   "kosten": "Protokoll 1.x",
+   "register": "kein Registerplatz belegt",
+   "stichprobe": "10 Varianten; Erkundung z. B. 4.795 Trades (H1-N24)",
+   "ergebnis": "Gate gescheitert (keine der 10 Varianten genug Trades). Erkundung: alle Varianten verlieren nach Kosten (E[R] −0,12 bis −0,23 R), Trefferquote unter 54 %.",
+   "laborurteil": "not_testable",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ",
+   "begruendung": "Zeigt für die Winrate-Frage: Das Ziel von 75 % wurde mit diesen Regeln nicht annähernd erreicht (höchste Trefferquote 52,5 %, obere Intervallgrenze überall unter 54 %), und jede Variante verliert nach Kosten. Die Erkundung ist ausdrücklich keine bestandene Studie.",
+   "maengel": [
+    "Erkundung nach dem Gate-Scheitern, nicht vorab festgelegt"
+   ],
+   "aussagen": [
+    {
+     "text": "Erkundung: E[R] −0,12 bis −0,23 R je Trade, Profit Factor 0,58 bis 0,74",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Höchste Trefferquote 52,5 % (H1-N24, n 4.795; Wilson-Obergrenze unter 54 %)",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Zahlen im Erkundungsbericht gelesen, Rohdaten nicht neu gerechnet",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Beleg, dass 75 % Trefferquote mit diesen Regeln nicht erreichbar war und die erreichbaren Quoten (um 50 %) nach Kosten verlieren. Die Aussage „hohe Trefferquote ≠ Vorteil“ stützt S6, nicht S4."
+  },
+  {
+   "id": "S5",
+   "titel": "Trefferquote 95 % mit Funding-Carry (Perp-Wechsel)",
+   "cluster": "CARRY",
+   "typ": "Regelfamilie (Gate)",
+   "datum": "2026-10-25",
+   "quellen": [
+    "docs/research_lab/studien/S5_WINRATE_95_FUNDING_CARRY_PRAEREGISTRIERUNG.md",
+    "docs/research_lab/reports/s5_count_2026-10-25T1836Z.md"
+   ],
+   "daten": "BTC, Funding-Historie",
+   "aufteilung": "Zähllauf Training",
+   "kosten": "—",
+   "register": "kein Registerplatz belegt",
+   "stichprobe": "zu wenige Episoden (2022 keine)",
+   "ergebnis": "Nicht testbar: zu wenige Episoden, weil die Funding-Rate 2022 nie über 0,01 % lag.",
+   "laborurteil": "not_testable",
+   "pruefung": "C+",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Die Studie konnte nicht rechnen; die Carry-Frage wurde später in S33-Carry und in dieser Konsolidierung (T11) anders gestellt.",
+   "maengel": [
+    "Auslöser-Schwelle an die Funding-Rate gebunden"
+   ],
+   "aussagen": [
+    {
+     "text": "Nicht testbar (zu wenige Episoden)",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "S6",
+   "titel": "Trefferquote 95 % mit Maker-Limits an der VWAP-Abweichung",
+   "cluster": "FRÜH",
+   "typ": "Handelsregel (Test)",
+   "datum": "2026-10-25",
+   "quellen": [
+    "docs/research_lab/studien/S6_WINRATE_95_MAKER_MEAN_REVERSION_PRAEREGISTRIERUNG.md",
+    "docs/research_lab/reports/s6_train_2026-10-25T2338Z.md",
+    "docs/research_lab/reports/s6_count_2026-10-25T2229Z.md",
+    "docs/research_lab/reports/s6_latency_2026-10-25T2257Z.md"
+   ],
+   "daten": "BTC/ETH/SOL, 1m–1h",
+   "aufteilung": "Training",
+   "kosten": "Protokoll 1.x, Maker-Gebühren",
+   "register": "6 Registerplätze (S6)",
+   "stichprobe": "Trades siehe Bericht",
+   "ergebnis": "Nicht bestanden: Treffer 71,7–81,9 % (Training), Erwartung −0,07 bis −0,11 R; Zufallseinstiege mit gleicher Geometrie treffen genauso oft (82,0 % gegen 81,9 % bei k = 2, T = 0,15).",
+   "laborurteil": "failed",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ",
+   "begruendung": "Das Zufallsvergleichsverfahren zeigt, dass die Trefferquote aus dem Verhältnis von Ziel zu Stop kommt. Das ist die methodisch wichtigste Lehre für die Winrate-Frage.",
+   "maengel": [
+    "Maker-Füllung wird in der Simulation angenommen (Latenz-Bericht vorhanden)"
+   ],
+   "aussagen": [
+    {
+     "text": "Trefferquote 72–82 %, E[R] −0,07 bis −0,11 R",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Zufallseinstiege mit gleicher Geometrie treffen genauso oft",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Zahlen in Ergebnisdatei",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Beleg: hohe Trefferquote ≠ Vorteil. Zählt gegen jede Winrate-Zielvorgabe."
+  },
+  {
+   "id": "S7",
+   "titel": "Trendfolge-Ausbruch 3–4 R (Donchian, SMA200), BTC/ETH/SOL 4h, Positionen je Symbol",
+   "cluster": "TREND-4H",
+   "typ": "Handelsregel (Test)",
+   "datum": "2026-10-26",
+   "quellen": [
+    "docs/research_lab/studien/S7_3_4R_TRENDFOLGE_AUSBRUCH_PRAEREGISTRIERUNG.md",
+    "docs/research_lab/reports/s7_train_2026-10-26T1049Z.md",
+    "docs/research_lab/reports/s7_train_2026-10-26T1049Z.json",
+    "src/research_lab/konsolidierung/s7b_nachrechnung.py"
+   ],
+   "daten": "Binance USD-M 4h BTC/ETH/SOL, 2020–2024",
+   "aufteilung": "Training < 2023, Validierung 2023–2024, Holdout gesperrt",
+   "kosten": "Protokoll 1.3 (Gebühr 5 bp, Schlupf 3 bp, Stop-Schlupf 5 bp je Seite) plus Funding",
+   "register": "2 Registerplätze (S7)",
+   "stichprobe": "Training und Validierung: z. B. D20-T3 557 / 420 Trades",
+   "ergebnis": "Nicht bestanden: Erwartung positiv (D20-T3 / D20-T4: Training +0,232 / +0,284 R, Validierung +0,190 / +0,243 R), Drawdown in der Validierung 30,2 / 30,8 R über der Grenze von 20 R.",
+   "laborurteil": "failed",
+   "pruefung": "A",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "positiv (Erwartung), Risikokriterium verfehlt",
+   "begruendung": "Die gespeicherten Handelslisten wurden aus Rohkerzen exakt neu erzeugt (T1). Die Erwartung ist rechnerisch belegt, aber der Drawdown überschritt die vorab gesetzte Grenze.",
+   "maengel": [
+    "Mehrere Positionen gleichzeitig (Drawdown 30 R)",
+    "Gleiche Kerzendaten wie S7b, S25, S32 (Datenüberschneidung)"
+   ],
+   "aussagen": [
+    {
+     "text": "Handelsliste exakt reproduziert (4.879 Trades S7/S7b, max. Abweichung 0 R)",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Erwartung D20-T3 / D20-T4: Training +0,232 / +0,284 R, Validierung +0,190 / +0,243 R; Drawdown Validierung 30,2 / 30,8 R",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Mechanik-Nachweis; führte zu S7b."
+  },
+  {
+   "id": "S7b",
+   "titel": "Trendfolge-Ausbruch 3–4 R mit höchstens einer Position (BTC > ETH > SOL)",
+   "cluster": "TREND-4H",
+   "typ": "Handelsregel (Test)",
+   "datum": "2026-10-26",
+   "quellen": [
+    "docs/research_lab/studien/S7B_EINE_POSITION_PRAEREGISTRIERUNG.md",
+    "docs/research_lab/reports/s7b_train_2026-10-26T1305Z.md",
+    "docs/research_lab/reports/s7b_train_2026-10-26T1305Z.json",
+    "docs/research_lab/konsolidierung/ergebnisse/t01_reproduktion.json"
+   ],
+   "daten": "Binance USD-M 4h BTC/ETH/SOL, 2020–2024",
+   "aufteilung": "Training < 2023, Validierung 2023–2024, Holdout auf Uzis Wahl nicht benutzt",
+   "kosten": "Protokoll 1.3 plus Funding",
+   "register": "2 Registerplätze (S7b)",
+   "stichprobe": "D20-T3: Training 292, Validierung 207 Trades (D20-T4 266 / 189)",
+   "ergebnis": "Training und Validierung bestanden (D20-T3: E +0,27 R, PF 1,45, DD 10,9 R). Kandidat, keine bestätigte Strategie, nicht für Live.",
+   "laborurteil": "candidate",
+   "pruefung": "A",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "positiv (Kandidat)",
+   "begruendung": "Rechnung unabhängig reproduziert und gegen Kosten, Raster, Zufallseinstiege und Konzentration geprüft (T1–T9). Offen bleiben Mehrfachtest (DSR 0,78 gepoolt), Übertragung auf andere Coins (S32 negativ), Verzögerungsempfindlichkeit (Validierung −0,007 R bei einer Kerze Verzögerung) und die Auswahl der drei Coins im Nachhinein.",
+   "maengel": [
+    "Mehrfach verbrauchte Validierung 2023–2024 (S7b, S25, S32, S7b-Makro verwenden dieselbe Handelsliste)",
+    "Survivorship: BTC/ETH/SOL erst 2026 gewählt",
+    "Zufallseinstiege in SMA200-Richtung erzielen im Training schon +0,097 R (eigene Rechnung T3, K1)",
+    "Kein ungesehener Abschlusstest"
+   ],
+   "aussagen": [
+    {
+     "text": "Handelsliste reproduziert (T1)",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Nettoerwartung K1 Training +0,22 / Validierung +0,26 R",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Zufalls-p gepoolt 0,002",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "DSR (N=64) gepoolt 0,78 unter 0,95",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Bestätigung außerhalb der Entwicklung fehlt",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Kernkandidat C1 (und C3, C2) der Konsolidierung."
+  },
+  {
+   "id": "S7b-Makro",
+   "titel": "S7b-Makrofilter F1–F5 (Realzins, Dollar, Liquidität u. a.) als Filter auf S7b-Trades",
+   "cluster": "TREND-4H",
+   "typ": "Filterstudie",
+   "datum": "2026-11-03",
+   "quellen": [
+    "docs/research_lab/studien/S7B_MAKRO_FILTER.md",
+    "docs/research_lab/KONSOLEN_TEST_VORWAERTS_LOG.md",
+    "docs/research_lab/EINFLUSS_BAROMETER.md"
+   ],
+   "daten": "FRED-Makroreihen, S7b-Trades 2020–2024",
+   "aufteilung": "Training / Validierung",
+   "kosten": "wie S7b",
+   "register": "kein Registerplatz belegt",
+   "stichprobe": "Trades der S7b-Liste",
+   "ergebnis": "F5 besteht nach fünf Versuchen; Glückstest über fünf Filter p = 0,066, damit nur Kandidat für Vorwärts-Log; F1–F4 nicht bestanden.",
+   "laborurteil": "candidate",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "unklar (Mehrfachtest nicht bestanden)",
+   "begruendung": "Fünf Filter an derselben Handelsliste; der Glückstest über alle fünf ist nicht bestanden. Ein Treffer nach mehreren Versuchen ist ein Hinweis, kein Beleg.",
+   "maengel": [
+    "Fünf Versuche, Filter nach Ansicht der Ergebnisse weiterverfolgt",
+    "Gleiche Handelsliste wie S7b"
+   ],
+   "aussagen": [
+    {
+     "text": "F5 besteht, Glückstest über fünf Filter p = 0,066",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Nicht verwendet; Filter F5 läuft als Vorwärts-Log."
+  },
+  {
+   "id": "S7b-Forward",
+   "titel": "S7b Papier-Vorwärtsjournal auf Live-Kerzen ab 01.11.2026 (D20-T3, D20-T4)",
+   "cluster": "PROSPEKTIV",
+   "typ": "Prospektives Papier-Journal",
+   "datum": "2026-11-01",
+   "quellen": [
+    "docs/research_lab/studien/S7B_EINE_POSITION_PRAEREGISTRIERUNG.md (Abschnitt 14)",
+    "Kopie des Journals (journal.jsonl, SHA-256 852cfb98…)"
+   ],
+   "daten": "Live-4h-Kerzen BTC/ETH/SOL ab 2026-11-01 12:00",
+   "aufteilung": "vorwärts, einmalig",
+   "kosten": "wie S7b (Papier)",
+   "register": "Teil der S7b-Familie",
+   "stichprobe": "D20-T3 4 geschlossene Trades, D20-T4 3 (Stand 16.11. 13:32)",
+   "ergebnis": "D20-T3: +2,95 / −1,06 / +2,93 / −1,06 R, netto +3,771 R, ein offener Short; D20-T4: +6,847 R; alle Trades Short. Mindestzahl laut Vorgabe 100.",
+   "laborurteil": "running",
+   "pruefung": "B",
+   "klasse": "EXPLORATIV",
+   "richtung": "positiv (n viel zu klein)",
+   "begruendung": "Hash-Kette lückenlos (verifiziert). Mit 4 und 3 Trades keine Aussage; die Summe liegt im Rahmen von Glück.",
+   "maengel": [
+    "n = 4 bzw. 3",
+    "Nur Short-Trades, ein Marktabschnitt"
+   ],
+   "aussagen": [
+    {
+     "text": "Hash-Kette lückenlos, Zahlen nachgerechnet",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Aussagekraft: keine",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Wird als beobachtet gemeldet; zählt weder für noch gegen den Kandidaten. Basis für den prospektiven Test."
+  },
+  {
+   "id": "S7b-Sonde",
+   "titel": "S7b Sondenlauf 04.07.–01.11.2026 (zufällig gesehen, in der Präregistrierung vermerkt)",
+   "cluster": "TREND-4H",
+   "typ": "Probelauf (nur berichtet)",
+   "datum": "2026-11-01",
+   "quellen": [
+    "docs/research_lab/studien/S7B_EINE_POSITION_PRAEREGISTRIERUNG.md (Abschnitt 14)"
+   ],
+   "daten": "BTC/ETH/SOL 4h, 2026-07-04 bis 2026-11-01",
+   "aufteilung": "außerhalb der Entwicklung, aber vor dem Start gesehen",
+   "kosten": "wie S7b",
+   "register": "—",
+   "stichprobe": "D20-T3 35 Trades, D20-T4 30 Trades",
+   "ergebnis": "D20-T3: −5,8 R (−0,17 R je Trade), D20-T4: −6,1 R; Drawdown 12,1 R je Variante. In der Präregistrierung als zufällig gesehen vermerkt.",
+   "laborurteil": "reported",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "negativ (n klein)",
+   "begruendung": "Außerhalb des Entwicklungszeitraums, aber nach der Ansicht nicht als Test zu zählen. Spricht gegen eine Erwartung von +0,22 R, ist mit 35 Trades aber statistisch nicht trennscharf.",
+   "maengel": [
+    "Vorab gesehen",
+    "n = 35"
+   ],
+   "aussagen": [
+    {
+     "text": "−0,17 R je Trade bei 35 Trades (D20-T3)",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Wird als Gegenindiz offen genannt; zählt nicht als Test."
+  },
+  {
+   "id": "S25",
+   "titel": "Positionsgröße nach GARCH-4h-Prognose für S7b-D20-T3",
+   "cluster": "TREND-4H",
+   "typ": "Größenregel (Test)",
+   "datum": "2026-11-11",
+   "quellen": [
+    "docs/research_lab/reports/s25_run_2026-11-12T0926Z.md",
+    "docs/research_lab/reports/s25_run_2026-11-12T0926Z.json",
+    "docs/research_lab/studien/S25_GARCH_GROESSE_S7B_PRAEREGISTRIERUNG_ENTWURF.md"
+   ],
+   "daten": "S7b-Handelsliste D20-T3, GARCH-Prognose",
+   "aufteilung": "Training (ab Q2 2021, n 139) / Validierung (n 207)",
+   "kosten": "Protokoll",
+   "register": "kein Registerplatz (zählt für DSR, N = 65)",
+   "stichprobe": "n 139 / 207",
+   "ergebnis": "Nicht bestanden: Drawdown Validierung 11,63 R mit GARCH gegen 10,95 R fest; Placebo p 0,67; Training ebenfalls höher.",
+   "laborurteil": "failed",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ",
+   "begruendung": "Klein, aber die Richtung ist eindeutig und deckt sich mit dem Befund, dass der ATR-Stop schon an die Schwankung anpasst.",
+   "maengel": [
+    "Gleiche Handelsliste wie S7b",
+    "n 139 / 207"
+   ],
+   "aussagen": [
+    {
+     "text": "Drawdown mit GARCH höher in beiden Abschnitten",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Zahlen in Ergebnisdatei",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Kein Beitrag zu C1–C3; Größenregel entfällt."
+  },
+  {
+   "id": "S32",
+   "titel": "Korb-Trendfolge: S7b-D20-T3 unverändert auf Top-25-Perps ohne BTC/ETH/SOL, 4h",
+   "cluster": "TREND-4H",
+   "typ": "Übertragungstest",
+   "datum": "2026-11-12",
+   "quellen": [
+    "docs/research_lab/studien/S32_KORB_TRENDFOLGE_PRAEREGISTRIERUNG.md",
+    "PS5: results/s32/validierung/s32_validierung_2026-11-14.json (SHA-256 dc00bd4a…)"
+   ],
+   "daten": "Top-25-Perps ohne BTC/ETH/SOL, 4h, 2020-07 bis 2024",
+   "aufteilung": "Training 2020-07–2022, Validierung 2023–2024 (ein Lauf), Holdout nie geladen",
+   "kosten": "Protokoll 1.3 plus Funding",
+   "register": "Präregistrierung 1.0 eingefroren (PR #254, 12.11.), Familie außerhalb des Holdout-Registers",
+   "stichprobe": "Training 4.682, Validierung 3.311 Trades",
+   "ergebnis": "Nicht bestanden: Validierung brutto +0,023, Kosten 0,048, netto −0,026 R, Bootstrap [−0,150, +0,101], Zufalls-p 0,55; Training +0,066 R hielt nicht.",
+   "laborurteil": "failed",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ",
+   "begruendung": "Gleiche Regel, andere Märkte, vorab eingefroren, ein einziger Validierungslauf: die einzige Teilprüfung der S7b-Regel mit unabhängigen Märkten. Ergebnis: kein Übertrag.",
+   "maengel": [
+    "Training im Altcoin-Aufwärtsmarkt",
+    "Universum je Monat nach Handelsvolumen der 30 Vortage bestimmt, aber nur aus Symbolen mit Archivdateien: Survivorship möglich",
+    "Nur teilweise unabhängig von BTC/ETH/SOL (gleiche Jahre, korrelierte Märkte)",
+    "Handelsliste lag nicht vor (nur Aggregate gelesen)"
+   ],
+   "aussagen": [
+    {
+     "text": "netto −0,026 R, Bootstrap [−0,150, +0,101], Zufalls-p 0,55",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Zahlen in Ergebnisdatei",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Gegenbeleg G8 gegen die Übertragbarkeit der S7b-Regel."
+  },
+  {
+   "id": "S15",
+   "titel": "GARCH(1,1)-Volatilitätsprognose gegen 14-Tage-Varianz, BTC/ETH/SOL, 4h und 1d",
+   "cluster": "PROGNOSE",
+   "typ": "Prognosestudie (ohne Trades)",
+   "datum": "2026-11-02",
+   "quellen": [
+    "docs/research_lab/reports/s15_run_2026-11-02T1815Z.md",
+    "docs/research_lab/reports/s15_run_2026-11-02T1815Z.json",
+    "docs/research_lab/studien/S15_GARCH_VOLATILITAET_PRAEREGISTRIERUNG.md"
+   ],
+   "daten": "BTC/ETH/SOL 4h und 1d",
+   "aufteilung": "Training / Validierung 2023–2024",
+   "kosten": "—",
+   "register": "kein Registerplatz (Prognosestudie)",
+   "stichprobe": "mehrere Jahre, drei Coins",
+   "ergebnis": "4h bestanden (QLIKE Validierung 0,522 statt 0,758, p 0,026); 1d nicht bestanden (p 0,108).",
+   "laborurteil": "confirmed",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "keine Handelsaussage (Risikoschicht)",
+   "begruendung": "Statistisch belegte Prognose der 4h-Schwankung; sie enthält keinen Handelsvorteil, und die Nutzung für die Positionsgröße ist in S25 nicht bestanden.",
+   "maengel": [
+    "Kein Gewinn-Edge",
+    "Persistenz bei BTC an der Grenze"
+   ],
+   "aussagen": [
+    {
+     "text": "4h besser als 14-Tage-Varianz (p 0,026)",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Zahlen in Ergebnisdatei",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Nur Risikobaustein; kein Beitrag zum Nettoertrag."
+  },
+  {
+   "id": "S9",
+   "titel": "CHoCH, Retest-Band, Reaktionsschluss auf 15m (Signalgruppe-Lernheft)",
+   "cluster": "FRÜH",
+   "typ": "Regelfamilie (Gate)",
+   "datum": "2026-10-27",
+   "quellen": [
+    "docs/research_lab/reports/s9_count_2026-10-27T1849Z.md",
+    "docs/research_lab/studien/S9_CHOCH_RETEST_PRAEREGISTRIERUNG.md"
+   ],
+   "daten": "BTCUSDT 15m (175.392 Kerzen bis 2024-12)",
+   "aufteilung": "Zähllauf Training",
+   "kosten": "—",
+   "register": "kein Registerplatz",
+   "stichprobe": "höchstens 11 Signale statt 500",
+   "ergebnis": "Am Machbarkeits-Gate gescheitert: höchstens 11 Signale im Training statt 500 (Validierung höchstens 6 statt 250).",
+   "laborurteil": "not_testable",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Mechanisch übersetzte Lernheft-Regeln erzeugen zu wenige Fälle; kein Beleg in irgendeine Richtung.",
+   "maengel": [
+    "Zu wenige Fälle",
+    "Zählfehler in der Diagnosetabelle (Spalten CHoCH bis R:R in der Validierung zählen ab 2020), vom Labor im Nachtrag vom 27.10. benannt und im Code behoben; Signalzahlen und Gate sind nicht betroffen"
+   ],
+   "aussagen": [
+    {
+     "text": "Gate gescheitert (11 / 6 Signale statt 500 / 250)",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Zählfehler der Diagnosetabelle im Bericht selbst benannt, Gate unberührt",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "S10",
+   "titel": "IB-Ausbruch New York mit Retest an POC/Value-Kante",
+   "cluster": "FRÜH",
+   "typ": "Regelfamilie (Gate)",
+   "datum": "2026-10-28",
+   "quellen": [
+    "docs/research_lab/reports/s10_count_2026-10-28T0105Z.md",
+    "docs/research_lab/reports/s10_count_2026-10-28T0105Z.json",
+    "docs/research_lab/studien/S10_IB_AUSBRUCH_POC_RETEST_PRAEREGISTRIERUNG.md"
+   ],
+   "daten": "BTC/ETH/SOL, 1m–15m",
+   "aufteilung": "Zähllauf Training",
+   "kosten": "—",
+   "register": "kein Registerplatz",
+   "stichprobe": "S10-P 241 von 500, S10-O 15",
+   "ergebnis": "Am Machbarkeits-Gate gescheitert: S10-P 241 von 500 nötigen Signalen, S10-O 15; der IB-Filter streicht rund 70 % der Tage.",
+   "laborurteil": "not_testable",
+   "pruefung": "C+",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Zähllauf ohne Rendite; Gate verfehlt. Eine Variante ohne Filter (S11) wurde von Uzi abgelehnt.",
+   "maengel": [
+    "Zu wenige Fälle"
+   ],
+   "aussagen": [
+    {
+     "text": "Gate gescheitert, Zahlen in Ergebnisdatei",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "S13",
+   "titel": "Noise-Band-Ausbruch (Intraday-Momentum nach Zarattini/Aziz/Barbon 2024), NY-Sitzung und UTC-Tag",
+   "cluster": "FRÜH",
+   "typ": "Handelsregel (Test)",
+   "datum": "2026-11-01",
+   "quellen": [
+    "docs/research_lab/reports/s13_run_2026-11-01T1844Z.md",
+    "docs/research_lab/reports/s13_run_2026-11-01T1844Z.json",
+    "docs/research_lab/studien/S13_NOISE_BAND_INTRADAY_MOMENTUM_PRAEREGISTRIERUNG.md"
+   ],
+   "daten": "BTC/ETH/SOL 1m, 2020–2024",
+   "aufteilung": "Training / Validierung / Walk-Forward",
+   "kosten": "Protokoll, Stress mit doppelten Kosten",
+   "register": "kein Registerplatz (eigene Familie)",
+   "stichprobe": "S13-NY 1.732, S13-UTC 9.554 Trades (Training)",
+   "ergebnis": "Nicht bestanden: beide Varianten im Training negativ nach Kosten (−0,044 / −0,042 R); S13-NY Validierung +0,030 R, aber Drawdown 29 % über der Grenze; Walk-Forward −0,021 R.",
+   "laborurteil": "failed",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ",
+   "begruendung": "Ein publiziertes Ergebnis (SPY) überträgt sich nicht auf BTC/ETH/SOL; mit doppelten Kosten alle Abschnitte negativ.",
+   "maengel": [
+    "Nicht einzeln nachgerechnet"
+   ],
+   "aussagen": [
+    {
+     "text": "Training beide Varianten negativ netto",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Zahlen in Ergebnisdatei",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Negativbefund Intraday-Momentum."
+  },
+  {
+   "id": "S14",
+   "titel": "Paar-Handel (Statistical Arbitrage) ETH/BTC, SOL/BTC, SOL/ETH, 1h",
+   "cluster": "FRÜH",
+   "typ": "Handelsregel (Test)",
+   "datum": "2026-11-01",
+   "quellen": [
+    "docs/research_lab/reports/s14_run_2026-11-01T2308Z.md",
+    "docs/research_lab/reports/s14_run_2026-11-01T2308Z.json",
+    "docs/research_lab/studien/S14_PAAR_HANDEL_KOINTEGRATION_PRAEREGISTRIERUNG.md"
+   ],
+   "daten": "BTC/ETH/SOL 1h, Fenster 7 und 30 Tage",
+   "aufteilung": "Training / Validierung / Walk-Forward",
+   "kosten": "Protokoll",
+   "register": "kein Registerplatz (eigene Familie)",
+   "stichprobe": "W168: 750 / 620 Trades, W720: 232 / 195",
+   "ergebnis": "Nicht bestanden: beide Varianten verlieren nach Kosten (W168 −0,241 / −0,357 R; W720 −0,189 / −0,209 R); Walk-Forward −0,182 R; Kointegrationsvarianten scheiterten am Zähl-Gate.",
+   "laborurteil": "failed",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ",
+   "begruendung": "Eindeutig negativ in jedem Paar und Jahr; 57–60 % der W168-Trades enden am Stop bei 4σ.",
+   "maengel": [
+    "Nicht einzeln nachgerechnet"
+   ],
+   "aussagen": [
+    {
+     "text": "Beide Varianten negativ in Training und Validierung",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Zahlen in Ergebnisdatei",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Negativbefund Paarhandel."
+  },
+  {
+   "id": "K1",
+   "titel": "Kosten-Schwelle 0,25 R für Plan-Journal-Pläne",
+   "cluster": "PROSPEKTIV",
+   "typ": "Parameterstudie (beschreibend)",
+   "datum": "2026-10-25",
+   "quellen": [
+    "docs/research_lab/studien/K1_KOSTEN_SCHWELLE.md",
+    "docs/research_lab/reports/k1_kosten_schwelle_2026-10-25.md"
+   ],
+   "daten": "geschlossene Plan-Journal-Einträge",
+   "aufteilung": "vorwärts",
+   "kosten": "Protokoll 1.1 und Stressfall (doppelte Sätze)",
+   "register": "kein Registerplatz",
+   "stichprobe": "2 geschlossene Pläne, 30 nötig",
+   "ergebnis": "Zu wenige Fälle (2 geschlossene, 30 nötig); in etwa vier Wochen erneut auswerten.",
+   "laborurteil": "waiting",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Keine Auswertung möglich. Die Studie legt Varianten vorab fest und wählt keine Grenze aus den Daten. Der Bericht enthält nur Formelrechnung (Mindest-Stopabstand je Grenze, Stressfall 1,43 % für 0,25 R) und die Prüfung der Anzeige, keine Marktdaten.",
+   "maengel": [
+    "Zu wenige Fälle"
+   ],
+   "aussagen": [
+    {
+     "text": "Zu wenige Fälle (2 geschlossene, 30 nötig)",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Mindest-Stopabstand für 0,25 R: 0,72 % (Basis) bzw. 1,43 % (doppelte Kosten), reine Formelrechnung des Berichts",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "V2",
+   "titel": "V2-Qualifizierungskampagne (1000 unabhängige Fälle)",
+   "cluster": "INFRA",
+   "typ": "Datenkampagne",
+   "datum": "2026-10-20",
+   "quellen": [
+    "Logbuch V2, Seiten unter System → Archiv V2 (nicht im Repo)"
+   ],
+   "daten": "Live-Beobachtungen",
+   "aufteilung": "—",
+   "kosten": "—",
+   "register": "—",
+   "stichprobe": "54 von 1000 Fällen",
+   "ergebnis": "Am 22.10. auf Uzis Wunsch abgebrochen, 54 von 1000 unabhängigen Fällen. Zählt nicht.",
+   "laborurteil": "aborted",
+   "pruefung": "D",
+   "klasse": "NICHT REPRODUZIERBAR",
+   "richtung": "keine Aussage",
+   "begruendung": "Abgebrochen; Archivseiten nicht im Repo zugänglich.",
+   "maengel": [
+    "Abgebrochen"
+   ],
+   "aussagen": [
+    {
+     "text": "Abgebrochen bei 54 von 1000 Fällen",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "F4",
+   "titel": "Perp-Daten: 48-h-Probe der Futures-Trades neben Spot",
+   "cluster": "INFRA",
+   "typ": "Datenprobe",
+   "datum": "2026-10-29",
+   "quellen": [
+    "Logbuch F4"
+   ],
+   "daten": "Binance Futures-Trades",
+   "aufteilung": "—",
+   "kosten": "—",
+   "register": "—",
+   "stichprobe": "48 Stunden",
+   "ergebnis": "Läuft bis 31.10.; prüft, ob sich Perp-Trades lückenlos sammeln lassen.",
+   "laborurteil": "running",
+   "pruefung": "D",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Datenmachbarkeit, kein Ergebnis zur Handelbarkeit.",
+   "maengel": [
+    "Ergebnis nicht im Logbuch nachgetragen"
+   ],
+   "aussagen": [
+    {
+     "text": "Laufend, kein Ergebnis im Logbuch",
+     "status": "NICHT PRÜFBAR"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "S20",
+   "titel": "Flip-Wahrscheinlichkeit aus der Kerzenstruktur, BTC 1h, Bruch von Swing-Linien",
+   "cluster": "BTC-1H",
+   "typ": "Beobachtungsstudie (Prognose, ohne Trades)",
+   "datum": "2026-11-09",
+   "quellen": [
+    "docs/research_lab/reports/s20_ergebnis_2026-11-11.md",
+    "docs/research_lab/reports/s20_evaluate_2026-11-10T2345Z.json"
+   ],
+   "daten": "BTC 1h Binance, 2020–2024 (Datensatz-SHA-256 a9f525df…)",
+   "aufteilung": "Training / Validierung 2023–2024",
+   "kosten": "—",
+   "register": "kein Registerplatz",
+   "stichprobe": "561 / 216 Ereignisse",
+   "ergebnis": "Nicht bestanden: das Kerzenmodell aus 12 Merkmalen ist in der Validierung 8,3 % schlechter als das Mechanik-Modell (nur Abstand zur Linie), p 0,999. Nur etwa ein Drittel der klaren Brüche hält 24 Stunden.",
+   "laborurteil": "failed",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ",
+   "begruendung": "Beobachtungsstudie ohne Handelsregel und ohne Kosten. Sie sagt nur: Kerzenmerkmale ordnen Brüche nicht besser als der Abstand zur Linie.",
+   "maengel": [
+    "Keine Trades, keine Kosten",
+    "Validierung 2023–2024 wird von allen BTC-1h-Studien erneut verwendet"
+   ],
+   "aussagen": [
+    {
+     "text": "Modell schlechter als Mechanik (−8,3 %, p 0,999)",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Zahlen in Ergebnisdatei",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Negativbefund; kein Beitrag zu einem Handelsvorteil."
+  },
+  {
+   "id": "S21",
+   "titel": "Orderflow und Funding am Flip (CVD, Volumentrend, Footprint, Funding gegen den Abstand zur Linie), BTC 1h",
+   "cluster": "BTC-1H",
+   "typ": "Beobachtungsstudie (Prognose, ohne Trades)",
+   "datum": "2026-11-11",
+   "quellen": [
+    "docs/research_lab/reports/s21_ergebnis_2026-11-11.md",
+    "docs/research_lab/reports/s21_evaluate_2026-11-11T1438Z.json"
+   ],
+   "daten": "BTC 1h, Ereignisse und Label aus S20",
+   "aufteilung": "Training / Validierung 2023–2024",
+   "kosten": "—",
+   "register": "kein Registerplatz",
+   "stichprobe": "Ereignisse K 561/216, F 318/216, G 308/216",
+   "ergebnis": "Nicht bestanden: keine der drei Familien verbessert das Mechanik-Modell in der Validierung (Log-Verlust K −0,5 %, F −1,3 %, G −0,7 %; p 0,90 / 0,78 / 0,66).",
+   "laborurteil": "failed",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ",
+   "begruendung": "Dasselbe Prüfschema wie S20 mit Orderflow- und Funding-Merkmalen; Ergebnis negativ in allen Familien.",
+   "maengel": [
+    "Keine Trades, keine Kosten",
+    "Dritte Verwendung derselben Validierung"
+   ],
+   "aussagen": [
+    {
+     "text": "Keine Familie verbessert das Mechanik-Modell",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Zahlen in Ergebnisdatei",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Negativbefund; Flip-Frage mit Kerze, Orderflow, Footprint und Funding ausgeschöpft."
+  },
+  {
+   "id": "S22",
+   "titel": "Chart-Urteil im Rückblick: sortieren die Kerzen-Regeln R1–R5 Standard-Trades, BTC 1h",
+   "cluster": "BTC-1H",
+   "typ": "Filterstudie (Beobachtung)",
+   "datum": "2026-11-11",
+   "quellen": [
+    "docs/research_lab/studien/S22_CHART_URTEIL_RUECKBLICK_PRAEREGISTRIERUNG.md",
+    "PS5 (Kopie): results/s22/s22_evaluate_2026-11-11T1841Z.json",
+    "PS5 (Kopie): results/e0/s22_e0_2026-11-12T1227Z.json"
+   ],
+   "daten": "BTC 1h Standard-Trades (Stop 1 ATR), Datensatz-SHA-256 9083b6ae… (gemeinsam mit S22–S28, E0, E1)",
+   "aufteilung": "Training 2020–2022 (25.219 Momente) / Validierung 2023–2024 (17.424)",
+   "kosten": "Bitunix-Kosten, Funding veröffentlicht",
+   "register": "kein Registerplatz",
+   "stichprobe": "Validierung: NEHMEN 4.228 / AUSLASSEN 13.295 Trades; Training 50.438 Zeilen",
+   "ergebnis": "Nicht bestanden: Validierung NEHMEN −0,173 R, AUSLASSEN −0,288 R, alle −0,213 R; Abstand H1 +0,115 R (p 0,051). E0-Zerlegung: brutto −0,03 R, Kosten 0,12–0,20 R je Trade.",
+   "laborurteil": "failed",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ",
+   "begruendung": "Trifft die Zahlen des Labors (Ergebnisdatei und Logbuch stimmen überein). Zwei Zeilen je Moment (Long/Short) überlappen stark; die Auswertung nutzt Wochenblöcke.",
+   "maengel": [
+    "Überlappende Standard-Trades",
+    "Beobachtungsstudie ohne Registerplatz",
+    "Validierung mehrfach verbraucht"
+   ],
+   "aussagen": [
+    {
+     "text": "NEHMEN nach Kosten −0,173 R in der Validierung",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Brutto etwa 0, Kosten 0,12–0,20 R je Trade (E0)",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Belegt: Das Chart-Urteil trennt Standard-Trades nicht nach Kosten. Brutto ist im Mittel null."
+  },
+  {
+   "id": "S23",
+   "titel": "Open Interest am Flip: hält ein Bruch besser mit OI als mit dem Abstand allein, BTC 1h",
+   "cluster": "BTC-1H",
+   "typ": "Beobachtungsstudie (Entwurf)",
+   "datum": "2026-11-11",
+   "quellen": [
+    "docs/research_lab/studien/S23_OPEN_INTEREST_AM_FLIP_PRAEREGISTRIERUNG_ENTWURF.md"
+   ],
+   "daten": "BTC 1h, Ereignisse aus S20",
+   "aufteilung": "Training / Validierung",
+   "kosten": "—",
+   "register": "Entwurf 0.1, nicht eingefroren",
+   "stichprobe": "Gate ≥ 200 / ≥ 150 Ereignisse",
+   "ergebnis": "Noch nichts gerechnet: Entwurf mit Code und Tests, kein Zähllauf für diese Frage.",
+   "laborurteil": "waiting",
+   "pruefung": "D",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Ungerechneter Entwurf. Die PS5-Datei s23_count gehört zur Alle-Indikatoren-Studie (heute S24).",
+   "maengel": [
+    "Nicht gerechnet"
+   ],
+   "aussagen": [
+    {
+     "text": "Nichts gerechnet",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "S24",
+   "titel": "Alle Indikatoren mit Historie zusammen (C/K/F/G/T/V, M1 Stimmen, M2 Logit) auf Standard-Trades, BTC 1h",
+   "cluster": "BTC-1H",
+   "typ": "Filterstudie (Test)",
+   "datum": "2026-11-11",
+   "quellen": [
+    "docs/research_lab/studien/S24_ALLE_INDIKATOREN_PRAEREGISTRIERUNG.md",
+    "PS5 (Kopie): results/s24/s24_evaluate_2026-11-11T2200Z.json",
+    "PS5 (Kopie): results/e0/s24_e0_2026-11-12T1227Z.json"
+   ],
+   "daten": "BTC 1h Standard-Trades (Stop 1 ATR), Datensatz-SHA-256 9083b6ae… (gemeinsam mit S22–S28, E0, E1)",
+   "aufteilung": "Training 2020–2022 / Validierung 2023–2024 (106 Wochen)",
+   "kosten": "Bitunix: Taker 0,06 %, Schlupf 0,03 %, Stop-Schlupf 0,05 %, Funding",
+   "register": "kein Registerplatz",
+   "stichprobe": "34.848 Trades in der Validierung",
+   "ergebnis": "Nicht bestanden: M2 sortiert echt (Abstand 0,135 R, p 0,004), aber NEHMEN verliert nach Kosten −0,378 R (n 11.181); alle Trades −0,435 R; M1 Abstand 0,010 R.",
+   "laborurteil": "failed",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ (sortiert, aber nach Kosten verlustreich)",
+   "begruendung": "Wichtigster Beleg für die Kostenwirkung: ein echter Sortiereffekt von 0,135 R reicht nicht, wenn alle Trades im Mittel −0,435 R verlieren (Kosten 0,26–0,42 R je Trade bei Stop 1 ATR).",
+   "maengel": [
+    "Stop 1 ATR auf 1h ist gegen Gebühren zu eng",
+    "Überlappende Trades"
+   ],
+   "aussagen": [
+    {
+     "text": "M2 Abstand 0,135 R, NEHMEN −0,378 R (n 11.181)",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Brutto −0,02 R, Kosten 0,26–0,42 R (E0)",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Zeigt: Sortieren ≠ Gewinn. Beleg für die Kostenschwelle (S27 geht daraus hervor)."
+  },
+  {
+   "id": "S26",
+   "titel": "Aufwand gegen Ergebnis: Absorption, Initiative und Book Sweep je 1h-Kerze, BTC",
+   "cluster": "BTC-1H",
+   "typ": "Filterstudie (Test)",
+   "datum": "2026-11-11",
+   "quellen": [
+    "docs/research_lab/studien/S26_AUFWAND_GEGEN_ERGEBNIS_PRAEREGISTRIERUNG.md",
+    "PS5 (Kopie): results/s26/s26_evaluate_2026-11-12T0923Z.json"
+   ],
+   "daten": "BTC 1h, Delta aus Binance-Spot-Kerzen, Datensatz-SHA-256 9083b6ae… (gemeinsam mit S22–S28, E0, E1)",
+   "aufteilung": "Training / Validierung 2023–2024",
+   "kosten": "Bitunix-Kosten",
+   "register": "kein Registerplatz",
+   "stichprobe": "Absorption 307, Initiative 666 Trades (Validierung)",
+   "ergebnis": "Nicht bestanden: Absorption −0,48 R (Abstand −0,05 R, p 0,69); Initiative −0,44 R (Abstand −0,00 R, p 0,56); Sweep 11/19 Treffer unter dem Gate.",
+   "laborurteil": "failed",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ",
+   "begruendung": "Schwellen aus einem Video, runde Werte ohne Suche: kein Mehrfachtest-Problem, aber auch keine Optimierung. Kein Effekt.",
+   "maengel": [
+    "Delta aus Kerzen statt Orderbuch",
+    "Sweep nicht testbar"
+   ],
+   "aussagen": [
+    {
+     "text": "Absorption und Initiative ohne Abstand, nach Kosten stark negativ",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Negativbefund."
+  },
+  {
+   "id": "S27",
+   "titel": "Alle Indikatoren (S24) auf größeren Trades: Stop 3 ATR, Ziel 6 ATR, 168 h, BTC 1h",
+   "cluster": "BTC-1H",
+   "typ": "Filterstudie (Test)",
+   "datum": "2026-11-11",
+   "quellen": [
+    "docs/research_lab/studien/S27_GROESSERE_TRADES_PRAEREGISTRIERUNG.md",
+    "PS5 (Kopie): results/s27/s27_evaluate_2026-11-12T0934Z.json",
+    "PS5 (Kopie): results/e0/s27_e0_2026-11-12T1227Z.json"
+   ],
+   "daten": "BTC 1h, Stop 3 ATR, Ziel 6 ATR, Haltedauer 168 h, Datensatz-SHA-256 9083b6ae… (gemeinsam mit S22–S28, E0, E1)",
+   "aufteilung": "Training / Validierung 2023–2024 (105 Wochen)",
+   "kosten": "Bitunix-Kosten, Funding",
+   "register": "kein Registerplatz",
+   "stichprobe": "34.368 Trades in der Validierung",
+   "ergebnis": "Nicht bestanden: alle Trades −0,10 R; M1 NEHMEN −0,049 R (n 4.340, p 0,39), M2 NEHMEN −0,098 R (n 12.003, p 0,38). Folge M1: 275 Trades +0,05 R als einzige erfüllte Bedingung.",
+   "laborurteil": "failed",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ",
+   "begruendung": "Weiter Stop senkt den Verlust je Trade von 0,44 auf 0,10 R: Die Kosten waren der Hauptgrund für S24. Brutto +0,04 R, Kosten 0,14 R. Die Stop-Weite wurde nach dem S24-Ergebnis gewählt.",
+   "maengel": [
+    "Stop-Weite nach Ansicht von S24 gewählt",
+    "Folge-M1 275 Trades ist eine nachträgliche Teilmenge"
+   ],
+   "aussagen": [
+    {
+     "text": "Alle Trades −0,10 R, NEHMEN −0,05 bis −0,10 R",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Brutto +0,04 R, Kosten 0,14 R (E0)",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Bestätigt: ohne Kosten bleibt auf BTC-1h-Standardtrades kein Vorteil."
+  },
+  {
+   "id": "S28",
+   "titel": "Positionierung aus dem Binance-Metrics-Archiv (OI, Top-Trader, Taker-Verhältnis) auf S27-Trades, BTC 1h",
+   "cluster": "BTC-1H",
+   "typ": "Filterstudie (Test)",
+   "datum": "2026-11-12",
+   "quellen": [
+    "docs/research_lab/studien/S28_POSITIONIERUNG_METRICS_PRAEREGISTRIERUNG.md",
+    "PS5 (Kopie): results/s28/s28_evaluate_2026-11-12T1535Z.json",
+    "PS5 (Kopie): results/s28/s28_count_2026-11-12T1310Z.json"
+   ],
+   "daten": "BTC 1h, Binance-Metrics-Archiv (Familie O), S27-Trades",
+   "aufteilung": "Training / Validierung 2023–2024",
+   "kosten": "Bitunix-Kosten",
+   "register": "kein Registerplatz, Holm über 4",
+   "stichprobe": "Validierung 17.129 Momente je Richtung (Auswertung), 17.369 im Zähllauf",
+   "ergebnis": "Nicht bestanden: A:M2 Abstand +0,135 R, p 0,076, Holm nicht bestanden, NEHMEN −0,04 R nach Kosten; B:M1 +0,118 R (p 0,197), B:M2 −0,002 R.",
+   "laborurteil": "failed",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ",
+   "begruendung": "Zähllauf und Auswertung nennen leicht unterschiedliche Momentzahlen (17.369 gegen 17.129; 11.950 gegen 10.938). Das ändert kein Urteil, ist aber ein Dokumentationsmangel.",
+   "maengel": [
+    "Abweichende Fallzahlen zwischen Zähllauf und Auswertung",
+    "Zeitraum der Familie O: Training nur 80 Wochen"
+   ],
+   "aussagen": [
+    {
+     "text": "Alle vier Varianten nicht bestanden, Holm-p ≥ 0,076",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Negativbefund."
+  },
+  {
+   "id": "S8",
+   "titel": "Orderflow-KI: Richtung der nächsten 5 Minuten aus Orderflow-Merkmalen (prospektiv)",
+   "cluster": "OF-MIN",
+   "typ": "Prognosestudie (prospektiv)",
+   "datum": "2026-10-26",
+   "quellen": [
+    "docs/research_lab/studien/S8_ORDERFLOW_PROGNOSE_PRAEREGISTRIERUNG.md",
+    "docs/research_lab/studien/S8_SEQUENCE_PLAN.json"
+   ],
+   "daten": "BTC, S8-Minutenbalken (Merkmale 1.1 mit Volume Profile und TPO)",
+   "aufteilung": "prospektiv",
+   "kosten": "—",
+   "register": "eigene Familie ohne Registerplatz",
+   "stichprobe": "keine Auswertung",
+   "ergebnis": "Läuft. Archivlauf 2020–2024 auf dem Mac; wird prospektiv geprüft; noch keine Auswertung.",
+   "laborurteil": "running",
+   "pruefung": "D",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Keine Ergebnisse, nur Datenbasis. Prognosegüte, kein Nettoertrag.",
+   "maengel": [
+    "Nicht ausgewertet"
+   ],
+   "aussagen": [
+    {
+     "text": "Keine Auswertung vorhanden",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Datenbasis (S8-Minutenbalken) für S19, OF2, OFX, Move-Kalibrierung."
+  },
+  {
+   "id": "S19",
+   "titel": "Orderflow-Schwellen BTC (Imbalance, Auktionsrand, Absorption, dünnes Extrem, Exhaustion)",
+   "cluster": "OF-MIN",
+   "typ": "Prognosestudie (Lift)",
+   "datum": "2026-11-09",
+   "quellen": [
+    "PS5 (Kopie): results/s19/s19_evaluate_20261110T1025Z.md",
+    "PS5 (Kopie): results/s19/s19_count_20261109T2349Z.json",
+    "docs/research_lab/studien/S19_ORDERFLOW_SCHWELLEN_BTC_PRAEREGISTRIERUNG.md"
+   ],
+   "daten": "BTC, S8-Minutenbalken",
+   "aufteilung": "Training / Validierung, Holm über 112 Hypothesen",
+   "kosten": "—",
+   "register": "Familie ohne Registerplatz",
+   "stichprobe": "Training n bis 8.420 je Flag, Validierung n bis 5.828",
+   "ergebnis": "Ohne Nachweis: Familien T, H, E ohne Nachweis; I, A, C am Gate nicht testbar. Einzelne Flags zeigen Lift von 2–4 Prozentpunkten, aber nicht in beiden Abschnitten Holm-signifikant.",
+   "laborurteil": "no_proof (nicht im Logbuch)",
+   "pruefung": "C",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ / ohne Nachweis",
+   "begruendung": "Gemessen wird ein Lift der Trefferwahrscheinlichkeit, keine Rendite nach Kosten. Der Nachweis scheitert schon vor den Kosten.",
+   "maengel": [
+    "Lift statt Rendite",
+    "112 Hypothesen, Holm nötig"
+   ],
+   "aussagen": [
+    {
+     "text": "Keine Familie nachgewiesen (Holm über 112)",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Negativbefund für Footprint-/Absorptions-Schwellen."
+  },
+  {
+   "id": "OF2",
+   "titel": "Orderflow-Engine nach Mentor-Modellen M1–M7, jede Session handelbar (Training 2020–2022)",
+   "cluster": "OF-MIN",
+   "typ": "Handelsregel (Test, nur Training)",
+   "datum": "2026-11-10",
+   "quellen": [
+    "docs/research_lab/studien/OF2_ORDERFLOW_ENGINE_PRAEREGISTRIERUNG.md",
+    "docs/research_lab/reports/bitunix/of2_training_of_trades_aa853e1.json",
+    "docs/research_lab/reports/bitunix/target_50usd_of2_training.json",
+    "PS5 (Kopie): results/of2/run_aa853e1/training.json"
+   ],
+   "daten": "BTC, S8-Minutenbalken (Training 1.096 Tage)",
+   "aufteilung": "nur Training 2020–2022 gerechnet; Validierung nie geöffnet",
+   "kosten": "Bitunix Taker 0,06 % + Schlupf, Funding 0,01 %/8 h (unbestätigt)",
+   "register": "eigene Familie außerhalb des Holdout-Registers",
+   "stichprobe": "56 OF-Trades in 1.096 Tagen (0,051/Tag)",
+   "ergebnis": "Training: 56 Trades, Treffer 39 %, Ø Gewinn +1,96 R, Ø Verlust −0,83 R, Mittel +0,27 R (eigener Monatsblock-Bootstrap: 95 %-Band −0,20 bis +0,66 R, 86 % der Ziehungen positiv); Median −0,35 R, beste 5 % der Trades = 108 % der Summe, größter Rückgang 7,9 R über 671 Tage; Zufallseinstiege −0,09 R, p 0,006 (Labor).",
+   "laborurteil": "not_proven (nicht im Logbuch)",
+   "pruefung": "B",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "positiv (Training, n 56, nicht belegt)",
+   "begruendung": "Aus der Rohliste neu ausgewertet: Mittel +0,2688 R. Weniger als 100 Trades, Gewinn von wenigen Trades getragen (13 Zielerreichungen = +35,6 R, 21 Stopps = −23,3 R), kein ungesehener Abschnitt, DSR (N=64) etwa 0,06. Die Kalibrierung der Schwellen lief auf dem Training.",
+   "maengel": [
+    "n 56 unter dem Mindestumfang von 100",
+    "Keine Validierung",
+    "Kosten nicht bestätigt",
+    "Mehrere Registerlose nach dem Einfrieren (OFX-Suche auf derselben Engine)"
+   ],
+   "aussagen": [
+    {
+     "text": "Mittel +0,2688 R, n 56 aus Rohliste",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "DSR (N=64) etwa 0,06",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Bitunix-Gebühren unbestätigt",
+     "status": "ANNAHME"
+    }
+   ],
+   "verwendung": "Zeigt Richtung, trägt keinen Beleg. Kapital für 50 USDT/Tag bei Edge +0,27 R und 0,05 Trades/Tag: 364.000 USDT (1 % Risiko) bis 1,46 Mio. USDT (0,25 %)."
+  },
+  {
+   "id": "OFX",
+   "titel": "PS5-Dauerforschung: Suche nach besseren OF2-Varianten mit Sieb und Reality-Check (Training 2020–2023)",
+   "cluster": "OF-MIN",
+   "typ": "Suchprozess (Mehrfachtest)",
+   "datum": "2026-11-10",
+   "quellen": [
+    "docs/research_lab/studien/OFX_BAUPLAN.md",
+    "PS5 (Kopie): results/ofx/lauf1, lauf2, probe (konfigurationen.jsonl, state.json)"
+   ],
+   "daten": "BTC, S8-Minutenbalken Training 2020–2023",
+   "aufteilung": "Suche nur im Training; Validierung 2024 und Schlusstest 2025+ nur für Sieb-Bestandene",
+   "kosten": "Bitunix Taker + Schlupf",
+   "register": "eigene Familie, jede Variante zählt im Reality-Check",
+   "stichprobe": "27.023 Konfigurationen × 300 Filter = 8.106.900 Varianten (Stand der Kopie vom 16.11.)",
+   "ergebnis": "Kein Kandidat: 0 von 27.023 Konfigurationen bestehen das Sieb (n ≥ 130, ≥ +0,10 R, jedes Jahr im Plus, DD ≤ 15 R, Zufall p ≤ 0,01, Nachbarn, Reality-Check). In den 135.100 Bestenlisten-Einträgen ist der Median n = 5; 216 Einträge haben n ≥ 130 und scheitern alle am Reality-Check (73 nur daran). Bestes Mittel bei n ≥ 130: +0,42 R (n 130, t 2,16); bestes t: 2,66 (+0,30 R, n 149).",
+   "laborurteil": "running (Stand der Kopie vom 16.11.)",
+   "pruefung": "B",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ (Suche ohne Ergebnis)",
+   "begruendung": "Aus dem Suchprotokoll neu gezählt (alle Zeilen, Summe der Bestandenen = 0). Das Sieb lehnt zu kleine Stichproben ab; das passt zu den Werten des Zufalls bei Millionen Varianten. Eine Behauptung wie „beste ~150 Trades +0,37 R“ (Phase-1-Bericht) hat keine Handelsliste und wurde zu Recht gestrichen.",
+   "maengel": [
+    "Das Sieb selbst ist nur durch eigene Tests des Labors abgesichert, nicht unabhängig geprüft",
+    "Zeitrahmen 1m–1h (4h/1d aus), BTC allein",
+    "Validierung 2024 und Schlusstest 2025+ nicht berührt (kein Kandidat)",
+    "Zufallsziehung mit festem Seed, nicht erschöpfendes Raster"
+   ],
+   "aussagen": [
+    {
+     "text": "0 bestanden bei 8,1 Mio. Varianten",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Bestes t bei n ≥ 130: 2,66; 73 Varianten scheitern nur am Reality-Check",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Kein Kandidat heißt nicht: Kein Vorteil existiert (Suchraum begrenzt)",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Zählt vollständig für den Mehrfachtest-Zähler der gesamten Forschung (N ≥ 26.707 Konfigurationen)."
+  },
+  {
+   "id": "S31",
+   "titel": "Mentor-Bootcamp-Orderflow-Regeln B1–B8, BTCUSDT 15m/1h",
+   "cluster": "OF-MIN",
+   "typ": "Regelfamilie (Gate)",
+   "datum": "2026-11-12",
+   "quellen": [
+    "docs/research_lab/studien/S31_MENTOR_REGELN_PRAEREGISTRIERUNG.md",
+    "docs/research_lab/studien/S31_ZAEHLLAUF_ERGEBNIS.md",
+    "PS5 (Kopie): results/s31/count_training.json"
+   ],
+   "daten": "BTC 15m/1h, Training 2020–2022",
+   "aufteilung": "Zähllauf Training",
+   "kosten": "Bitunix-Kosten, Kostengate",
+   "register": "eigene Familie",
+   "stichprobe": "B1 34, B2 13, B3/B4 2, B5 1/6, B6 0, B7 18 (OF) / 80 (Preis)",
+   "ergebnis": "Nicht prüfbar: keine Regel erreicht n ≥ 100. B1 34 Trades (+0,33 R), B2 13 (+0,44 R); B6: alle 1.958 Kandidaten am Kostengate verworfen.",
+   "laborurteil": "not_testable",
+   "pruefung": "C+",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Zähllauf ohne Bestehensentscheidung; R-Werte bei n 13–34 sind Zufallsschwankung, keine Evidenz. B1–B5 sind OF2-Modelle, nicht doppelt zählen.",
+   "maengel": [
+    "Gate nicht erreicht",
+    "Teilmengen von OF2"
+   ],
+   "aussagen": [
+    {
+     "text": "Keine Regel erreicht n ≥ 100",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Kein Beitrag; Teilmenge von OF2 (nicht doppelt zählen)."
+  },
+  {
+   "id": "S31b",
+   "titel": "Orderflow-Regeln M1–M7 (OF2) und B6/B7 auf 1h- und 4h-Kerzen, BTC",
+   "cluster": "OF-MIN",
+   "typ": "Regelfamilie (Gate)",
+   "datum": "2026-11-12",
+   "quellen": [
+    "docs/research_lab/studien/S31B_GROESSERE_ZEITRAHMEN_PRAEREGISTRIERUNG.md",
+    "docs/research_lab/studien/S31B_ZAEHLLAUF_ERGEBNIS.md",
+    "PS5 (Kopie): results/s31/countb_tf60.json",
+    "PS5 (Kopie): results/s31/countb_tf240.json"
+   ],
+   "daten": "BTC 1h/4h Training 2020–2022",
+   "aufteilung": "Zähllauf Training",
+   "kosten": "—",
+   "register": "eigene Familie",
+   "stichprobe": "höchster Wert B7 1h 39 Trades (Preis-Zwilling 117)",
+   "ergebnis": "Nicht prüfbar: keine Variante erreicht n ≥ 100 (B7 1h 39 Trades, M1 16 auf 1h, 1 auf 4h).",
+   "laborurteil": "not_testable",
+   "pruefung": "C+",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Größere Kerzen senken die Kosten in R, aber die Signalzahl fällt stärker.",
+   "maengel": [
+    "Gate nicht erreicht"
+   ],
+   "aussagen": [
+    {
+     "text": "Keine Variante erreicht n ≥ 100",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "S29",
+   "titel": "Nachspielen der Journal-Regel (Setup-Pfad-Planer rückwirkend), BTC",
+   "cluster": "OF-MIN",
+   "typ": "Nachspielstudie",
+   "datum": "2026-11-12",
+   "quellen": [
+    "/mnt/project-files/analysen/planer-nachspielen-2026-11-12/bauplan.md (Bauplan)"
+   ],
+   "daten": "BTC (Volume-Profile nur geschätzt, Gamma fehlt)",
+   "aufteilung": "—",
+   "kosten": "—",
+   "register": "—",
+   "stichprobe": "unbekannt",
+   "ergebnis": "Unbekannt: Laut Gedächtnis läuft der Lauf auf der PS5; keine Ergebnisdatei und kein späterer Stand bekannt.",
+   "laborurteil": "running",
+   "pruefung": "D",
+   "klasse": "NICHT REPRODUZIERBAR",
+   "richtung": "keine Aussage",
+   "begruendung": "Es liegt kein Ergebnis vor, das sich prüfen ließe.",
+   "maengel": [
+    "Kein Ergebnis auffindbar"
+   ],
+   "aussagen": [
+    {
+     "text": "Ergebnis nicht auffindbar",
+     "status": "NICHT PRÜFBAR"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "L1",
+   "titel": "Lernschleife Champion/Herausforderer für die Orderflow-KI (Prognosegüte)",
+   "cluster": "PROGNOSE",
+   "typ": "Prospektiver Entwurf",
+   "datum": "2026-10-31",
+   "quellen": [
+    "docs/research_lab/studien/L1_LERNSCHLEIFE_PRAEREGISTRIERUNG.md"
+   ],
+   "daten": "S8-Modelle, Live-Daten",
+   "aufteilung": "prospektiv",
+   "kosten": "—",
+   "register": "Entwurf 0.1, Familie nicht eingetragen",
+   "stichprobe": "keine",
+   "ergebnis": "Entwurf: keine Auswertung, keine Ergebnisse. Gemessen würde Prognosegüte, kein Nettoertrag.",
+   "laborurteil": "waiting",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Nur Regeln der Lernschleife.",
+   "maengel": [
+    "Nicht gestartet"
+   ],
+   "aussagen": [
+    {
+     "text": "Keine Ergebnisse",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "S12",
+   "titel": "Trifft die geschätzte Liquidations-Heatmap echte Liquidationen? (Kalibrierung eines Anzeigemodells)",
+   "cluster": "PROGNOSE",
+   "typ": "Prospektive Kalibrierung",
+   "datum": "2026-11-02",
+   "quellen": [
+    "docs/research_lab/studien/S12_LIQUIDATIONS_HEATMAP_KALIBRIERUNG_PRAEREGISTRIERUNG.md"
+   ],
+   "daten": "Binance/Bybit-Liquidationen ab 02.11.2026, OI",
+   "aufteilung": "prospektiv",
+   "kosten": "—",
+   "register": "prospektive Familie ohne Registerplatz",
+   "stichprobe": "Sammler seit 02.11.2026",
+   "ergebnis": "Version 1.0 freigegeben am 01.11.2026, Start 02.11.2026; kein Ergebnis im Repo. Keine Handelsregel.",
+   "laborurteil": "running",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Keine Handelsregel; Ergebnis liegt nicht vor.",
+   "maengel": [
+    "Kein Ergebnis auffindbar"
+   ],
+   "aussagen": [
+    {
+     "text": "Kein Ergebnis auffindbar",
+     "status": "NICHT PRÜFBAR"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "S30",
+   "titel": "Level-Reaktion am Kerzen-Level: Fade-Raster (12 Regeln) und Ausbruch, BTC 4h",
+   "cluster": "LEVEL-INTRADAY",
+   "typ": "Handelsregel (explorativ)",
+   "datum": "2026-11-12",
+   "quellen": [
+    "PS5 (Kopie): results/s30/s30_raster_train_2026-11-12.json",
+    "PS5 (Kopie): results/s30/s30_ausbruch_train_2026-11-12.json",
+    "PS5 (Kopie): results/s30/s30_ausbruch_v02_train_2026-11-12.json",
+    "Bericht nur am Mac: ~/Documents/TIM/evidence/E0E1-2026-11-12.md (nicht gelesen)"
+   ],
+   "daten": "BTC 4h Training 2020–2022, Datensatz-SHA-256 9083b6ae… (gemeinsam mit S22–S28, E0, E1)",
+   "aufteilung": "nur Training",
+   "kosten": "Bitunix-Kosten",
+   "register": "Entwurf nur als Artifact, nicht im Repo",
+   "stichprobe": "Raster 12 Varianten, n je Variante 450–910",
+   "ergebnis": "Nicht bestanden: Fade-Raster (12 Varianten) netto negativ, brutto etwa −0,05 R, Kosten 0,12–0,17 R; Ausbruch nur eine Variante mit n ≥ 30, netto −0,25 R.",
+   "laborurteil": "failed",
+   "pruefung": "C+",
+   "klasse": "EXPLORATIV",
+   "richtung": "negativ",
+   "begruendung": "Das Raster ist laut Ergebnisdatei ausdrücklich explorativ („kein_urteil“). Die Präregistrierung liegt nicht im Repo, die Vorabfestlegung ist nicht nachprüfbar. Die Richtung (negativ) ist klar.",
+   "maengel": [
+    "Präregistrierung nicht im Repo",
+    "Raster mit 12 Varianten explorativ"
+   ],
+   "aussagen": [
+    {
+     "text": "Raster: brutto −0,05 bis −0,06 R, Kosten 0,12–0,17 R",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Präregistrierungszeitpunkt",
+     "status": "NICHT PRÜFBAR"
+    }
+   ],
+   "verwendung": "Negativbefund Level-Reaktion auf Kerzenebene."
+  },
+  {
+   "id": "E0/E1",
+   "titel": "E0 Kosten-Zerlegung der BTC-1h-Studien (S22, S24, S27) und E1 Zählung von Level-Ereignissen",
+   "cluster": "BTC-1H",
+   "typ": "Zerlegung (beschreibend)",
+   "datum": "2026-11-12",
+   "quellen": [
+    "PS5 (Kopie): results/e0/s22_e0_2026-11-12T1227Z.json",
+    "PS5 (Kopie): results/e0/s24_e0_2026-11-12T1227Z.json",
+    "PS5 (Kopie): results/e0/s27_e0_2026-11-12T1227Z.json",
+    "PS5 (Kopie): results/e1_level_count.json"
+   ],
+   "daten": "BTC 1h, Datensatz-SHA-256 9083b6ae… (gemeinsam mit S22–S28, E0, E1)",
+   "aufteilung": "Training / Validierung",
+   "kosten": "Bitunix-Kosten",
+   "register": "kein Registerplatz",
+   "stichprobe": "50.438 / 34.848 Trades je Studie",
+   "ergebnis": "Brutto-Mittel je Trade: S22 −0,03 R (Training) / −0,02 R (Validierung); S24 −0,03 / −0,02 R; S27 −0,01 / +0,04 R. Kosten je Trade 0,09–0,42 R.",
+   "laborurteil": "reported",
+   "pruefung": "C+",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ",
+   "begruendung": "Zerlegung ohne neue Statistik: Bruttoerwartung der Standardtrades ist null, die Kosten sind der Unterschied zwischen null und minus 0,1 bis 0,4 R.",
+   "maengel": [
+    "Beschreibend, keine Hypothese"
+   ],
+   "aussagen": [
+    {
+     "text": "Brutto etwa 0, Kosten 0,09–0,42 R je Trade",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Beleg für Aussage: Ohne Kantenvorteil frisst Kosten den Ertrag."
+  },
+  {
+   "id": "S34",
+   "titel": "LVN am Wochen-VAH/VAL plus ≥ 2 σ vom Tages-VWAP, Rückkehr zum VWAP, BTC 5m",
+   "cluster": "LEVEL-INTRADAY",
+   "typ": "Handelsregel (Test)",
+   "datum": "2026-11-13",
+   "quellen": [
+    "docs/research_lab/studien/S34_LVN_VWAP_FADE_PRAEREGISTRIERUNG.md",
+    "PS5 (Kopie): results/s34/s34_train_2026-11-14.json",
+    "docs/research_lab/konsolidierung/ergebnisse/studien_kennzahlen.json"
+   ],
+   "daten": "BTC 5m Training 2020–2023",
+   "aufteilung": "nur Training",
+   "kosten": "Bitunix-Kosten",
+   "register": "eigene Familie",
+   "stichprobe": "53 Trades",
+   "ergebnis": "Nicht bestanden: 53 Trades, brutto −0,02 R, netto −1,21 R je Trade (Stop im Mittel 0,20 %, Kosten 1,2 R), Bootstrap-Untergrenze −1,57 R, Zufallskontrolle p 0,47.",
+   "laborurteil": "failed",
+   "pruefung": "B",
+   "klasse": "BELASTBAR",
+   "richtung": "negativ",
+   "begruendung": "Aus der Handelsliste neu ausgewertet (E[R] −1,213, Kosten 1,2 R). Die Aussage ist eindeutig: der Stop ist so eng, dass die Kosten jede Kante überdecken.",
+   "maengel": [
+    "n 53"
+   ],
+   "aussagen": [
+    {
+     "text": "E[R] −1,213 R aus Handelsliste neu ausgewertet",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Negativbefund; enge Stops sind unter Kosten nicht handelbar."
+  },
+  {
+   "id": "S35a",
+   "titel": "Level plus Orderflow-Bestätigung, Rückprall und Ausbruch (Extrem, VWAP-Band, Vortagsprofil), BTC/ETH/SOL 5m/15m",
+   "cluster": "LEVEL-INTRADAY",
+   "typ": "Handelsregel (Test, 12 Varianten)",
+   "datum": "2026-11-13",
+   "quellen": [
+    "docs/research_lab/studien/S35A_LEVEL_ORDERFLOW_PRAEREGISTRIERUNG.md",
+    "PS5 (Kopie): results/s35a/s35a_train_2026-11-14.trades.json"
+   ],
+   "daten": "BTC/ETH/SOL 5m/15m, Training 2020–2022",
+   "aufteilung": "nur Training",
+   "kosten": "Bitunix-Kosten",
+   "register": "eigene Familie",
+   "stichprobe": "n 2.218–5.248 je Variante",
+   "ergebnis": "Nicht bestanden: alle 12 Varianten netto negativ (−0,25 bis −0,41 R je Trade), beste E-break-15m −0,25 R (brutto +0,06 R).",
+   "laborurteil": "failed",
+   "pruefung": "B",
+   "klasse": "BELASTBAR",
+   "richtung": "negativ",
+   "begruendung": "Aus der Handelsliste neu ausgewertet; alle 12 Varianten negativ, Kosten 0,31–0,36 R je Trade.",
+   "maengel": [
+    "Training nur 3 Jahre"
+   ],
+   "aussagen": [
+    {
+     "text": "12 Varianten E[R] −0,25…−0,41 aus Handelsliste",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Negativbefund Level+Orderflow auf 5m/15m."
+  },
+  {
+   "id": "S36",
+   "titel": "SFP mit Orderflow-Konfluenz, HTF→Exec, Varianten M (Markt) und L (Limit), BTC/ETH/SOL",
+   "cluster": "LEVEL-INTRADAY",
+   "typ": "Handelsregel (Test)",
+   "datum": "2026-11-14",
+   "quellen": [
+    "docs/research_lab/studien/S36_SFP_PRAEREGISTRIERUNG.md",
+    "PS5 (Kopie): results/s36/train.trades.json"
+   ],
+   "daten": "BTC/ETH/SOL, Training 2020–2023",
+   "aufteilung": "nur Training",
+   "kosten": "Bitunix-Kosten (M Markt, L Limit)",
+   "register": "eigene Familie",
+   "stichprobe": "SFP-alle-M 425, L 438 Trades",
+   "ergebnis": "Nicht bestanden: M brutto +0,10 R, Kosten 0,15 R, netto −0,05 R (Untergrenze −0,22 R); L netto −0,09 R (−0,26 R).",
+   "laborurteil": "failed",
+   "pruefung": "B",
+   "klasse": "BELASTBAR",
+   "richtung": "negativ",
+   "begruendung": "Aus der Handelsliste neu ausgewertet (M −0,051, L −0,094). Nach Kosten knapp negativ; Bruttoerwartung klein positiv.",
+   "maengel": [
+    "Zähllauf: alle 15 Konfigurationen unter n = 60, deshalb auf SFP gepoolt (nach dem Zähllauf, vor dem R-Wert)"
+   ],
+   "aussagen": [
+    {
+     "text": "M −0,051 R, L −0,094 R aus Handelsliste",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Negativbefund SFP."
+  },
+  {
+   "id": "S37",
+   "titel": "Fade-Checkliste (Flowread) Teil a ohne Gamma: Fade zum Tages-VWAP mit Vortags-VA, ±2 σ und Absorption, BTC/ETH/SOL 5m/15m",
+   "cluster": "LEVEL-INTRADAY",
+   "typ": "Handelsregel (Gate)",
+   "datum": "2026-11-15",
+   "quellen": [
+    "docs/research_lab/studien/S37_FADE_CHECKLISTE_PRAEREGISTRIERUNG.md",
+    "PS5 (Kopie): results/s37/s37_train_2026-11-15.trades.json"
+   ],
+   "daten": "BTC/ETH/SOL 5m/15m, Training 2020–2022",
+   "aufteilung": "nur Training",
+   "kosten": "Bitunix-Kosten",
+   "register": "eigene Familie",
+   "stichprobe": "1–5 Trades je Variante",
+   "ergebnis": "Nicht prüfbar: nur 1–5 Trades je Variante, keine erfüllt die Mindestzahl.",
+   "laborurteil": "not_testable",
+   "pruefung": "B",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Die Checkliste feuert fast nie; mit dieser Häufigkeit ist nichts prüfbar.",
+   "maengel": [
+    "n 1–5"
+   ],
+   "aussagen": [
+    {
+     "text": "n 1–5 je Variante aus Handelsliste",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "S38",
+   "titel": "Enger Vortag, danach Ausbruch am Folgetag (T-045/T-060/T-075), BTC/ETH/SOL 1m",
+   "cluster": "LEVEL-INTRADAY",
+   "typ": "Handelsregel (Test)",
+   "datum": "2026-11-15",
+   "quellen": [
+    "docs/research_lab/studien/S38_TIGHT_DAY_AUSBRUCH_PRAEREGISTRIERUNG.md",
+    "PS5 (Kopie): results/s38/s38_train_2026-11-15.trades.json"
+   ],
+   "daten": "BTC/ETH/SOL 1m, Training 2020–2022",
+   "aufteilung": "nur Training",
+   "kosten": "Bitunix-Kosten",
+   "register": "eigene Familie",
+   "stichprobe": "T-045 191, T-060 584, T-075 982, T-alle 2.399 Trades",
+   "ergebnis": "Nicht bestanden: netto +0,09 / +0,05 / +0,02 R je Trade, alle Bootstrap-Untergrenzen unter 0; T-alle +0,005 R.",
+   "laborurteil": "failed",
+   "pruefung": "B",
+   "klasse": "BELASTBAR",
+   "richtung": "knapp positiv, nicht von null unterscheidbar",
+   "begruendung": "Aus der Handelsliste neu ausgewertet (+0,087 / +0,045 / +0,020 / +0,0047). Knapp positiv, aber nicht von null unterscheidbar; keine Nachsuche an den Schwellen.",
+   "maengel": [
+    "Training 3 Jahre",
+    "Validierung nicht geöffnet"
+   ],
+   "aussagen": [
+    {
+     "text": "+0,087 / +0,045 / +0,020 R, Untergrenzen < 0, aus Handelsliste",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Hinweis ohne Beleg; nicht verwendet."
+  },
+  {
+   "id": "S33-Carry",
+   "titel": "Funding-Carry BTC (Perp short gegen Spot long), Training",
+   "cluster": "CARRY",
+   "typ": "Carry-Rechnung (Entwurf, nur Training)",
+   "datum": "2026-11-12",
+   "quellen": [
+    "PS5 (Kopie): results/s33/carry_train_2026-11-12.json",
+    "Entwurf nur am Mac: ~/Documents/TIM/evidence/S33-*.md (nicht gelesen)"
+   ],
+   "daten": "Binance Spot/Perp BTC, Training 2020–2022, Funding-Historie",
+   "aufteilung": "nur Training",
+   "kosten": "Perp- und Spot-Gebühren, Wechselregeln",
+   "register": "keine Präregistrierung im Repo",
+   "stichprobe": "ein Instrument",
+   "ergebnis": "Immer in Position +8,5 % je Jahr auf beide Beine, 2022 nur +2 %; Wechselregeln kosten mehr als sie sparen; BTC-Funding im Training 85 % positiv, Mittel 0,0158 % je 8 h. Kapital für 50 USDT/Tag: rund 215.000 USDT.",
+   "laborurteil": "failed",
+   "pruefung": "C+",
+   "klasse": "EXPLORATIV",
+   "richtung": "positiv (Kapitalrendite, kein Handelsvorteil)",
+   "begruendung": "Ohne eingefrorene Bestehensregel; das Urteil „failed“ ist eine Lesart des Entwurfs. Die Nummer S33 wurde doppelt vergeben (Optionsflow-Entwurf am 13.11.).",
+   "maengel": [
+    "Keine Präregistrierung im Repo",
+    "Nur Training",
+    "Nummer doppelt vergeben"
+   ],
+   "aussagen": [
+    {
+     "text": "Nur Training gerechnet, ohne Präregistrierung",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Funding im Training 85 % positiv",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Anstoß für die eigene Carry-Prüfung T11."
+  },
+  {
+   "id": "S33",
+   "titel": "Optionsflow als Filter auf S27-Trades (R1–R6) und Spannenprognose (V1–V2), BTC, vorwärts",
+   "cluster": "OPTIONEN",
+   "typ": "Filterstudie (Entwurf, vorwärts)",
+   "datum": "2026-11-13",
+   "quellen": [
+    "docs/research_lab/studien/S33_OPTIONSFLOW_FILTER_PRAEREGISTRIERUNG_ENTWURF.md",
+    "docs/research_lab/studien/OPTIONSFLOW_REGELKATALOG.md",
+    "docs/research_lab/OPTIONSFLOW_DATENVERTRAG.md"
+   ],
+   "daten": "Deribit-Optionen ab Dienststart (keine Historie 2020–2024)",
+   "aufteilung": "vorwärts: 60 Tage Kalibrierung ab Dienststart (frühestens ~12.01.2027), danach Testfenster",
+   "kosten": "—",
+   "register": "Entwurf 0.1, Holm über 8",
+   "stichprobe": "keine",
+   "ergebnis": "Noch nichts gerechnet: Entwurf, nicht eingefroren. Der Regelkatalog (R1–R6) besteht aus Hypothesen aus allgemeinem Wissen, keine eigene Messung.",
+   "laborurteil": "waiting",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Reine Planung; keine Evidenz.",
+   "maengel": [
+    "Nicht gestartet",
+    "Keine Historie"
+   ],
+   "aussagen": [
+    {
+     "text": "Noch nichts gerechnet",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "GEX-Wand",
+   "titel": "Reaktion an Call Wall und Put Wall (Gamma, BTC)",
+   "cluster": "OPTIONEN",
+   "typ": "Beobachtungsstudie (Entwurf, Datensammlung)",
+   "datum": "2026-11-04",
+   "quellen": [
+    "docs/research_lab/studien/GEX_WAND_REAKTION_ENTWURF.md"
+   ],
+   "daten": "Deribit-Gamma-Schnappschüsse alle 5 min ab 04.11.2026, BTC 1m",
+   "aufteilung": "vorwärts",
+   "kosten": "—",
+   "register": "Entwurf ohne Registerplatz",
+   "stichprobe": "keine",
+   "ergebnis": "Entwurf: bis zur Datensammlung wird nichts ausgewertet und nichts angepasst.",
+   "laborurteil": "waiting",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Nur Plan.",
+   "maengel": [
+    "Nicht gestartet"
+   ],
+   "aussagen": [
+    {
+     "text": "Keine Auswertung",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "S16",
+   "titel": "Funding-Extreme als Kontraindikator (Verteilung)",
+   "cluster": "PROGNOSE",
+   "typ": "Beobachtungsstudie (Verteilung, Papier)",
+   "datum": "2026-11-06",
+   "quellen": [
+    "docs/research_lab/reports/s16_result_2026-11-06.md",
+    "docs/research_lab/reports/s16_result_2026-11-06.json",
+    "docs/research_lab/studien/S16_FUNDING_EXTREME_ALS_KONTRAINDIKATOR_VERTEILUNG_PRAEREGISTRIERUNG_ENTWURF.md"
+   ],
+   "daten": "BTC/ETH/SOL 1h, Funding 2020–2024 (Datensatz-SHA-256 38c92dce…)",
+   "aufteilung": "Training / Validierung (Holdout nicht geladen)",
+   "kosten": "— (Verteilung, keine Trades)",
+   "register": "Version 1.0, Code eingefroren Commit 41ca70f5, Holm über 4",
+   "stichprobe": "oben 523, unten 815 Ereignisse (entclustert)",
+   "ergebnis": "NICHT BESTANDEN: nur oben/Rückschlag in der Validierung Holm-signifikant (Δ −0,74 Prozentpunkte), im Training nicht (p 0,063); Renditevergleiche nirgends signifikant.",
+   "laborurteil": "failed",
+   "pruefung": "C",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "negativ",
+   "begruendung": "Sauber eingefrorene Verteilungsstudie; der einzige Treffer verfehlt die Bestehensregel (beide Abschnitte).",
+   "maengel": [
+    "Verteilungsstudie ohne Kosten und Trades"
+   ],
+   "aussagen": [
+    {
+     "text": "Keine Renditewirkung, ein Rückschlag-Effekt nur in der Validierung",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Gegenbeleg gegen Funding-Schwellen als Signal."
+  },
+  {
+   "id": "S17",
+   "titel": "Kosten in R nach Tageszeit (UTC-Stunden, Wochentage)",
+   "cluster": "PROGNOSE",
+   "typ": "Kostenstudie (Papier)",
+   "datum": "2026-11-07",
+   "quellen": [
+    "docs/research_lab/reports/s17_result_2026-11-07.md",
+    "docs/research_lab/reports/s17_result_2026-11-07.json",
+    "docs/research_lab/studien/S17_KOSTEN_IN_R_NACH_TAGESZEIT_PRAEREGISTRIERUNG_ENTWURF.md"
+   ],
+   "daten": "BTC Spot, S8-Minutenbalken 2020–2024",
+   "aufteilung": "Training 2020–2022 / Validierung 2023–2024, Gruppen vorab eingefroren",
+   "kosten": "Kosten in R je Stunde",
+   "register": "Version 1.0, Code eingefroren Commit e8a3d530",
+   "stichprobe": "26.047 / 17.527 Fälle",
+   "ergebnis": "NICHT BESTANDEN: Das Muster ist stabil (Spearman 0,74–0,98), aber klein: teure minus günstige Stunden Δ 0,015 R (Training) und 0,042 R (Validierung), unter der vorab gesetzten Schwelle von 0,05 R; Sonntag minus Donnerstag Δ 0,035 / 0,119 R.",
+   "laborurteil": "failed",
+   "pruefung": "C",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "keine Handelsaussage",
+   "begruendung": "Eine echte, aber kleine Tageszeit-Wirkung auf die Kosten. Für die Ausführung (Bitunix) bedeutet das höchstens 0,04–0,12 R Spielraum, kein Vorteil.",
+   "maengel": [
+    "Spot-Kosten, nicht Bitunix"
+   ],
+   "aussagen": [
+    {
+     "text": "Δ Stunden 0,015 / 0,042 R, Wochentag 0,035 / 0,119 R",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Nur Hinweis zur Ausführungszeit."
+  },
+  {
+   "id": "S18",
+   "titel": "Kronos-Pfadfächer für BTC: Trifft die 24-Stunden-Spanne so oft, wie sie verspricht, und schlägt sie einfache Bänder?",
+   "cluster": "PROGNOSE",
+   "typ": "Prognosestudie (prospektiv)",
+   "datum": "2026-11-08",
+   "quellen": [
+    "docs/research_lab/studien/S18_KRONOS_PFADFAECHER_KALIBRIERUNG_PRAEREGISTRIERUNG_ENTWURF.md"
+   ],
+   "daten": "BTC 1h, prospektiv ab 10.11.2026",
+   "aufteilung": "prospektiv",
+   "kosten": "—",
+   "register": "Version 1.0 eingefroren mit dem Merge am 08.11.",
+   "stichprobe": "läuft",
+   "ergebnis": "Läuft laut Gedächtnis ab 10.11. (Ergebnis nicht vor Januar); kein Ergebnis vorhanden. Prüft keinen Richtungs- oder Gewinn-Edge.",
+   "laborurteil": "running",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Prognose der Spanne, kein Handelssignal.",
+   "maengel": [
+    "Läuft"
+   ],
+   "aussagen": [
+    {
+     "text": "Kein Ergebnis",
+     "status": "NICHT PRÜFBAR"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "KI1",
+   "titel": "KI-Filter vor TIM-Trades (NEHMEN/AUSLASSEN durch ein lokales Sprachmodell)",
+   "cluster": "PROGNOSE",
+   "typ": "Filterstudie (Entwurf, prospektiv)",
+   "datum": "2026-11-07",
+   "quellen": [
+    "docs/research_lab/studien/KI1_KI_FILTER_PRAEREGISTRIERUNG_ENTWURF.md"
+   ],
+   "daten": "Papier-Journale 15m/1h/1d",
+   "aufteilung": "prospektiv",
+   "kosten": "Kraken-Test-Kosten",
+   "register": "Entwurf 0.1, Version 1.0 vor erster Auswertung",
+   "stichprobe": "keine",
+   "ergebnis": "Entwurf: keine Ergebnisse.",
+   "laborurteil": "waiting",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Nur Plan.",
+   "maengel": [
+    "Nicht ausgewertet"
+   ],
+   "aussagen": [
+    {
+     "text": "Keine Ergebnisse",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "T07",
+   "titel": "KI-Zusatznutzen gegen einfache Alternativen messen (Benchmark-Spezifikation)",
+   "cluster": "PROGNOSE",
+   "typ": "Benchmark-Spezifikation (Entwurf)",
+   "datum": "2026-10-22",
+   "quellen": [
+    "docs/research_lab/studien/KI_VERGLEICH_BENCHMARK_T07.md"
+   ],
+   "daten": "120 Pilotfragen über TIM-Beobachtungen",
+   "aufteilung": "—",
+   "kosten": "—",
+   "register": "Entwurf",
+   "stichprobe": "120 Fragen geplant",
+   "ergebnis": "Entwurf: keine Messung. Misst Antwortqualität einer KI-Auskunft, keinen Handelsvorteil.",
+   "laborurteil": "waiting",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Kein Handelsbezug.",
+   "maengel": [
+    "Nicht gemessen"
+   ],
+   "aussagen": [
+    {
+     "text": "Keine Messung",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "Move-Kalibrierung",
+   "titel": "Kalibrierung des Bewegungs-Detektors (move-context 0.2): wie oft schlägt er an",
+   "cluster": "PROGNOSE",
+   "typ": "Kalibrierung (beschreibend)",
+   "datum": "2026-11-16",
+   "quellen": [
+    "docs/research_lab/MOVE_CONTEXT_KALIBRIERUNG.md",
+    "PS5 (Kopie): results/move-calibration-2026-11-16-v2/move_calibration.json"
+   ],
+   "daten": "S8-Minutenbalken 2020–2024",
+   "aufteilung": "Training 2020–2023 / Validierung 2024 (Holdout nicht gelesen)",
+   "kosten": "keine Rendite",
+   "register": "kein Registerplatz",
+   "stichprobe": "43.814 Stunden",
+   "ergebnis": "Gewählte Regel: 1h ≥ 15× Median und mind. 1,5 %, 4h ≥ 5 σ; Training im Mittel 20,0 Bewegungen je Jahr, Validierung 2024: 13.",
+   "laborurteil": "reported",
+   "pruefung": "C",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "keine Handelsaussage",
+   "begruendung": "Zählt nur Häufigkeiten; kein Urteil über Ergebnisse.",
+   "maengel": [
+    "Beschreibend"
+   ],
+   "aussagen": [
+    {
+     "text": "20,0 je Jahr Training, 13 in 2024",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Grundlage für S39."
+  },
+  {
+   "id": "S39",
+   "titel": "Preisbewegungen erklären: Ergebnis nach Marktereignis-Typ (Etikett am Papier-Trade, P5)",
+   "cluster": "PROGNOSE",
+   "typ": "Beobachtungsstudie (Typen)",
+   "datum": "2026-11-16",
+   "quellen": [
+    "docs/research_lab/studien/S39_BEWEGUNG_FORTSETZUNG_UMKEHR_PRAEREGISTRIERUNG.md",
+    "docs/research_lab/studien/S39_BERICHT.md"
+   ],
+   "daten": "BTC, große Bewegungen 2020–2024 (Datensatz-SHA-256 bc0e59e8…)",
+   "aufteilung": "Training / Validierung 2024 einmal",
+   "kosten": "—",
+   "register": "Präregistrierung",
+   "stichprobe": "Training 69 Bewegungen, n 14–22 je Typ; 2024 nur 11",
+   "ergebnis": "Kein Typ belegt: kein Holm-p unter 0,05 (kleinstes 0,224); drei Typen unter der Mindestzahl von 20.",
+   "laborurteil": "running",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "keine Aussage",
+   "begruendung": "Zu wenige Fälle für jede Aussage über Fortsetzung oder Umkehr.",
+   "maengel": [
+    "n 14–22 je Typ"
+   ],
+   "aussagen": [
+    {
+     "text": "Kein Typ belegt (Holm-p ≥ 0,224)",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "Plan-Journale",
+   "titel": "Plan-Journale (Papier) 30m/15m/1h/level/perp: Journal-Prüfung 1 (12.11.2026)",
+   "cluster": "PROSPEKTIV",
+   "typ": "Prospektives Papier-Journal",
+   "datum": "2026-10-23",
+   "quellen": [
+    "docs/research_lab/gedaechtnis/v0/journal-pruefung-2026-11-12.md",
+    "docs/research_lab/gedaechtnis/v0/belief_register_v0_zusammenfassung.md"
+   ],
+   "daten": "Live-Kerzen BTC, 4 Kalenderwochen",
+   "aufteilung": "vorwärts",
+   "kosten": "Protokoll 1.1 (5/3/5 bp)",
+   "register": "kein Registerplatz",
+   "stichprobe": "84 geschlossene Pläne",
+   "ergebnis": "Gesamt −9,32 R (−0,111 R je Plan, KI90 −0,36 bis +0,12); ohne das Level-Journal 76 Pläne +8,39 R (+0,110 R, KI90 −0,10 bis +0,18). Score und Grade streuen nicht (alle Grade C), nicht prüfbar.",
+   "laborurteil": "running",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "unklar (Intervalle schließen null ein)",
+   "begruendung": "Laut Überzeugungsregister kippt das Hauptjournal durch 27 Ausschlüsse (Korrekturdatei) von −27,6 R auf +0,9 R. Das Ergebnis hängt an dieser Auswahl und an vier Wochen.",
+   "maengel": [
+    "27 Ausschlüsse laut Korrekturdatei bestimmen das Vorzeichen des Hauptjournals",
+    "4 Wochen, Papier",
+    "Alle Pläne Grade C"
+   ],
+   "aussagen": [
+    {
+     "text": "84 Pläne −9,32 R; 76 Pläne +8,39 R",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Ausschlüsse verändern das Ergebnis stark",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Prospektive Beobachtung ohne Beweiskraft."
+  },
+  {
+   "id": "OF-Schatten",
+   "titel": "Orderflow-Schatten (Gate und Orderflow-Ausstieg) auf den Plänen 15m/1h",
+   "cluster": "PROSPEKTIV",
+   "typ": "Prospektives Schatten-Journal",
+   "datum": "2026-11-08",
+   "quellen": [
+    "docs/research_lab/studien/OF_SCHATTEN_AUSWERTUNGSREGEL.md"
+   ],
+   "daten": "Live-Pläne BTC ab 08.11.2026 14:34",
+   "aufteilung": "vorwärts",
+   "kosten": "wie Journal (ungleich, siehe Bericht)",
+   "register": "Auswertungsregel 1.2 vor Plan 30",
+   "stichprobe": "25 geschlossene Pläne zum Zeitpunkt der Regel",
+   "ergebnis": "Zwischenstand von 25 Plänen: Gate NEUTRAL n 10 −5,23 R, GEGEN n 11 −4,30 R, BESTÄTIGT n 4 −1,91 R; Orderflow-Ausstieg n 25: Schatten −0,23 R gegen Journal −11,44 R (ungleiche Kosten). Alle 25 Pläne LONG in einer fallenden Marktphase.",
+   "laborurteil": "running",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "unklar (n 25, eine Marktphase)",
+   "begruendung": "Die Auswertungsregel wurde nach Ansicht der 25 Zwischenstände geschrieben (offen vermerkt). Pläne sind 15m/1h-Duplikate desselben Marktgeschehens.",
+   "maengel": [
+    "n 25, nur Long, eine Marktphase",
+    "Regel nach Ansicht der Zwischenstände",
+    "Überlappende Pläne"
+   ],
+   "aussagen": [
+    {
+     "text": "Zwischenstände von 25 Plänen gelesen",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Beobachtung; zählt nicht."
+  },
+  {
+   "id": "Exit-Schatten",
+   "titel": "Läufer statt festem TP3 (Schatten-Journal Exit-Varianten), Papier",
+   "cluster": "PROSPEKTIV",
+   "typ": "Prospektives Schatten-Journal",
+   "datum": "2026-11-04",
+   "quellen": [
+    "/mnt/project-files/analysen/orderflow-ziele-2026-11-04/bericht.md"
+   ],
+   "daten": "Journale 15m/1h/30m, Spot-1m ab 27.10.",
+   "aufteilung": "vorwärts",
+   "kosten": "Kraken 5 bp je Seite",
+   "register": "—",
+   "stichprobe": "7 Trades mit TP2",
+   "ergebnis": "MID 1h 9 Trades: fest +3,71 R, Läufer +3,82 R; SHORT 15m 17 Trades: +0,77 / +0,77 R; 30m 23 Trades: +0,15 / +0,20 R. Nur 7 verschiedene Trades erreichten TP2.",
+   "laborurteil": "running",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "unklar (n 7)",
+   "begruendung": "Bericht nennt selbst „kein Beleg, nur eine Richtung“.",
+   "maengel": [
+    "n 7 mit TP2"
+   ],
+   "aussagen": [
+    {
+     "text": "Bericht sagt: kein Beleg",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "Stop-Analyse-30m",
+   "titel": "Stop-Analyse der 30m-Testtrades (11 geschlossene Trades)",
+   "cluster": "PROSPEKTIV",
+   "typ": "Fallanalyse",
+   "datum": "2026-10-27",
+   "quellen": [
+    "/mnt/project-files/analysen/stop-analyse-30m-2026-10-27.md"
+   ],
+   "daten": "Journale tim/1, struct/1, level/1, Binance 30m",
+   "aufteilung": "—",
+   "kosten": "ca. 140 USD je Trade",
+   "register": "—",
+   "stichprobe": "11 Trades",
+   "ergebnis": "9 von 11 Trades endeten im Stop; bei 8 lief der Preis danach bis TP1. Hauptursache: zu enge Stops (0,1–0,15 %, Kosten 2,4–2,8 R je Stopp). Weiterer Stop verkleinert Verluste, macht sie in der Stichprobe nicht positiv.",
+   "laborurteil": "reported",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "negativ (n 11)",
+   "begruendung": "Fallstudie mit 11 Trades; liefert die Begründung für Kostengate und Mindeststop.",
+   "maengel": [
+    "n 11"
+   ],
+   "aussagen": [
+    {
+     "text": "9 von 11 gestoppt",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Beleg: Enge Stops sind unter Kosten nicht handelbar (deckt sich mit S34)."
+  },
+  {
+   "id": "VWAP-1W-2sigma",
+   "titel": "1W VWAP −2σ: Wie oft wird das Band getroffen und was folgt (BTC 1h, Beschreibung)",
+   "cluster": "LEVEL-INTRADAY",
+   "typ": "Beschreibung (keine registrierte Studie)",
+   "datum": "2026-11-12",
+   "quellen": [
+    "/mnt/project-files/analysen/vwap-1w-2sigma-2026-11-12/ergebnis.md"
+   ],
+   "daten": "BTC Spot 1h 2020–2024",
+   "aufteilung": "Training 2020–2023 / Validierung 2024",
+   "kosten": "keine Kosten",
+   "register": "—",
+   "stichprobe": "208 / 53 Wochen",
+   "ergebnis": "Band wird in etwa 2 von 3 Wochen berührt; als Kaufsignal allein trägt es nicht (Docht ≈ Münzwurf, Schluss darunter eher Fortsetzung), schon vor Kosten.",
+   "laborurteil": "reported",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "negativ vor Kosten",
+   "begruendung": "Beschreibung ohne Kosten und ohne Bestehensregel.",
+   "maengel": [
+    "Keine Kosten",
+    "Nicht registriert"
+   ],
+   "aussagen": [
+    {
+     "text": "Docht ≈ Münzwurf, nicht als Signal tragfähig",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "OF2-Kostengrenze",
+   "titel": "OF2: Wie viele Trades am Tag sind am profitabelsten (Kostengrenze max_cost_r variiert)",
+   "cluster": "OF-MIN",
+   "typ": "Erkundung (nur Training)",
+   "datum": "2026-11-10",
+   "quellen": [
+    "/mnt/project-files/analysen/of2-trades-pro-tag/ergebnis_20261110.md",
+    "PS5 (Kopie): results/of2/sweep_kosten/sweep.json"
+   ],
+   "daten": "BTC S8-Minutenbalken, Training 2020–2022",
+   "aufteilung": "nur Training",
+   "kosten": "Bitunix Taker; Maker 0,02 % (optimistisch)",
+   "register": "—",
+   "stichprobe": "56–397 OF-Trades je Einstellung",
+   "ergebnis": "Mehr Trades kosten Geld: Kostengrenze 0,15: 56 Trades +0,27 R je Trade; 0,25: 124 Trades +0,16 R (+19,4 R); 0,35: −0,05 R; ab 0,5: −0,12 R und schlechter. Beste Wahl auf denselben Daten auszusuchen sei Überanpassung (Bericht).",
+   "laborurteil": "reported",
+   "pruefung": "C",
+   "klasse": "EXPLORATIV",
+   "richtung": "positiv knapp / sinkend mit n",
+   "begruendung": "Erkundung auf dem Training; der Bericht warnt selbst vor Überanpassung.",
+   "maengel": [
+    "Erkundung",
+    "Gleiche Daten wie OF2"
+   ],
+   "aussagen": [
+    {
+     "text": "Erkundung sagt: ~1 Trade pro Woche am profitabelsten",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Stützt: Häufigkeit × Edge ist das Problem für 50 USDT/Tag."
+  },
+  {
+   "id": "Bitunix-Edge",
+   "titel": "Bitunix-Edge Phasen 1–6: Fähigkeits-Audit, API-Prüfung, Hebel, 50-USDT-Modell (11.11.2026)",
+   "cluster": "OF-MIN",
+   "typ": "Audit und Modellrechnung",
+   "datum": "2026-11-11",
+   "quellen": [
+    "/mnt/project-files/analysen/bitunix-edge-2026-11-11/phase1-audit.md",
+    "/mnt/project-files/analysen/bitunix-edge-2026-11-11/phase4-6-bericht.md",
+    "docs/research_lab/reports/bitunix/target_50usd_of2_training.json"
+   ],
+   "daten": "Bitunix öffentliche API (Mac), OF2-Training",
+   "aufteilung": "—",
+   "kosten": "Bitunix: Gebühren unbestätigt (0,06 % Taker, 0,02 % Maker nur laut Uzi), Funding 8 h, Kappe ±0,3 %",
+   "register": "—",
+   "stichprobe": "56 OF2-Trades",
+   "ergebnis": "TARGET NOT PROVEN: 56 Trades in 1.096 Tagen; pro Kalendertag +0,0137 R, 95 %-Band −0,009 bis +0,043 R; Kapital für 50 USDT/Tag 364.000 USDT (1 % Risiko) bis 1,46 Mio. (0,25 %). 200x nicht freigegeben (Liquidation vor Stop). Bitunix liefert keine historischen Trades (nur Live-Aufzeichnung).",
+   "laborurteil": "reported",
+   "pruefung": "C",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "keine Edge belegt",
+   "begruendung": "Methodisch ehrlich (Korrekturen im Nachtrag, OFX-Zahl gestrichen). Die Modellrechnung beruht auf OF2-Training mit n 56 und ist deshalb nur eine Größenordnung.",
+   "maengel": [
+    "Bitunix-Gebühren unbestätigt",
+    "n 56",
+    "Keine Bitunix-Historie"
+   ],
+   "aussagen": [
+    {
+     "text": "Kapitalbedarf rechnerisch aus OF2-Training",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Bitunix-Gebühren 0,06 % / 0,02 %",
+     "status": "ANNAHME"
+    }
+   ],
+   "verwendung": "Quelle für Abschnitt Bitunix-Übertragbarkeit."
+  },
+  {
+   "id": "Kraken-Kosten",
+   "titel": "Echte Handelskosten bei Kraken (Messung 01.–04.11.2026, 22 Füllungen)",
+   "cluster": "PROSPEKTIV",
+   "typ": "Kostenmessung (Echtgeld, klein)",
+   "datum": "2026-11-04",
+   "quellen": [
+    "/mnt/project-files/analysen/kraken-kosten-2026-11-04/bericht.md"
+   ],
+   "daten": "Kraken PF_XBTUSD, 7 Auto-Trades + 1 Minitrade",
+   "aufteilung": "—",
+   "kosten": "gemessen: Gebühr 5,0 bp Taker, Einstiegsschlupf −0,4 bp, Roundtrip ≈ 10 bp (Annahme 18 bp)",
+   "register": "—",
+   "stichprobe": "22 Füllungen, Ordergrößen 50–85 USD",
+   "ergebnis": "Annahmen des Protokolls sind eher zu vorsichtig; Basis Binance↔Kraken konstant 15–18 bp darunter (Börsen-Stops lösen ca. 15 bp früher aus als geplant).",
+   "laborurteil": "reported",
+   "pruefung": "C",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "keine Handelsaussage",
+   "begruendung": "Echte Messung, aber klein, Kraken (nicht Bitunix), Mini-Ordergrößen.",
+   "maengel": [
+    "n 22 Füllungen",
+    "Venue ≠ Bitunix"
+   ],
+   "aussagen": [
+    {
+     "text": "Roundtrip ≈ 10 bp bei Kraken",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Auf Bitunix übertragbar",
+     "status": "NICHT PRÜFBAR"
+    }
+   ],
+   "verwendung": "Begründet die Kostenstufe K0 (günstig); nicht für Bitunix gültig."
+  },
+  {
+   "id": "Bitunix-Konto",
+   "titel": "Bitunix-Konto von Uzi, letzte 365 Tage (nur berichtet)",
+   "cluster": "PROSPEKTIV",
+   "typ": "Realisierte Handelsbilanz (nicht zugänglich)",
+   "datum": "2026-11-12",
+   "quellen": [
+    "/mnt/project-files/analysen/ziel-50usd-2026-11-12/kapitalrechnung.md (Erwähnung)"
+   ],
+   "daten": "Bitunix-Konto, diskretionär",
+   "aufteilung": "—",
+   "kosten": "Gebühren 1.024 USDT",
+   "register": "—",
+   "stichprobe": "nicht bekannt",
+   "ergebnis": "Netto ca. −1.900 USDT in 365 Tagen, Gebühren 1.024 USDT (laut Kapitalrechnung 12.11.). Keine Kontoauszüge zugänglich.",
+   "laborurteil": "reported",
+   "pruefung": "D",
+   "klasse": "NICHT REPRODUZIERBAR",
+   "richtung": "negativ (nur berichtet)",
+   "begruendung": "Die Zahl steht in einem Bericht; weder Datensatz noch Kontoauszug liegen vor. Sie ist ein diskretionäres, nicht TIM-bezogenes Konto.",
+   "maengel": [
+    "Nicht prüfbar"
+   ],
+   "aussagen": [
+    {
+     "text": "−1.900 USDT netto, 1.024 USDT Gebühren",
+     "status": "NUR BERICHTET"
+    },
+    {
+     "text": "Zugrunde liegende Auszüge",
+     "status": "NICHT PRÜFBAR"
+    }
+   ],
+   "verwendung": "Nur als Hinweis auf reale Gebührenlast; kein Beleg."
+  },
+  {
+   "id": "Kraken-Echtgeldtest",
+   "titel": "Kraken-Live-Trader (Echtgeld-Test) und Journal auto.jsonl",
+   "cluster": "PROSPEKTIV",
+   "typ": "Live-Test (nicht zugänglich)",
+   "datum": "2026-11-01",
+   "quellen": [
+    "/mnt/project-files/analysen/master-analyse-mentor-2026-11-09/bericht.md (Erwähnung: 133 Zeilen, 01.–09.11.)"
+   ],
+   "daten": "Kraken PF_XBTUSD",
+   "aufteilung": "vorwärts",
+   "kosten": "Kraken-gemessen",
+   "register": "—",
+   "stichprobe": "133 Journalzeilen (Stand 09.11.), 7 Auto-Trades bis 04.11.",
+   "ergebnis": "Ergebnisse nicht zugänglich (Mac-Datei). Live-Trader seit 11.11. gestoppt.",
+   "laborurteil": "stopped",
+   "pruefung": "D",
+   "klasse": "NICHT REPRODUZIERBAR",
+   "richtung": "keine Aussage",
+   "begruendung": "Live-Journal liegt nur auf dem Mac und wurde nicht gelesen; ein paar Trades ohnehin ohne Statistik.",
+   "maengel": [
+    "Nicht gelesen",
+    "kleine Stichprobe"
+   ],
+   "aussagen": [
+    {
+     "text": "Ergebnisse",
+     "status": "NICHT PRÜFBAR"
+    }
+   ],
+   "verwendung": "Kein Beitrag."
+  },
+  {
+   "id": "V1-Juli",
+   "titel": "TIM V1 Juli 2026: Wissenschaftliche Validierung, 72h-Abnahme, Abgleichsbericht, Orderflow-Nachprüfung 5/15/30 min und 1h/4h/24h",
+   "cluster": "INFRA",
+   "typ": "Plattform-Validierung (Datenpipeline)",
+   "datum": "2026-07-23",
+   "quellen": [
+    "docs/TIM_V1_SCIENTIFIC_VALIDATION_2026-07-23.md",
+    "docs/TIM_FINAL_SCIENTIFIC_RECONCILIATION_REPORT.md",
+    "docs/TIM_72H_ACCEPTANCE_REPORT.md",
+    "docs/VALIDATION_REPORT_2026-07-19.md",
+    "docs/ORDERFLOW_VALIDATION_PHASE4.md",
+    "docs/ORDERFLOW_VALIDATION_LONG.md"
+   ],
+   "daten": "Binance Spot BTCUSDT Live-Beobachtungen Juli 2026",
+   "aufteilung": "Forward-only, ein Fenster",
+   "kosten": "keine",
+   "register": "—",
+   "stichprobe": "165 voll validierte Fälle (22.07.), 1.339 (23.07.)",
+   "ergebnis": "NOT_COMPLETE / NO-GO / NOT_READY_FOR_V2: 1-Minuten-Abdeckung 42,6 % (22.07.) bzw. 60,7 % (23.07.); 1.339 von 1.000 geforderten Fällen erreicht, aber 63 ungeklärte Datenlücken, OUTPUT_HASH_MISMATCH. Keine Handelsaussage: „Papier-Stichproben dürfen nicht als Edge gelesen werden“.",
+   "laborurteil": "reported",
+   "pruefung": "C",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "keine Handelsaussage",
+   "begruendung": "Prüft Datenpipeline und Provenienz, nicht Profitabilität. Als Edge-Beleg ungültig, als Datenqualitätsnachweis nützlich: Juli-Daten haben große Lücken.",
+   "maengel": [
+    "Datenlücken 39–57 %",
+    "Keine Kosten, keine Handelsregel"
+   ],
+   "aussagen": [
+    {
+     "text": "Datenabdeckung 42,6 % / 60,7 %",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Kein Edge-Beleg enthalten",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Nur als Warnung, dass Live-Juli-Daten nicht als Test taugen."
+  },
+  {
+   "id": "tim-master-P1",
+   "titel": "tim-master: P1 Plan-Journal mit Evidenz-Gate (Software, 23.10.2026)",
+   "cluster": "INFRA",
+   "typ": "Software-Abnahme",
+   "datum": "2026-10-23",
+   "quellen": [
+    "tim-master: evidence/claude-p1-journal-evidence-gate.md",
+    "tim-master: docs/ACCEPTANCE.md"
+   ],
+   "daten": "—",
+   "aufteilung": "—",
+   "kosten": "Protokoll 1.1",
+   "register": "—",
+   "stichprobe": "108 gezielte Tests grün",
+   "ergebnis": "STATUS: IMPLEMENTED + TESTED (isoliert), nicht integriert, nicht runtime-verifiziert. Befund: kein Setup mit positiver Evidenz im Register (48 Varianten, 0 Kandidaten).",
+   "laborurteil": "reported",
+   "pruefung": "C",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "keine Handelsaussage",
+   "begruendung": "Software- und Governance-Nachweis; die Aussage „kein belegtes Setup“ stimmt mit dem Register überein.",
+   "maengel": [
+    "Nicht integriert"
+   ],
+   "aussagen": [
+    {
+     "text": "Register 48 Varianten, 0 Kandidaten (Stand 23.10.)",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Bestätigt: kein Journal-Eintrag darf als belegtes Setup gelten."
+  },
+  {
+   "id": "Prüfberichte-Chart",
+   "titel": "Indikator-Prüfung (31.10./04.11.), Orderflow-Kontrolle (06.11.), Master-Analyse Mentor (09.11.), Orderflow-Research-Bewertung (28.10.), quantfinancetogo (02.11.)",
+   "cluster": "INFRA",
+   "typ": "Prüf- und Bewertungsberichte (kein Handelstest)",
+   "datum": "2026-10-31",
+   "quellen": [
+    "/mnt/project-files/analysen/indikator-pruefung-2026-11-04/bericht.md",
+    "/mnt/project-files/analysen/orderflow-kontrolle-2026-11-06/bericht.md",
+    "/mnt/project-files/analysen/master-analyse-mentor-2026-11-09/bericht.md",
+    "/mnt/project-files/analysen/orderflow-research-2026-10-28/bewertung.md",
+    "/mnt/project-files/analysen/quantfinancetogo-2026-11-02/bericht.md"
+   ],
+   "daten": "Binance-Rohdaten, TIM-Chart",
+   "aufteilung": "—",
+   "kosten": "—",
+   "register": "—",
+   "stichprobe": "331 Einzelprüfungen (04.11.)",
+   "ergebnis": "Indikator-Prüfung 04.11.: 331 Prüfungen, 295 PASS, 8 FAIL (keiner ein falscher Indikator), 28 Hinweise; die Entscheidungslogik bekommt die meisten Indikatoren nicht zu sehen. Orderflow-Kontrolle 06.11.: PASS mit 3 bestätigten Code-/Doku-Fehlern. Deep-Research-Bericht belegt „keinen Edge“ und sagt das selbst.",
+   "laborurteil": "reported",
+   "pruefung": "C",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "keine Handelsaussage",
+   "begruendung": "Prüfen Implementierung, Daten und Quellen, keine Handelsergebnisse.",
+   "maengel": [
+    "Nicht einzeln nachgerechnet"
+   ],
+   "aussagen": [
+    {
+     "text": "295 von 331 Prüfungen PASS",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Stützt Datenqualität der Indikatoren; kein Edge-Beleg."
+  },
+  {
+   "id": "Überzeugungsregister",
+   "titel": "TIM-Gedächtnis: Überzeugungsregister v0 (253 Aussagen, 12.11.2026) und Aussagenliste",
+   "cluster": "INFRA",
+   "typ": "Meta-Inventur",
+   "datum": "2026-11-12",
+   "quellen": [
+    "docs/research_lab/gedaechtnis/v0/belief_register_v0_zusammenfassung.md",
+    "docs/research_lab/gedaechtnis/aussagen.jsonl"
+   ],
+   "daten": "Repo, Studienberichte, externe Quellen",
+   "aufteilung": "—",
+   "kosten": "—",
+   "register": "—",
+   "stichprobe": "253 Aussagen (64 Live-Regeln, 99 Forschung, 90 extern)",
+   "ergebnis": "Kernbefund: Keine einzige Live-Regel stützt sich auf eine bestandene Studie; 7 Live-Regeln sind widerlegt; mehr als 150 Prüfungen auf BTC 2020–2024 ohne fortlaufenden Gesamtzähler; Validierung 2023–2024 mehrfach verbraucht (S7b, S9, S13–S27, OF2).",
+   "laborurteil": "reported",
+   "pruefung": "C",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "keine Handelsaussage",
+   "begruendung": "Interne Inventur mit Querverweis; ihr Befund deckt sich mit dieser Konsolidierung und diente der Vollständigkeitsprüfung.",
+   "maengel": [
+    "Eigenbewertung des Labors"
+   ],
+   "aussagen": [
+    {
+     "text": "Keine Live-Regel auf bestandener Studie",
+     "status": "NUR BERICHTET"
+    }
+   ],
+   "verwendung": "Vollständigkeits- und Mehrfachtest-Quelle."
+  },
+  {
+   "id": "K-C1",
+   "titel": "Konsolidierung C1: S7b-D20-T3 unverändert (BTC/ETH/SOL 4h), unabhängig neu gerechnet und geprüft (T1–T9)",
+   "cluster": "EIGEN",
+   "typ": "Eigene Nachrechnung (Protokoll 1.0 eingefroren)",
+   "datum": "2026-11-16",
+   "quellen": [
+    "docs/research_lab/konsolidierung/ergebnisse/t01_reproduktion.json",
+    "docs/research_lab/konsolidierung/ergebnisse/t02_kosten.json",
+    "docs/research_lab/konsolidierung/ergebnisse/t03_zufall_C1.json",
+    "docs/research_lab/konsolidierung/ergebnisse/t04_raster_C1.json",
+    "docs/research_lab/konsolidierung/ergebnisse/t05_komponenten.json",
+    "docs/research_lab/konsolidierung/ergebnisse/t08_dsr_C1.json",
+    "docs/research_lab/konsolidierung/ergebnisse/kriterien.json"
+   ],
+   "daten": "Binance USD-M 4h, 2020–2024",
+   "aufteilung": "Training < 2023 / Validierung 2023–2024; kein ungesehener Abschnitt",
+   "kosten": "K0–K4, L1 (siehe Protokoll)",
+   "register": "Protokoll 1.0 (Commit 1e9270a), Kandidaten vor der Bewertung festgelegt",
+   "stichprobe": "499 Trades (292 / 207)",
+   "ergebnis": "K2: E[R] Training +0,207, Validierung +0,237; Zufalls-p 0,035 / 0,001; Plateau 97,5 % / 100 % der Nachbarzellen positiv; DSR (N=64) 0,42 / 0,43 (gepoolt 0,78); mit einer Kerze Verzögerung Validierung −0,007 R; Nullpunkt der Kosten bei ≈ 4,35-fachen K1-Kosten.",
+   "laborurteil": "reported",
+   "pruefung": "A",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "positiv (historisch), G7 und G8 verfehlt",
+   "begruendung": "Alle Tests des eingefrorenen Protokolls gelaufen, nichts weggelassen. G7 (Mehrfachtest) und G8 (Übertragung) scheitern; deshalb nur Stufe 2.",
+   "maengel": [
+    "Kein ungesehener Abschlusstest",
+    "Survivorship BTC/ETH/SOL",
+    "Gleiche Daten wie S7b"
+   ],
+   "aussagen": [
+    {
+     "text": "T1–T9 Ergebnisse siehe Dateien",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Kern der Abschnitte 4–6 der Studie."
+  },
+  {
+   "id": "K-Carry",
+   "titel": "Konsolidierung T11: Funding-Carry BTC+ETH (Spot long, Perp short) nach Protokoll, plus Sensitivitäten",
+   "cluster": "EIGEN",
+   "typ": "Eigene Nachrechnung",
+   "datum": "2026-11-16",
+   "quellen": [
+    "docs/research_lab/konsolidierung/ergebnisse/t11_carry.json",
+    "docs/research_lab/konsolidierung/ergebnisse/t12_kombination.json"
+   ],
+   "daten": "Binance Spot und USD-M 1h, Funding, 2020–2024",
+   "aufteilung": "Training / Validierung",
+   "kosten": "vier Füllungen, Gebühr + Schlupf; Spot-Gebühr Bitunix unbestätigt",
+   "register": "Protokoll 1.0, Kandidat C2",
+   "stichprobe": "2 Instrumente",
+   "ergebnis": "Konstante Stückzahl: Training +84,4 %/Jahr, Validierung +13,9 %/Jahr (formal bestanden, aber verdeckter Hebel: Notional ×14 BTC, ×37 ETH, ohne Nachschuss Liquidation 2020); monatlich neu abgesichert (konstantes Notional): +11,3 % / +5,3 %, gegen angenommenen Geldmarkt 0,8 % / 5,05 %.",
+   "laborurteil": "reported",
+   "pruefung": "A",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "positiv aber Kapitalrendite (nicht Edge)",
+   "begruendung": "Das eingefrorene Protokoll („konstante Stückzahl“) erzeugt verdeckten Hebel. Das formale Ergebnis wird berichtet, die Prüfung mit konstantem Notional daneben gestellt, ohne die Kriterien zu ändern.",
+   "maengel": [
+    "Geldmarktsatz ist Annahme",
+    "Basisspitzen ±250 bp",
+    "Bitunix-Spot-Gebühr unbestätigt"
+   ],
+   "aussagen": [
+    {
+     "text": "Funding-Anteil positiv ca. 88 %",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Geldmarktsätze",
+     "status": "ANNAHME"
+    }
+   ],
+   "verwendung": "Kandidat C2; Beitrag nur als Kapitalrendite."
+  },
+  {
+   "id": "K-Ref",
+   "titel": "Konsolidierung T10: risikogleiche einfache Referenzen R1 (Korb Buy&Hold) und R2 (SMA200 long/flat)",
+   "cluster": "EIGEN",
+   "typ": "Eigene Nachrechnung",
+   "datum": "2026-11-16",
+   "quellen": [
+    "docs/research_lab/konsolidierung/ergebnisse/t10_referenzen.json",
+    "docs/research_lab/konsolidierung/ergebnisse/tagesreihen.json"
+   ],
+   "daten": "BTC/ETH/SOL 4h/1d 2020–2024",
+   "aufteilung": "gepoolt",
+   "kosten": "0,09 % je Seite auf Umschichtung",
+   "register": "—",
+   "stichprobe": "Tagesreihen 2020–2024",
+   "ergebnis": "Gepoolt, auf die Tagesschwankung des Kandidaten skaliert (Hebel höchstens 3): C1 +119 %, Sharpe 1,36, Rückgang 20,9 %; R1 +113 %, Sharpe 1,28, 33,8 %; R2 +136 %, Sharpe 1,55, 25,0 %.",
+   "laborurteil": "reported",
+   "pruefung": "A",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "kein Vorsprung gegen einfache Referenz",
+   "begruendung": "Auf denselben im Nachhinein gewählten Coins schlägt die Regel eine einfache SMA-Referenz nicht.",
+   "maengel": [
+    "Gleiche Coins, gleiche Jahre"
+   ],
+   "aussagen": [
+    {
+     "text": "R2 Sharpe 1,55 gegen C1 1,36",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Gegenbeleg G9/G10-Kontext."
+  },
+  {
+   "id": "K-Bitunix",
+   "titel": "Konsolidierung T13: Bitunix-Kerzen und Kontraktdaten gegen Binance (Übertragbarkeit)",
+   "cluster": "EIGEN",
+   "typ": "Eigene Nachrechnung",
+   "datum": "2026-11-16",
+   "quellen": [
+    "docs/research_lab/konsolidierung/ergebnisse/t13_bitunix.json",
+    "docs/research_lab/konsolidierung/ergebnisse/bitunix_tiefe_momentaufnahme.json"
+   ],
+   "daten": "Bitunix Kerzen ab 2022-04-17, Tiefenschnappschuss",
+   "aufteilung": "Zeitraum der Bitunix-Kerzen",
+   "kosten": "Bitunix-Gebühren unbestätigt",
+   "register": "—",
+   "stichprobe": "269 gegen 264 Trades, 252 gemeinsame Signale",
+   "ergebnis": "E[R] Bitunix 0,2194 gegen Binance 0,2460 (Δ −0,027 R); Mindestkontrakt bei 1.000 USDT 100 % ausführbar; Spreads BTC 0,016 bp, ETH 0,056 bp, SOL 1,41 bp (Momentaufnahme ≈ 90 s).",
+   "laborurteil": "reported",
+   "pruefung": "A",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "kein Unterschied zu Binance",
+   "begruendung": "Preisgleichheit der Kerzen ist belegt; Gebühren und Funding-Einheit bleiben offen. Spread-Momentaufnahme sagt nichts über Stressphasen.",
+   "maengel": [
+    "Gebühren unbestätigt",
+    "Funding-Einheit unklar (Prozent?)"
+   ],
+   "aussagen": [
+    {
+     "text": "Δ E[R] −0,027 R",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Gebühren",
+     "status": "ANNAHME"
+    }
+   ],
+   "verwendung": "Abschnitt 9 (Bitunix)."
+  },
+  {
+   "id": "K-T15",
+   "titel": "Konsolidierung T15: Trendregel C3 (S7b-D20-T3 auf BTC/ETH) außerhalb des Entwicklungszeitraums, Binance Spot 4h 2017-08 bis 2019-12 (ein Lauf)",
+   "cluster": "EIGEN",
+   "typ": "Eigene Nachrechnung (Zusatzprotokoll 1.1-T15)",
+   "datum": "2026-11-16",
+   "quellen": [
+    "docs/research_lab/konsolidierung/ergebnisse/t15_datenaudit.json",
+    "docs/research_lab/konsolidierung/ergebnisse/t15_ausserhalb.json"
+   ],
+   "daten": "Binance Spot 4h BTCUSDT/ETHUSDT 2017-08 bis 2019-12 (data.binance.vision, Prüfsummen belegt)",
+   "aufteilung": "ein Zeitraum vor Training, Validierung und Holdout",
+   "kosten": "K2 primär (Funding aus, keine Historie), K1 und K0 berichtet",
+   "register": "Zusatzprotokoll 1.1-T15 (Commit ceed9f9) vor dem Laden der Daten, Code und Datenbericht vor dem Lauf festgehalten",
+   "stichprobe": "157 Trades (K2)",
+   "ergebnis": "K2: E[R] +0,154 R (95-%-Band −0,056 bis +0,391), einseitiges p 0,079 (Schwelle 0,05): nicht bestätigt, Richtung positiv. K1 +0,146, K0 +0,152. Zufallseinstiege in SMA200-Richtung im Mittel +0,177 R (p 0,595). Je Jahr 2017 −0,03 / 2018 +0,15 / 2019 +0,24 R. Größter Rückgang 12,5 R. Nach Abzug des Funding-Anteils aus 2020–2024 (0,031 R) +0,123 R.",
+   "laborurteil": "reported",
+   "pruefung": "A",
+   "klasse": "BEDINGT VERWERTBAR",
+   "richtung": "positiv, nicht signifikant",
+   "begruendung": "Vorab festgelegter Einzellauf außerhalb des Entwicklungszeitraums mit demselben Code (T1 reproduziert die Laborlisten bit-genau). Aussagekraft begrenzt (n 157, Power etwa 50 %), Spot statt Perpetual, Funding fehlt, nur BTC/ETH.",
+   "maengel": [
+    "Spot statt Perpetual, kein Funding",
+    "Nur BTC/ETH, im Nachhinein gewählt",
+    "Acht Datenlücken verkürzen den Zeitraum mit Signalmöglichkeit auf etwa 19,8 Monate",
+    "Marktregime 2017–2019 anders"
+   ],
+   "aussagen": [
+    {
+     "text": "E[R] K2 +0,154 R, n 157, p 0,079",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Zufallseinstiege im Mittel +0,177 R, p 0,595",
+     "status": "VERIFIZIERT"
+    },
+    {
+     "text": "Datenbericht: 5.185 Kerzen je Symbol, 0,31 % fehlen, Prüfsummen stimmen",
+     "status": "VERIFIZIERT"
+    }
+   ],
+   "verwendung": "Evidenzzeile E1b; die Stufe „außerhalb der Entwicklung bestätigt“ ist nicht erreicht."
+  }
+ ]
+}

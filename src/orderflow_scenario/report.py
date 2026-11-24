@@ -136,7 +136,7 @@ _ALIGNMENT_TEXT = {
 
 
 def _external_section(external: dict[str, Any]) -> list[str]:
-    lines = ["\nBRONCX-LEITFADEN (extern, gewichtet, zählt nicht als Bestätigung):"]
+    lines = ["\nMENTOR-LEITFADEN (extern, gewichtet, zählt nicht als Bestätigung):"]
     lines.extend(_influence_lines(external.get("influence")))
     active = [entry for entry in external["entries"] if entry["status"] == "ACTIVE"]
     if not active:
@@ -147,17 +147,17 @@ def _external_section(external: dict[str, Any]) -> list[str]:
         guidance = entry["guidance"]
         label = " ".join(part for part in (guidance["bias"] if guidance["bias"] != "NONE" else None, entry["symbol"], entry["timeframe"]) if part)
         if entry["renews"]:
-            line = f"  [vor {entry['age_hours']:g} h] Broncx bestätigt seine vorherige Sicht erneut."
+            line = f"  [vor {entry['age_hours']:g} h] Mentor bestätigt seine vorherige Sicht erneut."
         elif entry["alignment"] == "NO_BIAS":
             line = f"  [vor {entry['age_hours']:g} h] {label or 'Beitrag'}: Kontext ohne Richtung."
         else:
             line = f"  [vor {entry['age_hours']:g} h] {label}: {_ALIGNMENT_TEXT[entry['alignment']]}."
             if entry["renewed_at"]:
-                line += " Von Broncx erneut bestätigt."
+                line += " Von Mentor erneut bestätigt."
         lines.append(line)
         for check in entry["invalidation_checks"]:
             text = check["text"] if report_is_safe(check["text"]) else "(siehe Audit)"
-            lines.append(f"    Invalidierung laut Broncx: {text} -> {check['status']}.")
+            lines.append(f"    Invalidierung laut Mentor: {text} -> {check['status']}.")
         if entry["level_checks"]:
             levels = ", ".join(
                 f"{check['level']} {check['role']}" + (" aus Bild, geschätzt" if check.get("source") == "chart" else "") + f" {check['status']}"
@@ -176,7 +176,7 @@ _NO_INFLUENCE_TEXT = {
 
 
 def _community_section(community: dict[str, Any]) -> list[str]:
-    lines = ["\nHUMAN-COMMUNITY-TRADING-RESEARCH (GoatHub; nur Anzeige, keine Gewichtung, zählt nicht als Bestätigung):"]
+    lines = ["\nHUMAN-COMMUNITY-TRADING-RESEARCH (Signalgruppe; nur Anzeige, keine Gewichtung, zählt nicht als Bestätigung):"]
     if not community["entries"]:
         lines.append(f"  Kein guter Call zu diesem Symbol (Frist {community['max_age_hours']:g} h).")
         return lines
@@ -199,13 +199,13 @@ def _influence_lines(influence: dict[str, Any] | None) -> list[str]:
     view = influence["view"]
     if not view["bias"]:
         return [f"  Keine Gewichtung: {_NO_INFLUENCE_TEXT.get(view['reason'], view['reason'])}."]
-    lines = [f"  Gewichtung nach Broncx-Richtung {view['bias']}:"]
+    lines = [f"  Gewichtung nach Mentor-Richtung {view['bias']}:"]
     for item in influence["score_adjustments"]:
         lines.append(f"    Szenario {item['scenario_id']} ({item['direction']}): Score {float(item['before']):.2f} -> {float(item['after']):.2f}.")
     if not influence["score_adjustments"]:
         lines.append("    Keine gerichteten Szenarien zu gewichten.")
     if influence["level_scenarios"]:
-        lines.append(f"  Szenarien an Broncx-Leveln: {', '.join(influence['level_scenarios'])} (brauchen TIMs eigene Bestätigung).")
+        lines.append(f"  Szenarien an Mentor-Leveln: {', '.join(influence['level_scenarios'])} (brauchen TIMs eigene Bestätigung).")
     return lines
 
 

@@ -18,8 +18,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Sequence
 
-from src.knowledge.broncx_feed import BroncxPost
-from src.knowledge.goathub_feed import GoatHubMessage
+from src.knowledge.mentor_feed import MentorPost
+from src.knowledge.signalgruppe_feed import SignalgruppeMessage
 from src.models.market_data import Candle, Trade
 
 from ..audit import AuditBuilder, analysis_id_for
@@ -96,11 +96,11 @@ class PipelineInputs:
     risk_tier_name: str = "STANDARD"
     kill_switch_enabled: bool = True
     observed_at: datetime | None = None
-    # External guidance (Broncx via Discord): audit and report only, never evidence.
-    external_posts: tuple[BroncxPost, ...] = ()
+    # External guidance (Mentor via Discord): audit and report only, never evidence.
+    external_posts: tuple[MentorPost, ...] = ()
     external_max_age: timedelta = DEFAULT_MAX_AGE
-    # GoatHub community calls: audit and report only, no score weight, never evidence.
-    community_messages: tuple[GoatHubMessage, ...] = ()
+    # Signalgruppe community calls: audit and report only, no score weight, never evidence.
+    community_messages: tuple[SignalgruppeMessage, ...] = ()
     community_max_age: timedelta = DEFAULT_CALL_MAX_AGE
 
     def __post_init__(self) -> None:
@@ -158,7 +158,7 @@ class Pipeline:
         )
         quality = self.data_quality_gate.evaluate(quality_inputs, observed_at=observed_at)
 
-        # Broncx's current view (external guidance): weights scenarios and adds his levels, never confirms.
+        # Mentor's current view (external guidance): weights scenarios and adds his levels, never confirms.
         external_view = None
         external_adjustments: list[dict] = []
         if inputs.external_posts:
@@ -315,7 +315,7 @@ class Pipeline:
                     influence={
                         "view": external_view.to_dict(),
                         "score_adjustments": external_adjustments,
-                        "level_scenarios": [item.scenario_id for item in scenarios if item.trade_template.get("level_source") == "broncx"],
+                        "level_scenarios": [item.scenario_id for item in scenarios if item.trade_template.get("level_source") == "mentor"],
                     },
                 ),
             )

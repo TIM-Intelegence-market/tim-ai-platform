@@ -26,7 +26,18 @@ from src.research_lab.data.store import HoldoutLocked, http_fetch
 from src.research_lab.orderflow_ml.bars import (BAR_HEADER, BAR_VERSION, MINUTE_MS, MINUTES_PER_DAY, PROFILE_HEADER, DayProfile, MinuteBar,
                                                 reduce_trades_with_profile, ticks_from_rows)
 from src.research_lab.protocol import HOLDOUT_START_MS
-from src.v2_readiness.backfill import BinanceArchiveRef, parse_official_checksum, verify_archive
+from dataclasses import dataclass
+
+from src.v2_readiness.backfill import BinanceArchiveRef as _V2ArchiveRef, parse_official_checksum, verify_archive
+
+RESEARCH_SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT")  # S35a; the V2 evidence guard itself stays BTC-only
+
+
+@dataclass(frozen=True, slots=True)
+class BinanceArchiveRef(_V2ArchiveRef):
+    def __post_init__(self) -> None:
+        if self.symbol not in RESEARCH_SYMBOLS:
+            raise ValueError("research scope is BTCUSDT, ETHUSDT, SOLUSDT")
 
 Fetcher = Callable[[str], bytes]
 DEFAULT_ROOT = Path("data/research_lab/orderflow_ml")

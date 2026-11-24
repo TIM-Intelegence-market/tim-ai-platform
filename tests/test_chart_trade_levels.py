@@ -1,7 +1,7 @@
 """Chart levels from TIM's own trades instead of the candle estimate (Beirat 29.10.2026).
 
 Day/week value, running POCs and naked POCs of the days the aggTrades store covers come
-from the trades; naked POCs are marked as vPOC (volume) and tPOC (time) like Broncx does.
+from the trades; naked POCs are marked as vPOC (volume) and tPOC (time) like Mentor does.
 """
 
 from __future__ import annotations

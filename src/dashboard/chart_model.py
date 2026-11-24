@@ -314,7 +314,7 @@ def _flt(value: Any) -> float | None:
 
 
 def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile: Mapping[str, Any] | None, now: datetime | None = None,
-                  trades: Sequence[Any] | None = None) -> dict[str, Any]:
+                  trades: Sequence[Any] | None = None, positioning: Any = None, market_type: str = "SPOT") -> dict[str, Any]:
     """Run TIM's orderflow pipeline (OBSERVE, no orders) and add preview stops/targets."""
     from src.orderflow_scenario.domain import ConfirmationState, MarketContext
     from src.orderflow_scenario.engines.pipeline import Pipeline, PipelineInputs
@@ -335,7 +335,7 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
         point_of_control=_dec(profile.get("poc")) if profile else None,
         last_price=Decimal(str(last.close)),
     )
-    context = MarketContext(symbol=last.symbol, venue="BINANCE", market_type="SPOT", timeframe=timeframe, timestamp=now)
+    context = MarketContext(symbol=last.symbol, venue="BINANCE", market_type=market_type, timeframe=timeframe, timestamp=now)
     # The price is the last closed candle's close: allow two intervals before it counts as stale.
     analysis = Pipeline(max_price_age_seconds=max(90.0, 2.0 * TIMEFRAME_SECONDS.get(timeframe, 1800))).run(PipelineInputs(
         market_context=context, candles=model_candles, price_now=Decimal(str(last.close)), price_timestamp=last.close_time,
@@ -350,7 +350,7 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
             try:
                 plan = builder.build(TradePlanInputs(
                     scenario=replace(scenario, state=ConfirmationState.CONFIRMED), market_state=analysis.market_state,
-                    symbol=last.symbol, venue="BINANCE", market_type="SPOT", timeframe=timeframe,
+                    symbol=last.symbol, venue="BINANCE", market_type=market_type, timeframe=timeframe,
                     last_price=Decimal(str(last.close)), timestamp=now,
                 ))
             except (ValueError, ArithmeticError):
@@ -395,7 +395,7 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
             "state": scenario.state.value,
             "score": _flt(scenario.score),
             "score_type": scenario.score_type.value,
-            "score_parts": {**(scenario.trade_template.get("score_parts") or {}), **({"broncx": float(scenario.trade_template["external_weight"])} if scenario.trade_template.get("external_weight") else {})} or None,
+            "score_parts": {**(scenario.trade_template.get("score_parts") or {}), **({"mentor": float(scenario.trade_template["external_weight"])} if scenario.trade_template.get("external_weight") else {})} or None,
             "trigger": _flt(scenario.trigger_level),
             "entry_low": _flt(scenario.entry_zone_low),
             "entry_high": _flt(scenario.entry_zone_high),
@@ -408,7 +408,7 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
         # Schatten-Score (TIM-Gehirn, Uzi 12.11.2026): the same pipeline once more WITH the trades (and the footprint built
         # from them). Recorded next to the live score; it decides nothing. Failure leaves the live result untouched.
         try:
-            shadow = _shadow_scores(model_candles, context, levels, trades, now)
+            shadow = _shadow_scores(model_candles, context, levels, trades, now, positioning)
             for item in scenarios:
                 if item["id"] in shadow:
                     item["score_schatten"] = shadow[item["id"]]
@@ -425,11 +425,12 @@ def run_scenarios(candles: Sequence[Mapping[str, Any]], timeframe: str, profile:
     }
 
 
-def _shadow_scores(model_candles: Sequence[Any], context: Any, levels: Any, trades: Sequence[Any], now: datetime) -> dict[str, dict[str, Any]]:
+def _shadow_scores(model_candles: Sequence[Any], context: Any, levels: Any, trades: Sequence[Any], now: datetime,
+                   positioning: Any = None) -> dict[str, dict[str, Any]]:
     """Score per scenario id from a second pipeline run with trades and the footprint made from them.
 
     The trades cover only the last hours before the plan (journal window), so the footprint is partial: it reaches
-    back 2 to 4 candles, not the whole chart window. Positioning, funding and Broncx are not part of it yet."""
+    back 2 to 4 candles, not the whole chart window. Positioning, funding and Mentor are not part of it yet."""
     from src.dashboard.footprint_data import TICK_BY_SYMBOL
     from src.orderflow_scenario.engines.pipeline import Pipeline, PipelineInputs
     from src.orderflow_scenario.footprint import footprint_from_trades
@@ -441,14 +442,17 @@ def _shadow_scores(model_candles: Sequence[Any], context: Any, levels: Any, trad
     tick = TICK_BY_SYMBOL.get(last.symbol)
     footprint = footprint_from_trades(usable, model_candles, Decimal(str(tick))) if tick else None
     analysis = Pipeline(max_price_age_seconds=max(90.0, 2.0 * TIMEFRAME_SECONDS.get(context.timeframe, 1800))).run(PipelineInputs(
-        market_context=context, candles=model_candles, trades=tuple(usable), footprint=footprint, price_now=Decimal(str(last.close)),
+        market_context=context, candles=model_candles, trades=tuple(usable), footprint=footprint, positioning=positioning, price_now=Decimal(str(last.close)),
         price_timestamp=last.close_time, levels=levels, structured=True, source_name="TIM_RUNTIME_CANDLES+TRADES", observed_at=now,
     ))
     quality = {"status": analysis.data_quality.status, "confidence": _flt(analysis.data_quality.confidence),
                "missing": list(analysis.data_quality.missing_fields)}
-    data = ["trades"] + (["footprint"] if footprint is not None else [])
+    data = ["trades"] + (["footprint"] if footprint is not None else []) + (["positioning"] if positioning is not None else [])
     return {s.scenario_id: {"score": _flt(s.score), "parts": s.trade_template.get("score_parts"), "state": s.state.value,
-                            "daten": data, "n_trades": len(usable), "datenqualitaet": quality}
+                            "daten": data, "n_trades": len(usable), "datenqualitaet": quality,
+                            "positionierung": None if positioning is None else {
+                                "funding": None if positioning.funding_rate is None else float(positioning.funding_rate),
+                                "oi_points": len(positioning.open_interest)}}
             for s in analysis.scenarios}
 
 
@@ -475,7 +479,7 @@ def _risk_note() -> dict[str, Any]:
 
 
 def build_chart_model(series: Mapping[str, Sequence[Mapping[str, Any]]], timeframe: str = DEFAULT_TIMEFRAME, now: datetime | None = None, visible: int = CHART_VISIBLE, profile: Mapping[str, Any] | None = None, card: bool = False,
-                      trades: Sequence[Any] | None = None) -> dict[str, Any]:
+                      trades: Sequence[Any] | None = None, positioning: Any = None, market_type: str = "SPOT") -> dict[str, Any]:
     """Everything the chart page draws, as plain JSON-ready data.
 
     ``series`` maps timeframe -> candle dicts as kept by the runtime. ``profile``
@@ -548,7 +552,7 @@ def build_chart_model(series: Mapping[str, Sequence[Mapping[str, Any]]], timefra
 
     if len(candles) >= 5:
         try:
-            model["analysis"] = run_scenarios(candles, timeframe, model["profile"], now, trades)
+            model["analysis"] = run_scenarios(candles, timeframe, model["profile"], now, trades, positioning, market_type)
         except Exception as exc:  # noqa: BLE001 - the chart must still render
             model["notes"].append(f"Szenario-Analyse nicht verfügbar: {type(exc).__name__}")
     if card:

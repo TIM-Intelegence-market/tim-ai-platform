@@ -122,7 +122,7 @@ Uzi hat das in Issue #82 selbst festgelegt ("Definition of Done"). TIM ist ferti
 3. jede Analyse auf Evidenz zurückführen kann,
 4. Gegenargumente systematisch prüft (Bull/Bear, Devil's Advocate),
 5. Setup-Gültigkeit zeitlich und hierarchisch verwaltet,
-6. externes Wissen (Broncx) versioniert integriert,
+6. externes Wissen (Mentor) versioniert integriert,
 7. Community-Ideen gegen reale Marktdaten validiert,
 8. Research-Setups reproduzierbar paper-simuliert,
 9. seine Fehler und Unsicherheiten offen ausweist,
@@ -152,7 +152,7 @@ Damit das Anpassen der Regeln nicht zur Kurvenanpassung wird, gilt die Dreiteilu
 | Holdout (2025 bis heute) | einmaliger Endtest je Regel-Version | nur einmal, nach vorab registrierter Hypothese |
 | Live ab Server (forward) | Bestätigung im Paper Trader | kann nicht überangepasst werden, darum bleibt sie Pflicht |
 
-Was sich nicht herunterladen lässt und deshalb live gesammelt werden muss: Broncx-/Community-Beiträge vor
+Was sich nicht herunterladen lässt und deshalb live gesammelt werden muss: Mentor-/Community-Beiträge vor
 Feed-Start, eigene Beobachtungen und Research Cases von TIM selbst, Paper-Fills und die 30 bis 60 Tage Paper-Dauerlauf.
 Orderbuch-Tiefe liegt im Archiv nur eingeschränkt vor (nicht geprüft).
 
@@ -169,9 +169,9 @@ Höchste belegte Stufe laut `AUTONOMY_LEVELS.md`: **L1 (Research-Beobachtungen)*
 | Coverage-Nachweis (Gate ≥ 99,5 %) | nie erreicht, letzter Wert 60,7 %; V2-B01 bis B08 alle OPEN | `TIM_V2_BLOCKER_REGISTER.md` |
 | Beobachtungen, Orderflow, Szenarien | gebaut (BOS, Orderflow-Engine, Szenario-Engine, Handelsplan 1,5R) | PR #120-#133 |
 | Research Cases | gebaut, Server-Lauf fast fertig (validate wartet auf Uzis Satz) | Issue #3 zu, Thread "Research-Issue #3 erledigen" |
-| Broncx-Wissen | Feed + Chartbild-Auswertung laufen auf dem Mac; noch kein versioniertes Regelwerk (Konzepte, Regeln, Gegenbeispiele) | PR #124, #127, #132 |
+| Mentor-Wissen | Feed + Chartbild-Auswertung laufen auf dem Mac; noch kein versioniertes Regelwerk (Konzepte, Regeln, Gegenbeispiele) | PR #124, #127, #132 |
 | Evidence Graph, Temporal Validity, Bull/Bear, Devil's Advocate | **fehlt** (keine Fundstelle in `src/`) | Code-Suche 06.10. |
-| Community-Calls validieren (GoatHub) | Ansätze in `src/knowledge/goathub`, kein Validator, keine Caller-Statistik | Bauplan 29.09. |
+| Community-Calls validieren (Signalgruppe) | Ansätze in `src/knowledge/signalgruppe`, kein Validator, keine Caller-Statistik | Bauplan 29.09. |
 | Strategie-Vertrag, Backtest mit Kosten | Research Lab R0-R4 fertig, Nullergebnis; Holdout 2025+ unberührt | PR #117, #118 |
 | Risk Engine, Paper Trader | **fehlt**; `src/paper/automation.py` ist nur ein TEST_ONLY-Journal | `AUTONOMY_LEVELS.md` |
 | SHORT/MID/LONG-Readiness | **fehlt** | #82 §14 |
@@ -248,8 +248,8 @@ Während B4 läuft (14 Tage Wartezeit), werden C und D auf dem Mac gebaut. Die D
 | D2 | Temporal Validity: `born_at`, `half_life`, `expires_at`, Zustände ACTIVE … EXPIRED | Verfall deterministisch, Replay gleich |
 | D3 | Hierarchische Invalidierung (4H kippt → 1H/15m-Setups kippen mit) | Eltern-Kind-Tests |
 | D4 | Bull/Bear + Devil's Advocate verpflichtend je These | kein Case ohne Gegenseite (Test) |
-| D5 | Broncx-Wissenssystem: Konzepte, Regeln (klassifiziert), Beispiele, Gegenbeispiele, Quellen; Feed-Beiträge werden zu Cases | jede codierte Regel mit Test und Gegenbeispiel |
-| D6 | Community-Calls: Parser, Nachprüfung gegen Marktdaten (MFE, MAE, R), Caller-/Setup-Statistik | Calls "gemessen, nicht geglaubt"; Broncx als erster Caller |
+| D5 | Mentor-Wissenssystem: Konzepte, Regeln (klassifiziert), Beispiele, Gegenbeispiele, Quellen; Feed-Beiträge werden zu Cases | jede codierte Regel mit Test und Gegenbeispiel |
+| D6 | Community-Calls: Parser, Nachprüfung gegen Marktdaten (MFE, MAE, R), Caller-/Setup-Statistik | Calls "gemessen, nicht geglaubt"; Mentor als erster Caller |
 | D7 | Dashboard: Setups, Gültigkeit, Bull vs Bear, fehlende Evidenz | Seite zeigt es mit echten Daten |
 
 ### Phase E: Strategie und harte Validierung (Roadmap 4-6)

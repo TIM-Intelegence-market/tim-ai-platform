@@ -1,0 +1,516 @@
+"""Signalgruppe community feed: stored channel messages, community calls and a memory export.
+
+Messages come from Discord channels read by ``src/sources/signalgruppe_discord.py``:
+either a channel in the TIM owner's own server that Signalgruppe posts are forwarded
+into, or Signalgruppe channels the bot was invited to by the server's admins. This
+module stores them verbatim, finds the trading calls among them and writes the
+whole channel as Markdown, so Claude's memory and TIM read the real messages.
+
+Status: community opinion, observation-only. A call is a hypothesis with levels
+TIM can check against candles; it is never market evidence, never a
+confirmation and never an instruction. The grade only says how complete a call
+is written (direction, symbol, level, invalidation), not whether it is right.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+from collections import defaultdict
+from dataclasses import asdict, dataclass, replace
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from pathlib import Path
+from typing import Any, Iterable, Sequence
+
+from .mentor_feed import MentorGuidance, parse_guidance
+
+__all__ = [
+    "CHANNEL_ROLES",
+    "CommunityCall",
+    "SignalgruppeFeedStore",
+    "SignalgruppeMessage",
+    "ROLE_CALLS",
+    "ROLE_KNOWLEDGE",
+    "default_signalgruppe_dir",
+    "extract_call",
+    "good_calls",
+    "import_screen_readings",
+    "is_trade_report_or_chatter",
+    "render_channel_markdown",
+    "render_summary_markdown",
+    "write_memory_export",
+]
+
+SOURCE_DIRECT = "discord_direct"
+SOURCE_FORWARD = "discord_forward"
+SOURCE_SCREEN = "discord_screen"  # read off the owner's own Discord window by Claude; transcribed, check the original when it matters
+SOURCE_FOLLOW = "discord_follow"  # Discord channel "Follow": the original channel posts into the owner's channel
+SOURCE_MANUAL = "discord_manual"
+# What a channel is for. "calls": messages are checked for trade calls. "knowledge": teaching
+# material (e.g. education, bootcamp); kept verbatim for reading, never turned into calls.
+ROLE_CALLS = "calls"
+ROLE_KNOWLEDGE = "knowledge"
+CHANNEL_ROLES = (ROLE_CALLS, ROLE_KNOWLEDGE)
+GOOD_GRADES = ("A", "B")
+# Reactions that make a call "liked by the community"; a count, not a vote on correctness.
+POPULAR_REACTIONS = 3
+SUMMARY_LIMIT_BYTES = 3800
+
+
+def default_signalgruppe_dir() -> Path:
+    """Local, untracked feed directory (``data/`` is git-ignored)."""
+    override = os.environ.get("TIM_SIGNALGRUPPE_FEED_DIR")
+    if override:
+        return Path(override).expanduser()
+    return Path(__file__).resolve().parents[2] / "data" / "signalgruppe_feed"
+
+
+def _stored_role(value: Any) -> str:
+    """Older lines have no role (they were all read as calls); an unknown value never becomes a call."""
+    if value in (None, ""):
+        return ROLE_CALLS
+    return str(value) if str(value) in CHANNEL_ROLES else ROLE_KNOWLEDGE
+
+
+@dataclass(frozen=True, slots=True)
+class SignalgruppeMessage:
+    message_id: str
+    channel_id: str
+    posted_at: datetime
+    content: str
+    received_at: datetime
+    author_id: str = ""
+    author_name: str = ""
+    channel_name: str = ""
+    source: str = SOURCE_DIRECT
+    attachments: tuple[str, ...] = ()
+    reactions: int = 0
+    forwarded_by: str = ""
+    channel_role: str = ROLE_CALLS  # recorded when the message is stored; see CHANNEL_ROLES
+
+    def __post_init__(self) -> None:
+        if not self.message_id or not self.channel_id:
+            raise ValueError("message_id and channel_id are required")
+        if self.channel_role not in CHANNEL_ROLES:
+            raise ValueError(f"channel_role must be one of {', '.join(CHANNEL_ROLES)}")
+        if self.posted_at.tzinfo is None or self.received_at.tzinfo is None:
+            raise ValueError("message timestamps must be timezone-aware")
+        if not self.content.strip() and not self.attachments:
+            raise ValueError("message has neither text nor attachments")
+
+    @property
+    def known_at(self) -> datetime:
+        """When TIM could first know the message: posted, and also received by the bot."""
+        return max(self.posted_at, self.received_at)
+
+    @property
+    def author_label(self) -> str:
+        if self.source == SOURCE_FORWARD and not self.author_name:
+            return "weitergeleitet (Autor unbekannt)"
+        return self.author_name or self.author_id or "unbekannt"
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["posted_at"] = self.posted_at.isoformat()
+        payload["received_at"] = self.received_at.isoformat()
+        payload["attachments"] = list(self.attachments)
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "SignalgruppeMessage":
+        return cls(
+            message_id=str(payload["message_id"]),
+            channel_id=str(payload["channel_id"]),
+            posted_at=datetime.fromisoformat(payload["posted_at"]),
+            content=str(payload.get("content") or ""),
+            received_at=datetime.fromisoformat(payload["received_at"]),
+            author_id=str(payload.get("author_id") or ""),
+            author_name=str(payload.get("author_name") or ""),
+            channel_name=str(payload.get("channel_name") or ""),
+            source=str(payload.get("source") or SOURCE_DIRECT),
+            attachments=tuple(str(item) for item in payload.get("attachments") or ()),
+            reactions=int(payload.get("reactions") or 0),
+            forwarded_by=str(payload.get("forwarded_by") or ""),
+            channel_role=_stored_role(payload.get("channel_role")),
+        )
+
+
+class SignalgruppeFeedStore:
+    """Append-only JSONL store, idempotent by (channel, message id), with one cursor per channel."""
+
+    def __init__(self, root: Path | None = None) -> None:
+        self.root = root or default_signalgruppe_dir()
+        self.messages_path = self.root / "messages.jsonl"
+        self.state_path = self.root / "state.json"
+        self._known: set[tuple[str, str]] | None = None
+
+    def load(self) -> list[SignalgruppeMessage]:
+        if not self.messages_path.exists():
+            return []
+        messages: dict[tuple[str, str], SignalgruppeMessage] = {}
+        for line in self.messages_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                message = SignalgruppeMessage.from_dict(json.loads(line))
+            except (ValueError, KeyError, TypeError):
+                continue  # a torn last line after a crash must not hide the other messages
+            messages.setdefault((message.channel_id, message.message_id), message)
+        knowledge = {channel for channel, role in self.channel_roles().items() if role == ROLE_KNOWLEDGE}
+        if knowledge:  # a channel set to knowledge later also covers the messages stored before
+            messages = {key: replace(item, channel_role=ROLE_KNOWLEDGE) if item.channel_id in knowledge else item for key, item in messages.items()}
+        return sorted(messages.values(), key=lambda item: (item.posted_at, item.channel_id, item.message_id))
+
+    def append(self, message: SignalgruppeMessage) -> bool:
+        if self._known is None:
+            self._known = {(item.channel_id, item.message_id) for item in self.load()}
+        key = (message.channel_id, message.message_id)
+        if key in self._known:
+            return False
+        self.root.mkdir(parents=True, exist_ok=True)
+        torn = self.messages_path.exists() and self.messages_path.stat().st_size > 0 and not self.messages_path.read_bytes().endswith(b"\n")
+        with self.messages_path.open("a", encoding="utf-8") as stream:
+            if torn:
+                stream.write("\n")
+            stream.write(json.dumps(message.to_dict(), ensure_ascii=False, sort_keys=True) + "\n")
+        self._known.add(key)
+        return True
+
+    def _state(self, key: str) -> dict[str, str]:
+        try:
+            value = json.loads(self.state_path.read_text(encoding="utf-8")).get(key) or {}
+        except (OSError, ValueError, AttributeError):
+            return {}
+        return {str(name): str(item) for name, item in value.items() if item} if isinstance(value, dict) else {}
+
+    def _write_state(self, key: str, value: dict[str, str]) -> None:
+        state = {"cursors": self.cursors(), "channel_roles": self.channel_roles()}
+        state[key] = value
+        self.root.mkdir(parents=True, exist_ok=True)
+        temporary = self.state_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+        os.replace(temporary, self.state_path)
+
+    def cursors(self) -> dict[str, str]:
+        return self._state("cursors")
+
+    def set_cursor(self, channel_id: str, message_id: str) -> None:
+        cursors = self.cursors()
+        cursors[channel_id] = message_id
+        self._write_state("cursors", cursors)
+
+    def channel_roles(self) -> dict[str, str]:
+        """The role each channel had in the config at its latest sync."""
+        return self._state("channel_roles")
+
+    def set_channel_role(self, channel_id: str, role: str) -> None:
+        if role not in CHANNEL_ROLES:
+            raise ValueError(f"channel_role must be one of {', '.join(CHANNEL_ROLES)}")
+        roles = self.channel_roles()
+        if roles.get(channel_id) != role:
+            roles[channel_id] = role
+            self._write_state("channel_roles", roles)
+
+    def messages_until(self, observed_at: datetime) -> list[SignalgruppeMessage]:
+        """Messages TIM already had at ``observed_at`` (no lookahead in replays)."""
+        return [message for message in self.load() if message.known_at <= observed_at]
+
+
+@dataclass(frozen=True, slots=True)
+class CommunityCall:
+    message: SignalgruppeMessage
+    guidance: MentorGuidance
+    grade: str  # A: direction, symbol, level and invalidation/stop | B: direction, symbol and level | C: the rest
+    reasons: tuple[str, ...]
+
+    @property
+    def is_good(self) -> bool:
+        return self.grade in GOOD_GRADES
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "message_id": self.message.message_id,
+            "channel_id": self.message.channel_id,
+            "channel_name": self.message.channel_name,
+            "author": self.message.author_label,
+            "author_id": self.message.author_id,
+            "posted_at": self.message.posted_at.isoformat(),
+            "reactions": self.message.reactions,
+            "text": self.message.content,
+            "grade": self.grade,
+            "reasons": list(self.reasons),
+            "guidance": self.guidance.to_dict(),
+        }
+
+
+# Community posts name any coin ("long on movr", "Long HNT"); Mentor' parser only knows a few majors.
+_TICKER_AFTER_DIRECTION = re.compile(
+    r"\b(?:long|longing|short|shorting|buy|buying|sell|selling)\s+(?:on\s+|a\s+|some\s+)?\$?([A-Za-z][A-Za-z0-9]{1,9})\b", re.IGNORECASE)
+_TICKER_PAIR = re.compile(r"\b([A-Za-z][A-Za-z0-9]{1,9})\s*/\s*USDT?\b", re.IGNORECASE)
+_NOT_TICKERS = {
+    "from", "here", "now", "the", "it", "this", "that", "more", "before", "after", "on", "at", "with", "and", "or",
+    "position", "positions", "weekly", "daily", "spot", "futures", "dip", "dips", "every", "all", "some", "zone",
+    "breakout", "entry", "only", "again", "too", "back", "what", "whatever", "when", "if", "is", "in", "for", "you",
+    # Words that follow "short"/"long" in chart talk and are no coin ("short under 3865", "took short sl @3755",
+    # "sell imbal at 62.1", "long reaction", "longing will have to see", "banks keep buying physicall").
+    "under", "above", "below", "over", "sl", "tp", "stop", "target", "reaction", "imbal", "imbalance", "will", "would",
+    "physicall", "physical", "bullish", "bearish", "range", "level", "levels", "support", "resistance", "near", "around",
+    "up", "down", "higher", "lower", "high", "low", "again", "stuff", "everything", "anything", "something", "nothing",
+    "now", "then", "today", "tomorrow", "soon", "later", "first", "second", "next", "last", "just", "still", "also",
+    "can", "could", "should", "gonna", "wanna", "not", "no", "yes", "do", "did", "dont", "we", "i", "my", "our", "your",
+    "a", "an", "to", "of", "by", "as", "so", "be", "are", "was", "were", "am", "has", "have", "had", "get", "got",
+    "tight", "index", "bags", "trade", "trades", "setup", "setups", "idea", "plan", "bounce", "pump", "dump", "wick", "sweep", "bos", "mss", "ob",
+}
+# Chart words and market terms in capitals ("IMBAL", "SL") are never a coin; a coin written in lowercase is at most six letters.
+_MAX_LOWERCASE_TICKER = 6
+# "2-5% of account", "0.5-1% each 5% dip": sizes and percentages, never price levels.
+_PERCENT = re.compile(r"\d+(?:[.,]\d+)?\s*(?:-|to)\s*\d+(?:[.,]\d+)?\s*%|\d+(?:[.,]\d+)?\s*%")
+# "round 2", "9:30", "10am", "3 smalls": counts and clock times, never price levels.
+_NOT_A_LEVEL = re.compile(r"\bround\s+\d+\b|\b\d{1,2}:\d{2}\b|\b\d{1,2}\s?(?:am|pm)\b", re.IGNORECASE)
+# "SL on 1.5$" means the same as "SL at 1.5".
+_SL_ON = re.compile(r"\b(sl|stop(?:\s?loss)?)\s+on\b", re.IGNORECASE)
+# "Pull SL little lower to 0.48" moves the stop; the number is a stop, not a target.
+_SL_TO = re.compile(r"\b(sl|stop(?:\s?loss)?)\b[^\n.\d]{0,30}?\bto\s+(?=\d)", re.IGNORECASE)
+
+
+def _community_symbol(text: str) -> str | None:
+    """One coin the call is about; a list of several coins names no single symbol."""
+    found = {match.group(1).upper() for pattern in (_TICKER_AFTER_DIRECTION, _TICKER_PAIR) for match in pattern.finditer(text)
+             if _plausible_ticker(match.group(1), pair=pattern is _TICKER_PAIR)}
+    return found.pop() if len(found) == 1 else None
+
+
+def _plausible_ticker(word: str, *, pair: bool) -> bool:
+    if word.lower() in _NOT_TICKERS:
+        return False
+    # "ETF/USDT" names a pair; after a direction word a long lowercase word is conversation, not a coin.
+    return pair or word.isupper() and len(word) <= 10 or len(word) <= _MAX_LOWERCASE_TICKER
+
+
+# Posts that report on a trade already open ("closed 75% of ake short and moved SL to breakeven", "taking profits on
+# swing shorts", "SL close out longs"), wish for one ("imagine now we long ake") or ask a question are not new calls.
+_NOT_A_CALL = re.compile(
+    r"\b(?:tps?|targets?)\s+(?:\d\s+)?hit\b|\bstopped\s+out\b|\bgot\s+stopped\b"
+    r"|\b(?:closed|closing|close\s+out|trimmed|trimming|taking\s+profits?|took\s+profits?|secure(?:d)?\s+(?:more\s+)?partials?|"
+    r"moved\s+(?:my\s+)?(?:sl|stop)|move\s+(?:your\s+)?(?:sl|stop)\s+to\s+(?:be|breakeven))\b"
+    r"|\bimagine\b|\bwhat\s+if\b|\bshould\s+we\b|\?",
+    re.IGNORECASE,
+)
+
+
+_REPLY_QUOTE = re.compile(r"\(Antwort auf[^()]*\)")
+
+
+def is_trade_report_or_chatter(text: str) -> bool:
+    """True for status reports, wishes and questions: they mention a direction but open no new trade."""
+    return bool(_NOT_A_CALL.search(text))
+
+
+def extract_call(message: SignalgruppeMessage, reference_price: Decimal | None = None) -> CommunityCall | None:
+    """A call is a message that states a current direction; anything else is conversation."""
+    if message.channel_role == ROLE_KNOWLEDGE or not message.content.strip():
+        return None  # knowledge channels hold teaching material, not calls
+    own_text = _REPLY_QUOTE.sub(" ", message.content)  # what a reply quotes is another post's direction, not this one's
+    if is_trade_report_or_chatter(own_text):
+        return None
+    text = _SL_TO.sub(r"\1 at ", _SL_ON.sub(r"\1 at", _NOT_A_LEVEL.sub(" ", _PERCENT.sub(" ", own_text))))
+    guidance = parse_guidance(text, reference_price)
+    if guidance.bias not in {"SHORT", "LONG"} or guidance.direction_withdrawn:
+        return None
+    coin_list = sum(1 for line in text.splitlines() if re.fullmatch(r"\s*\$?[A-Za-z][A-Za-z0-9]{1,9}\s*", line)) >= 3
+    if coin_list:
+        guidance = replace(guidance, symbol=None)  # a list of coins names no single symbol
+    elif guidance.symbol is None:
+        guidance = replace(guidance, symbol=_community_symbol(text))
+    has_level = any(level.role != "STOP" for level in guidance.levels)
+    has_stop = bool(guidance.invalidation) or any(level.role == "STOP" for level in guidance.levels)
+    reasons = [f"Richtung {guidance.bias}"]
+    if guidance.symbol:
+        reasons.append(f"Symbol {guidance.symbol}")
+    if has_level:
+        reasons.append("Level genannt")
+    if has_stop:
+        reasons.append("Invalidierung/Stop genannt")
+    if message.reactions >= POPULAR_REACTIONS:
+        reasons.append(f"{message.reactions} Reaktionen")
+    if guidance.symbol and has_level and has_stop:
+        grade = "A"
+    elif guidance.symbol and (has_level or has_stop):
+        grade = "B"
+    else:
+        grade = "C"
+    return CommunityCall(message, guidance, grade, tuple(reasons))
+
+
+def good_calls(
+    messages: Iterable[SignalgruppeMessage],
+    *,
+    observed_at: datetime | None = None,
+    max_age: timedelta | None = None,
+    reference_price: Decimal | None = None,
+) -> list[CommunityCall]:
+    """Good (grade A/B) calls known at ``observed_at``, newest first; never posts from after it."""
+    calls = []
+    for message in messages:
+        if observed_at is not None and message.known_at > observed_at:
+            continue
+        if observed_at is not None and max_age is not None and observed_at - message.posted_at > max_age:
+            continue
+        call = extract_call(message, reference_price)
+        if call is not None and call.is_good:
+            calls.append(call)
+    return sorted(calls, key=lambda item: (item.message.posted_at, item.message.message_id), reverse=True)
+
+
+def _quote(text: str) -> list[str]:
+    return ["> " + line if line.strip() else ">" for line in text.splitlines()] or [">"]
+
+
+def _channel_title(message: SignalgruppeMessage) -> str:
+    title = f"#{message.channel_name}" if message.channel_name else f"Kanal {message.channel_id}"
+    return f"{title} (nur Wissen, keine Calls)" if message.channel_role == ROLE_KNOWLEDGE else title
+
+
+def _channel_heading(messages: Sequence[SignalgruppeMessage]) -> str:
+    knowledge = [item for item in messages if item.channel_role == ROLE_KNOWLEDGE]
+    return _channel_title(knowledge[0] if knowledge else messages[0])
+
+
+def _call_line(call: CommunityCall) -> str:
+    guidance = call.guidance
+    levels = ", ".join(f"{level.role} {level.raw if level.ambiguous else level.value}" for level in guidance.levels) or "-"
+    stop = "; ".join(guidance.invalidation) or "-"
+    first = call.message.content.strip().splitlines()[0][:160]
+    return (f"| {call.message.posted_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M')} | {call.message.author_label} | {call.grade} | "
+            f"{guidance.bias} {guidance.symbol or '?'}{' ' + guidance.timeframe if guidance.timeframe else ''} | {levels} | {stop} | "
+            f"{first.replace('|', '/')} |")
+
+
+def render_channel_markdown(messages: Sequence[SignalgruppeMessage], generated_at: datetime) -> str:
+    """The whole channel, verbatim, grouped by channel and day, with the good calls on top."""
+    calls = good_calls(messages)
+    lines = [
+        "# Signalgruppe-Kanal (vollständig)",
+        "",
+        f"Stand: {generated_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC. "
+        f"{len(messages)} Nachrichten, {len(calls)} gute Calls (Note A/B).",
+        "",
+        "Alle Zeiten UTC. Community-Meinung, nur Beobachtung: kein Call ist eine Bestätigung oder ein Auftrag. "
+        "Die Note sagt nur, wie vollständig ein Call geschrieben ist, nicht ob er stimmt.",
+        "",
+        "## Gute Calls",
+        "",
+    ]
+    if calls:
+        lines += ["| Zeit (UTC) | Autor | Note | Richtung | Level | Invalidierung | Text |", "| --- | --- | --- | --- | --- | --- | --- |"]
+        lines += [_call_line(call) for call in calls]
+    else:
+        lines.append("Keine.")
+    by_channel: dict[str, list[SignalgruppeMessage]] = defaultdict(list)
+    for message in messages:
+        by_channel[message.channel_id].append(message)
+    for channel_messages in by_channel.values():
+        lines += ["", f"## {_channel_heading(channel_messages)}"]
+        day = None
+        for message in channel_messages:
+            stamp = message.posted_at.astimezone(timezone.utc)
+            if stamp.date() != day:
+                day = stamp.date()
+                lines += ["", f"### {day.isoformat()}"]
+            extra = []
+            if message.attachments:
+                extra.append(f"{len(message.attachments)} Anhang/Anhänge: {', '.join(message.attachments)}")
+            if message.reactions:
+                extra.append(f"{message.reactions} Reaktionen")
+            lines += ["", f"**{stamp.strftime('%H:%M')} {message.author_label}**" + (f" ({'; '.join(extra)})" if extra else "")]
+            if message.content.strip():
+                lines += _quote(message.content)
+    return "\n".join(lines) + "\n"
+
+
+def render_summary_markdown(messages: Sequence[SignalgruppeMessage], generated_at: datetime, full_path: str, limit_bytes: int = SUMMARY_LIMIT_BYTES) -> str:
+    """Short version for a memory index (under 4 KB): counts, active authors and the newest good calls."""
+    calls = good_calls(messages)
+    authors: dict[str, int] = defaultdict(int)
+    for message in messages:
+        authors[message.author_label] += 1
+    newest = messages[-1].posted_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M") if messages else "-"
+    head = [
+        "# Signalgruppe-Kanal (Kurzfassung)",
+        "",
+        f"Stand {generated_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC: {len(messages)} Nachrichten, "
+        f"neueste {newest} UTC, {len(calls)} gute Calls. Volltext: {full_path}",
+        "",
+        "Aktivste Autoren: " + (", ".join(f"{name} ({count})" for name, count in sorted(authors.items(), key=lambda item: -item[1])[:8]) or "-"),
+        "",
+        "Neueste gute Calls (Community-Meinung, keine Bestätigung):",
+    ]
+    body: list[str] = []
+    text = "\n".join(head) + "\n"
+    for call in calls:
+        guidance = call.guidance
+        levels = ", ".join(level.raw if level.ambiguous else str(level.value) for level in guidance.levels) or "-"
+        line = (f"- {call.message.posted_at.astimezone(timezone.utc).strftime('%m-%d %H:%M')} {call.message.author_label} [{call.grade}] "
+                f"{guidance.bias} {guidance.symbol or '?'} Level {levels}: \"{call.message.content.strip().splitlines()[0][:100]}\"")
+        if len((text + "\n".join(body + [line]) + "\n").encode("utf-8")) > limit_bytes:
+            break
+        body.append(line)
+    return text + ("\n".join(body) if body else "- keine") + "\n"
+
+
+def import_screen_readings(store: SignalgruppeFeedStore, payload: Sequence[dict[str, Any]], received_at: datetime | None = None) -> tuple[int, int]:
+    """Store messages Claude read off the screen: [{channel_id, channel_name, author, posted_at, content, channel_role?}], idempotent by content hash.
+
+    A ``channel_role`` of "knowledge" (or a channel synced as knowledge) keeps the messages out of the calls.
+    """
+    received_at = received_at or datetime.now(timezone.utc)
+    stored = duplicates = 0
+    for item in payload:
+        posted_at = datetime.fromisoformat(str(item["posted_at"]))
+        if posted_at.tzinfo is None:
+            raise ValueError("posted_at must carry a time zone")
+        posted_at = posted_at.astimezone(timezone.utc)
+        channel_id = str(item.get("channel_id") or "screen")
+        author = str(item.get("author") or "")
+        content = str(item.get("content") or "")
+        digest = hashlib.sha256(f"{channel_id}|{author}|{posted_at.isoformat()}|{content}".encode()).hexdigest()[:20]
+        message = SignalgruppeMessage(
+            message_id=f"screen-{digest}", channel_id=channel_id, posted_at=posted_at, content=content,
+            received_at=received_at, author_name=author, channel_name=str(item.get("channel_name") or ""),
+            source=SOURCE_SCREEN, attachments=tuple(str(name) for name in item.get("attachments") or ()),
+            reactions=int(item.get("reactions") or 0),
+            channel_role=_stored_role(item.get("channel_role")),
+        )
+        if store.append(message):
+            stored += 1
+        else:
+            duplicates += 1
+    return stored, duplicates
+
+
+def write_memory_export(store: SignalgruppeFeedStore, out_dirs: Sequence[Path], generated_at: datetime | None = None) -> list[Path]:
+    """Write SIGNALGRUPPE_KANAL.md, SIGNALGRUPPE_KURZ.md and signalgruppe_calls.json into each directory (atomic replace)."""
+    generated_at = generated_at or datetime.now(timezone.utc)
+    messages = store.load()
+    calls = good_calls(messages)
+    written: list[Path] = []
+    for out_dir in out_dirs:
+        out_dir = out_dir.expanduser()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        full = out_dir / "SIGNALGRUPPE_KANAL.md"
+        files = {
+            full: render_channel_markdown(messages, generated_at),
+            out_dir / "SIGNALGRUPPE_KURZ.md": render_summary_markdown(messages, generated_at, str(full)),
+            out_dir / "signalgruppe_calls.json": json.dumps(
+                {"generated_at": generated_at.isoformat(), "messages": len(messages), "calls": [call.to_dict() for call in calls]},
+                ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        }
+        for path, content in files.items():
+            temporary = path.with_name(f".{path.name}.tmp")
+            temporary.write_text(content, encoding="utf-8")
+            os.replace(temporary, path)
+            written.append(path)
+    return written

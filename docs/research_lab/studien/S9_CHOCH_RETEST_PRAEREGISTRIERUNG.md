@@ -4,7 +4,7 @@
 |---|---|
 | Studie | S9 |
 | Version | **1.0 – BEENDET am Machbarkeits-Gate (27.10.2026). Uzis Go „ja lass laufen“ 19:38 Ortszeit; Regeln eingefroren mit Commit 71fa3db; nichts registriert, kein Ergebnis in R berechnet (Abschnitt 10)** |
-| Anlass | Uzi 27.10.2026: Wissen aus dem GoatHub-Lernheft „How to identify direction (M15 · M5 · M3)“ mitnehmen, Gold in die Analyse. Auswertung des Hefts: `/mnt/project-files/goathub/education-durchgang-2026-10-27.md`, Abschnitt 8 |
+| Anlass | Uzi 27.10.2026: Wissen aus dem Signalgruppe-Lernheft „How to identify direction (M15 · M5 · M3)“ mitnehmen, Gold in die Analyse. Auswertung des Hefts: `/mnt/project-files/signalgruppe/education-durchgang-2026-10-27.md`, Abschnitt 8 |
 | Quelle der Regeln | Community-Lernheft (XAUUSD, erfundene Beispielpreise, „keine empirisch belegte Trefferquote“). Die Regeln unten sind eine mechanische Übersetzung; wo das Heft Ermessen lässt, steht die gewählte Festlegung in 4.3 |
 | Protokoll | `../PROTOKOLL.md` Version 1.3, Kriterien K1–K5 unverändert |
 | Holdout | ab 2025-01-01, wird nur mit Uzis ausdrücklichem Wort geladen |
@@ -112,7 +112,7 @@ Machbarkeits-Gate 5.1, nicht für eine Regeländerung.
 1. Freigabe: Uzi „ja lass laufen“ (27.10.2026). Registerfrage siehe Abschnitt 9.
 2. Gold: eigene Protokolländerung für PAXGUSDT (oder XAUUSD aus anderer Quelle) oder Gold nur als Anzeige lassen.
 3. Bandbreite in ATR statt fester Preisspanne: das Heft gibt keine Breite vor („teaching example“).
-4. Das deutsche Heft „GoatHub XAUUSD – Higher Timeframe Analysis“ (Heft S. 26) liegt nicht vor; die HTF-Zone in
+4. Das deutsche Heft „Signalgruppe XAUUSD – Higher Timeframe Analysis“ (Heft S. 26) liegt nicht vor; die HTF-Zone in
    Variante Z ist eine eigene Festlegung.
 
 ## 9. Register

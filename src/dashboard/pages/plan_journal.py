@@ -9,7 +9,7 @@ from src.dashboard.helpers import _safe
 from src.dashboard.layout import _hero, _layout, _strip_states
 from src.dashboard.plan_cost_check import COST_LIMIT_R, COST_UNKNOWN, COST_WITHIN_LIMIT, NOT_TRADABLE_COST, cost_check, cost_summary
 from src.dashboard import plan_notes
-from src.dashboard.plan_journal import GRADE_NOTE, MAX_HOLD_HOURS, PENDING_HOURS, RULE_LEVEL, RULE_STRUCT, RULE_TIM, counter_trend, summary
+from src.dashboard.plan_journal import GRADE_NOTE, score_reliability, MAX_HOLD_HOURS, PENDING_HOURS, RULE_LEVEL, RULE_STRUCT, RULE_TIM, counter_trend, summary
 
 LOCAL = ZoneInfo("Europe/Berlin")
 STATUS_LABELS = {
@@ -65,6 +65,73 @@ def _cost_cell(entry: Mapping[str, Any]) -> str:
             f"<br><span class='sev sev--{COST_LABELS[status]}'>{_safe(status)}</span></td>")
 
 
+def _shadow_cell(entry: Mapping[str, Any]) -> str:
+    shadow = entry.get("score_schatten")
+    if not isinstance(shadow, Mapping) or not isinstance(shadow.get("score"), (int, float)):
+        return "<td class='mut' title='Kein Schatten-Score (vor dem 12.11. oder ohne Trades zum Planzeitpunkt)'>–</td>"
+    score = f"{shadow['score']:.2f}".replace(".", ",")
+    old = entry.get("score")
+    old_text = f"{old:.2f}".replace(".", ",") if isinstance(old, (int, float)) else "–"
+    quality = (shadow.get("datenqualitaet") or {}).get("status") or "–"
+    title = (f"Score mit {', '.join(shadow.get('daten') or [])} ({shadow.get('n_trades') or 0} Trades); Datenqualität {quality}; "
+             f"Score ohne Orderflow {old_text}; unkalibriert, nur Anzeige")
+    return f"<td class='mono' title='{_safe(title)}'>{_safe(score)}<br><small>{_safe(', '.join(shadow.get('daten') or []))}</small></td>"
+
+
+def _shadow_reliability(journal: Mapping[str, Any]) -> tuple[dict[str, Any], int]:
+    """The score table of ``score_reliability`` once more, with the Schatten-Score as the score."""
+    closed = [e for e in journal.get("entries") or [] if not e.get("excluded") and e.get("status") == "CLOSED" and e.get("gross_r") is not None]
+    swapped = [{**e, "score": (e.get("score_schatten") or {}).get("score")} for e in closed]
+    planned = sum(isinstance((e.get("score_schatten") or {}).get("score"), (int, float))
+                  for e in journal.get("entries") or [] if not e.get("excluded"))
+    return score_reliability(swapped), planned
+
+
+MARKET_EVENT_DE = {"liquidations_kaskade": "Liquidations-Kaskade", "makro_termin": "Makro-Termin", "news_notiz": "Schlagzeile im Fenster",
+                   "markt_druck": "Bewegung mit Marktdruck", "unerklaert": "Bewegung ohne Erklärung", "ruhig": "ruhig (keine große Bewegung)"}
+
+
+def _market_event_section(stats: Mapping[str, Any]) -> str:
+    """P4 (16.11.2026): results per market-event label; counted only, no verdict under min_group trades."""
+    block = stats.get("market_event") or {}
+    groups = block.get("groups") or {}
+    rows = "".join(
+        f"<tr><td>{_safe(MARKET_EVENT_DE.get(label, label))}</td><td>{g['closed']}</td><td class='mono'>{_safe(_r_text(g['sum_net_r']))}</td>"
+        f"<td class='mono'>{_safe(_r_text(g['sum_cost_r']))}</td><td>{'genug Trades' if g['enough'] else 'zu wenig für eine Aussage'}</td></tr>"
+        for label, g in groups.items()) or "<tr><td colspan='5' class='empty'>Noch kein geschlossener Trade mit Etikett.</td></tr>"
+    return (
+        "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Lernschleife</p>"
+        "<h2>Ergebnis nach Marktereignis</h2><p class='cc-section__note'>Nach dem Ausstieg prüft TIM, ob während des Trades eine große Bewegung lief "
+        "(Abschnitt „Warum hat sich der Preis bewegt?“ im Chart), und vergibt ein Etikett. Das Etikett entsteht erst nach dem Trade und fließt in keine Entscheidung ein. "
+        f"Unter {block.get('min_group', 30)} Trades je Gruppe keine Aussage. Ohne Etikett: {block.get('unlabelled', 0)} "
+        "(Trade vor dem 16.11. oder Bewegungen noch nicht vollständig erfasst).</p></div></div>"
+        "<div class='table-wrap'><table><thead><tr><th>Marktereignis</th><th>Geschlossen</th><th>Netto-R</th><th>Kosten-R</th><th>Stichprobe</th></tr></thead>"
+        f"<tbody>{rows}</tbody></table></div></section>")
+
+
+def _shadow_section(journal: Mapping[str, Any], stats: Mapping[str, Any]) -> str:
+    shadow, planned = _shadow_reliability(journal)
+    def rate(value: Any) -> str:
+        return "–" if value is None else f"{value * 100:.0f} %"
+
+    def table(rel: Mapping[str, Any]) -> str:
+        rows = "".join(
+            f"<tr><td>{_safe(b['bucket'])}</td><td>{b['closed']}</td><td>{b['wins']}</td>"
+            f"<td>{_safe(rate(b['hit_rate']))}</td>"
+            f"<td class='mono'>{_safe(_r_text(b['mean_net_r']))}</td></tr>" for b in rel["buckets"])
+        verdict = rel["verdict"] or f"offen (unter {rel['min_plans']} bewerteten Plänen)"
+        return (f"<div class='table-wrap'><table><thead><tr><th>Score</th><th>Geschlossen</th><th>Treffer</th><th>Trefferquote</th><th>Ø Netto-R</th></tr></thead>"
+                f"<tbody>{rows}</tbody></table></div><p class='cc-section__note'>{rel['scored']} bewertet · Verlauf über die Klassen: <b>{_safe(verdict)}</b></p>")
+
+    return (
+        "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Live-Engine</p>"
+        "<h2>Schatten-Score gegen Ergebnis</h2><p class='cc-section__note'>Seit 12.11. rechnet die Szenario-Pipeline einmal zusätzlich mit Trades, Footprint, Funding und Open Interest. "
+        f"{planned} Pläne tragen einen Schatten-Score. Ein brauchbarer Score zeigt steigende Trefferquote über die Klassen; "
+        "Verdikt erst ab genug Plänen. Nur Papier, unkalibriert.</p></div></div>"
+        "<h3>Schatten-Score (mit Orderflow)</h3>" + table(shadow)
+        + "<h3>Bisheriger Score (nur Kerzen und Levels)</h3>" + table(stats["score_reliability"]) + "</section>")
+
+
 def _row(entry: Mapping[str, Any], note: Mapping[str, Any] | None = None) -> str:
     severity, label = STATUS_LABELS.get(str(entry.get("status")), ("unknown", str(entry.get("status"))))
     labels = list(entry.get("target_labels") or [])
@@ -84,6 +151,8 @@ def _row(entry: Mapping[str, Any], note: Mapping[str, Any] | None = None) -> str
         detail.append(f"Ausstieg {EXIT_LABELS.get(entry['exit_reason'], entry['exit_reason'])} {_local(entry.get('closed_at'))}")
     elif entry.get("closed_at"):
         detail.append(_local(entry["closed_at"]))
+    if entry.get("market_event"):
+        detail.append("Marktereignis: " + MARKET_EVENT_DE.get(str(entry["market_event"].get("label")), str(entry["market_event"].get("label"))))
     if entry.get("note"):
         detail.append(str(entry["note"]))
     if entry.get("data_gap"):
@@ -108,6 +177,7 @@ def _row(entry: Mapping[str, Any], note: Mapping[str, Any] | None = None) -> str
         f"<tr><td>{_safe(_local(entry.get('created_at')))}</td>"
         f"<td><span class='tag tag--{_safe(direction.lower())}'>{_safe(direction)}</span> {_safe(entry.get('scenario_id'))}{trend}</td>"
         f"<td title='{_safe(grade_title)}'>{_safe(grade)}<small> heuristisch</small></td>"
+        f"{_shadow_cell(entry)}"
         f"<td title='{_safe(ev_title)}'><span class='sev sev--{ev_sev}'>{_safe(ev_label)}</span></td>"
         f"<td title='{_safe(dec_title)}'><span class='sev sev--{dec_sev}'>{_safe(dec_label)}</span><small> {_safe(entry.get('execution_status') or '–')}</small></td>"
         f"<td>{_safe(zone)}</td><td>{_safe(_price(entry.get('entry')))}</td><td>{_safe(_price(entry.get('stop')))}</td>"
@@ -217,7 +287,7 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         body += _hero("Plan-Journal: Level-Regel", "Eigene Pläne an den Hauptleveln (Vortag, Vorwoche, naked POC) aus dem TIM-Chart, mit Stop hinter dem 30m-Swing und Zielen an den nächsten Leveln. "
                       "Hier misst TIM, ob diese Analysen aufgehen. " + evidence)
     elif struct:
-        body += _hero("Plan-Journal: Struktur-Regel", "Dieselben Pläne mit Stop hinter dem Swing und Zielen an der Liquidität (Broncx), parallel zur TIM-Regel verfolgt. " + evidence)
+        body += _hero("Plan-Journal: Struktur-Regel", "Dieselben Pläne mit Stop hinter dem Swing und Zielen an der Liquidität (Mentor), parallel zur TIM-Regel verfolgt. " + evidence)
     else:
         body += _hero("Plan-Journal", "TIMs Long- und Short-Pläne aus dem Setup-Pfad, automatisch festgehalten und nach TIMs Regeln verfolgt. " + evidence)
     if error:
@@ -253,8 +323,10 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
         f"<dl class='metricstrip__item'><dt>Gegen den Trend</dt><dd>{stats['counter_trend']['plans']}<small>{stats['counter_trend']['closed']} geschlossen · {_safe(_r_text(stats['counter_trend']['sum_r']))}</small></dd></dl>"
         "</div></section>"
     )
+    body += _shadow_section(journal, stats)
+    body += _market_event_section(stats)
     rule = str(journal.get("rule") or RULE_TIM)
-    rows = "".join(_row(e, notes.get(plan_notes.key(rule, e.get("id")))) for e in reversed(entries[-300:])) or "<tr><td colspan='15' class='empty'>Noch keine Pläne. Der erste Eintrag entsteht beim nächsten 30m-Schluss, sobald der Setup-Pfad einen Plan zeigt.</td></tr>"
+    rows = "".join(_row(e, notes.get(plan_notes.key(rule, e.get("id")))) for e in reversed(entries[-300:])) or "<tr><td colspan='16' class='empty'>Noch keine Pläne. Der erste Eintrag entsteht beim nächsten 30m-Schluss, sobald der Setup-Pfad einen Plan zeigt.</td></tr>"
     updated = _local(journal.get("updated_at")) if journal.get("updated_at") else "noch nie"
     body += (
         "<section class='cc-section'><div class='cc-section__head'><div><p class='cc-section__eyebrow'>Journal</p>"
@@ -264,7 +336,7 @@ def _plan_journal_page(data: dict[str, Any], journal: Mapping[str, Any], account
            else "<a href='/journal'>TIM-Regel</a> · <a href='/journal/struct'>Struktur-Regel</a> · <a href='/api/plan-journal?rule=level'>JSON</a>" if level
            else "<a href='/journal'>TIM-Regel</a> · <a href='/api/plan-journal?rule=struct'>JSON</a>" if struct
            else "<a href='/journal/struct'>Struktur-Regel</a> · <a href='/api/plan-journal'>JSON</a>") + "</p></div></div>"
-        "<div class='table-wrap'><table><thead><tr><th>Angelegt</th><th>Plan</th><th>Grade</th><th>Evidenz</th><th>Entscheidung</th><th>Zone</th><th>Einstieg</th><th>Stop</th><th>Kosten (Schätzung)</th>"
+        "<div class='table-wrap'><table><thead><tr><th>Angelegt</th><th>Plan</th><th>Grade</th><th>Schatten-Score</th><th>Evidenz</th><th>Entscheidung</th><th>Zone</th><th>Einstieg</th><th>Stop</th><th>Kosten (Schätzung)</th>"
         "<th>Ungültig bei</th><th>Ziele</th><th>Status</th><th>Brutto-R</th><th>Netto-R</th><th>Verlauf</th></tr></thead>"
         f"<tbody>{rows}</tbody></table></div></section>"
     )

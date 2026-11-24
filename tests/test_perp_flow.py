@@ -258,7 +258,7 @@ def test_live_chart_switches_trades_between_spot_and_perp() -> None:
     assert switched["candles"][-1]["close"] == pytest.approx(default["candles"][-1]["close"] - 35.0)
     assert any(n.startswith("Kerzen, Footprint, Bubbles, Level, VP und TPO aus dem Perp") for n in switched["notes"])
     assert {b["time"] for b in switched["footprint"]["bars"]} <= {c["time"] for c in switched["candles"]}
-    # Uzi 09.11.2026 (Broncx-Sicht): levels, value areas, TPO and VWAP follow the perp too; plans stay on spot.
+    # Uzi 09.11.2026 (Mentor-Sicht): levels, value areas, TPO and VWAP follow the perp too; plans stay on spot.
     assert default["level_market"] == "spot" and switched["level_market"] == "perp"
     assert switched["level_source"].startswith("Binance-Perp-Klines") and switched["basis"] == pytest.approx(35.0)
     assert switched["plans_market"] == "spot" and "Spot liegt +35 USDT daneben" in " ".join(switched["notes"])

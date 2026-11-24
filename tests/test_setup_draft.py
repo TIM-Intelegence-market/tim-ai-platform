@@ -11,7 +11,7 @@ from src.orderflow_scenario.domain import DecisionStatus
 from src.orderflow_scenario.engines.pipeline import Pipeline
 from src.orderflow_scenario.setup_draft import DISCLAIMER, MAX_DRAFT_CHARS, build_setup_draft
 
-from tests.test_goathub_discord_feed import pipeline_inputs
+from tests.test_signalgruppe_discord_feed import pipeline_inputs
 
 
 def test_no_trade_draft_says_so_and_carries_the_disclaimer() -> None:

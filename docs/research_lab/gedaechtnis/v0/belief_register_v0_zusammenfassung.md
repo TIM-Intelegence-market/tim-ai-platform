@@ -8,7 +8,7 @@ Die Daten liegen in `belief_register_v0.jsonl` im selben Ordner, eine Aussage pr
 |---|---|
 | Live-Regeln im Code (Chart-Urteil, Grade, Orderflow, Kosten, Ausführung, Journal, Reflexion) | 64 |
 | Eigene Forschung (Register R4, S1–S27, K1, OF2/OFX, KI, Daten) | 99 |
-| Externe Quellen (Bootcamp/Mega-Orderflow, GoatHub, Reels, Quant Finance, Telegram) | 90 |
+| Externe Quellen (Bootcamp/Mega-Orderflow, Signalgruppe, Reels, Quant Finance, Telegram) | 90 |
 | **Gesamt** | **253** |
 
 Jede Zeile enthält die Aussage, die Herkunft und die Stelle im Code, falls sie live genutzt wird. Dazu kommen der Evidenzstatus, der Beleg, Verknüpfungen zu Studien und ein Konflikt-Text.
@@ -31,7 +31,7 @@ Jede Zeile enthält die Aussage, die Herkunft und die Stelle im Code, falls sie 
 2. **Chart-Urteil R5** (1h-Trendlinie): Laut S22 wirkt die Regel verkehrt herum, sowohl im Training als auch in der Validierung.
 3. **Chart-Urteil gesamt** (NEHMEN ab +2): S22 nicht bestanden. Nach Kosten sind alle Gruppen negativ.
 4. **Funding-Schwellen als Signal** (LIVE-OF-12): R4, S16 und der S7b-Filter haben das widerlegt. Trotzdem fließen die Schwellen live in den Score ein.
-5. **Broncx-Einfluss auf den Score** (±0,08 und eigene Szenarien): Die Broncx-Muster sind in R4 widerlegt.
+5. **Mentor-Einfluss auf den Score** (±0,08 und eigene Szenarien): Die Mentor-Muster sind in R4 widerlegt.
 6. **GARCH-Größengewichtung**: Die Prognose ist belegt (S15), der Nutzen für die Positionsgröße aber nicht (S25 nicht bestanden).
 7. **BOS als Einstiegssignal** (extern; TIMs SICHERN-Logik nutzt BOS): R4 hat das widerlegt.
 
@@ -43,7 +43,7 @@ Die Reihenfolge ergibt sich aus Einfluss auf Live-Entscheidungen mal Unsicherhei
 |---|---|---|---|
 | 1 | **S19-Ergebnis ins Repo holen** | Prüft genau die Live-Schwellen für Footprint, Imbalance und Absorption. Das Ergebnis liegt nur auf der PS5. | sehr klein |
 | 2 | **R1 und R5 aus dem Chart-Urteil nehmen oder als widerlegt kennzeichnen** | S22 belegt das bereits | Entscheidung, kein Test |
-| 3 | **Funding- und Broncx-Zuschläge im Szenario-Score** | Widerlegte Signale verschieben live den Score | Entscheidung, dann Replay |
+| 3 | **Funding- und Mentor-Zuschläge im Szenario-Score** | Widerlegte Signale verschieben live den Score | Entscheidung, dann Replay |
 | 4 | **Kostensätze vereinheitlichen** | Es gibt vier verschiedene Modelle (5+3 bp, 6/2/2 bp, 5 bp, 6+3 bp). Die Kosten bestimmen das ganze Netto-R. | klein |
 | 5 | **Sichern/Trail-Logik** (be_cost/1, verdict/1, Swing-Trail) auf Historie gegen feste Ziele | Sie bestimmt das Netto-R aller Journale und ist nie getestet | mittel (Replay mit Standard-Trades wie S22) |
 | 6 | **Szenario-Score kalibrieren**: Steigt die Trefferquote mit dem Score? | Grade A/B/C hängen daran, der Code nennt den Score selbst „unkalibriert“ | mittel |

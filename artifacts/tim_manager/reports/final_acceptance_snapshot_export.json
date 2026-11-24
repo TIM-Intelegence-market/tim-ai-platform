@@ -1778,7 +1778,7 @@
         "parser_errors": [],
         "source_tier": "implementation"
       },
-      "normalized_path": "src/knowledge/goathub.py",
+      "normalized_path": "src/knowledge/signalgruppe.py",
       "source_id": "source_code",
       "status": "active"
     },
@@ -2618,7 +2618,7 @@
         "parser_errors": [],
         "source_tier": "executable_evidence"
       },
-      "normalized_path": "tests/test_broncx_rules.py",
+      "normalized_path": "tests/test_mentor_rules.py",
       "source_id": "tests",
       "status": "active"
     },
@@ -2654,7 +2654,7 @@
         "parser_errors": [],
         "source_tier": "executable_evidence"
       },
-      "normalized_path": "tests/test_goathub_knowledge.py",
+      "normalized_path": "tests/test_signalgruppe_knowledge.py",
       "source_id": "tests",
       "status": "active"
     },

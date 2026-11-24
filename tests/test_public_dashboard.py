@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from pathlib import Path
@@ -10,7 +11,7 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-from src.dashboard import chart_live
+from src.dashboard import chart_live, public_auth
 from src.dashboard.public_en import DISCLAIMER, english_chart_model, english_note, journal_page
 from src.dashboard.public_server import PublicDashboardServer, RateLimiter, clean_query
 from src.dashboard.state import DashboardState
@@ -25,13 +26,24 @@ def server(tmp_path, monkeypatch):
     state.plan_journal_path = tmp_path / "tim.json"
     state.plan_journal_struct_path = tmp_path / "struct.json"
     state.plan_journal_level_path = tmp_path / "level.json"
+    monkeypatch.setenv(public_auth.AUTH_FILE_ENV, str(tmp_path / "auth.json"))
+    PASSWORD[0] = public_auth.init_login(tmp_path / "auth.json")
     public = PublicDashboardServer(state, "127.0.0.1", 0)
     public.start()
     yield public, f"http://127.0.0.1:{public.httpd.server_address[1]}"
     public.stop()
 
 
+PASSWORD = [""]
+
+
+def _login(password: str | None = None, user: str = "uzi") -> dict:
+    return {"Authorization": "Basic " + base64.b64encode(f"{user}:{password or PASSWORD[0]}".encode()).decode()}
+
+
 def _get(url: str, method: str = "GET", headers: dict | None = None):
+    # Private pages need the login; the chart ignores it.
+    headers = {**_login(), **(headers or {})} if "/chart" not in url else (headers or {})
     try:
         with urlopen(Request(url, method=method, headers=headers or {}), timeout=10) as response:
             return response.status, dict(response.headers), response.read().decode()
@@ -252,7 +264,14 @@ def test_public_chart_carries_tims_plans(server, tmp_path):
              "closed_at": (opened + timedelta(hours=2)).isoformat(), "entry": 113000.0, "stop": 112500.0}
     public.state.plan_journal_struct_path = tmp_path / "struct.json"
     public.state.plan_journal_struct_path.write_text(json.dumps({"schema": "tim_plan_journal/2", "entries": [entry, {**entry, "id": "x", "excluded": {"r": 1}}]}))
-    model = json.loads(_get(base + "/api/chart/live?symbol=BTCUSDT&tf=30m")[2])
+    status, headers, body = _get(base + "/api/chart/live?symbol=BTCUSDT&tf=30m")
+    assert status == 200 and json.loads(body)["plans"] == [] and "abc123def456" not in body  # no login: chart without plans
+    assert "no-store" not in headers["Cache-Control"]
+    assert json.loads(_get(base + "/api/chart/live?symbol=BTCUSDT&tf=30m", headers=_login("wrong"))[2])["plans"] == []
+    status, headers, body = _get(base + "/api/chart/live?symbol=BTCUSDT&tf=30m", headers=_login())
+    model = json.loads(body)
+    assert headers["Cache-Control"] == "no-store"
+    assert json.loads(_get(base + "/api/chart/live?symbol=BTCUSDT&tf=30m")[2])["plans"] == []  # the member's answer is not reused
     assert [(p["id"], p["group"], p["label"]) for p in model["plans"]] == [("abc123def456", "plans_old", "Structure 30m")]
     plan = model["plans"][0]
     assert plan["fill_t"] <= plan["close_t"] and plan["net_r"] == -1.18 and plan["entry"] == 113000.0
@@ -366,3 +385,146 @@ def test_live_page_names_the_traded_timeframes():
     assert "fresh 1h plan" in live_page(_live_status(timeframes="15m"), now=now)
     three = live_page(_live_status(entry_timeframes=["1d", "1h", "15m"]), now=now)
     assert "15m and 1h and 1d paper plans" in three and "href='/journal?rule=long'>1d paper journal" in three
+
+
+def test_private_pages_need_login_and_chart_stays_open(server, tmp_path):
+    public, base = server
+    for path in ("/live", "/reading", "/reading?lang=de", "/journal", "/journal?rule=mid", "/journal/trade?rule=mid&id=abc", "/api/plan-journal"):
+        status, headers, body = _get(base + path, headers={"Authorization": ""})
+        assert status == 401 and "WWW-Authenticate" in headers and "Basic" in headers["WWW-Authenticate"], path
+        assert "No live data" not in body and "Paper" not in body
+        assert headers["Cache-Control"] == "no-store"
+    assert _get(base + "/chart")[0] == 200
+    assert _get(base + "/api/chart/live?symbol=BTCUSDT&tf=1h")[0] == 200
+    assert _get(base + "/robots.txt")[0] == 200
+    assert _get(base + "/live", headers=_login())[0] == 200
+    assert _get(base + "/journal", headers=_login())[0] == 200
+
+
+def test_wrong_login_is_refused_and_guessing_is_paused(server):
+    public, base = server
+    for _ in range(5):
+        assert _get(base + "/live", headers=_login("wrong"))[0] == 401
+    assert _get(base + "/live", headers=_login("wrong"))[0] == 429
+    assert _get(base + "/live", headers=_login())[0] == 429  # the pause holds even for the right password
+    assert _get(base + "/chart")[0] == 200
+
+
+def test_wrong_user_and_odd_headers_are_refused(server):
+    public, base = server
+    assert _get(base + "/live", headers=_login(user="admin"))[0] == 401
+    assert _get(base + "/live", headers={"Authorization": "Bearer abc"})[0] == 401
+    assert _get(base + "/live", headers={"Authorization": "Basic !!!notbase64"})[0] == 401
+
+
+def test_without_login_file_private_pages_stay_shut(server, tmp_path, monkeypatch):
+    public, base = server
+    monkeypatch.setenv(public_auth.AUTH_FILE_ENV, str(tmp_path / "missing.json"))
+    assert _get(base + "/live", headers=_login())[0] == 503
+    (tmp_path / "broken.json").write_text("{nope")
+    monkeypatch.setenv(public_auth.AUTH_FILE_ENV, str(tmp_path / "broken.json"))
+    assert _get(base + "/journal", headers=_login())[0] == 503
+    assert _get(base + "/chart")[0] == 200
+
+
+def test_login_file_holds_no_plain_password(tmp_path):
+    password = public_auth.init_login(tmp_path / "a.json")
+    text = (tmp_path / "a.json").read_text()
+    assert password not in text and oct((tmp_path / "a.json").stat().st_mode & 0o777) == "0o600"
+
+
+def test_guessers_cannot_shut_the_owner_out(server):
+    public, base = server
+    codes = [_get(base + "/live", headers={**_login("wrong"), "CF-Connecting-IP": f"10.0.0.{i}"})[0] for i in range(25)]
+    assert codes == [401] * 25
+    assert _get(base + "/live", headers={**_login(), "CF-Connecting-IP": "10.9.9.9"})[0] == 200
+
+
+def test_only_one_slow_check_runs_at_a_time(server, monkeypatch):
+    public, base = server
+    monkeypatch.setattr(public_auth, "CHECK_WAIT", 0.05)
+    public.check_slot.acquire()
+    try:
+        assert _get(base + "/live", headers=_login("wrong"))[0] == 429
+    finally:
+        public.check_slot.release()
+    assert public.login_failures.fails.get("127.0.0.1") == []  # a check that never ran is not counted
+    assert _get(base + "/live", headers=_login())[0] == 200
+
+
+def test_burst_cannot_pass_the_limit():
+    from src.dashboard.public_auth import FailureLimiter
+
+    limiter = FailureLimiter()
+    assert [limiter.reserve("a") for _ in range(7)] == [True] * 5 + [False] * 2
+
+
+def test_variants_of_the_private_paths_are_shut(server):
+    public, base = server
+    for path in ("/live/", "/live//", "/journal/", "/api/plan-journal/"):
+        assert _get(base + path, headers={"Authorization": ""})[0] == 401, path
+    assert _get(base + "/live", method="HEAD", headers={"Authorization": ""})[0] == 401
+
+
+def test_chart_page_text_names_plans_only_after_login(server, monkeypatch):
+    from src.dashboard import analysis_summary
+
+    public, base = server
+    # The summary needs runtime candles; here only the hand-over counts: journals reach it only for a member.
+    monkeypatch.setattr(analysis_summary, "build_summary", lambda series, journals, trades=None: {"journals": journals})
+    monkeypatch.setattr(analysis_summary, "render_en", lambda summary: "<p>Paper plans: 1 running.</p>" if summary["journals"]
+                        else "<p>Value area today.</p><p>No open paper plans: TIM is waiting.</p>")
+    status, headers, page = _get(base + "/chart")
+    assert status == 200 and "Value area today." in page and "paper plans" not in page.lower()
+    assert "no-store" not in headers["Cache-Control"]
+    status, headers, member = _get(base + "/chart", headers=_login())
+    assert status == 200 and "Paper plans: 1 running." in member and headers["Cache-Control"] == "no-store"
+    assert "paper plans" not in _get(base + "/chart")[2].lower()  # the member's page is not reused
+
+
+def test_plan_guessing_through_the_chart_is_paused_too(server):
+    public, base = server
+    for _ in range(5):
+        assert _get(base + "/api/chart/live?symbol=BTCUSDT&tf=1h", headers=_login("wrong"))[0] == 200
+    assert _get(base + "/live", headers=_login())[0] == 429
+
+
+def test_known_login_is_bound_to_the_login_file(tmp_path):
+    known = public_auth.KnownLogins()
+    public_auth.init_login(tmp_path / "a.json")
+    first = public_auth.load_credentials(tmp_path / "a.json")
+    known.add("Basic abc", first)
+    assert known.has("Basic abc", first) and not known.has("Basic abd", first)
+    public_auth.init_login(tmp_path / "a.json")
+    assert not known.has("Basic abc", public_auth.load_credentials(tmp_path / "a.json"))
+
+
+def test_chart_reading_needs_login_and_comes_in_two_languages(server):
+    import base64
+    import hashlib
+
+    public, base = server
+    assert _get(base + "/reading", headers={"Authorization": ""})[0] == 401
+    status, headers, body = _get(base + "/reading?tf=1h&lang=de", headers=_login())
+    assert status == 200 and headers["Cache-Control"] == "no-store"
+    assert "TIM Chart-Deutung" in body and "Keine Anlageberatung" in body and "<svg" not in body
+    # Uzi 23.11.2026 ("wie ein Chart-Layout"): the live chart opened on the AI overlay layout, with its own browser memory.
+    assert "data-layout='tim:ai'" in body and "data-space='reading'" in body and "data-lang='de'" in body
+    assert "tim_chart.js" in body and "script-src 'self'" in headers["Content-Security-Policy"]
+    assert "class='rd-list'" in body
+    assert "aria-current='page'>Deutsch" in body and "data-tf='30m'" in body and "BTC 1h" not in body  # one chart, one reading
+    assert "Das große Bild" in body
+    style = re.search(r"<style>(.*?)</style>", body, re.S).group(1)
+    assert base64.b64encode(hashlib.sha256(style.encode()).digest()).decode() in headers["Content-Security-Policy"]
+    status, _, body = _get(base + "/reading?tf=evil&lang=xx", headers=_login())
+    assert status == 200 and "TIM chart reading" in body and "The big picture" in body
+    assert "href='/reading'" in _get(base + "/chart")[2]
+
+
+def test_chart_overlay_is_sent_only_after_login(server):
+    public, base = server
+    anonymous = json.loads(_get(base + "/api/chart/live?symbol=BTCUSDT&tf=30m")[2])
+    member = json.loads(_get(base + "/api/chart/live?symbol=BTCUSDT&tf=30m", headers=_login())[2])
+    assert "reading" not in anonymous
+    assert member["reading"] and {"en", "de"} <= set(member["reading"])
+    assert {"reading", "reading_de"} <= set(member["groups"]) and "reading" not in member["default_groups"]

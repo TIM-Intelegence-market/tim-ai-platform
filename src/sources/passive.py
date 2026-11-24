@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from src.knowledge.goathub import GoatHubKnowledge, KnowledgeDocument
+from src.knowledge.signalgruppe import SignalgruppeKnowledge, KnowledgeDocument
 from src.news.intelligence import NewsIntelligence, NewsItem
 
 
@@ -40,11 +40,11 @@ class SourceSnapshot:
 class PassiveSourceConnector:
     """Read-only local ingestion. It never downloads, edits or deletes source material."""
 
-    def __init__(self, policy: SourcePolicy, snapshot_root: Path, news: NewsIntelligence | None = None, knowledge: GoatHubKnowledge | None = None) -> None:
+    def __init__(self, policy: SourcePolicy, snapshot_root: Path, news: NewsIntelligence | None = None, knowledge: SignalgruppeKnowledge | None = None) -> None:
         self.policy = policy
         self.snapshot_root = snapshot_root
         self.news = news or NewsIntelligence()
-        self.knowledge = knowledge or GoatHubKnowledge()
+        self.knowledge = knowledge or SignalgruppeKnowledge()
         self.manifest_path = snapshot_root / "manifest.json"
         self.snapshot_root.mkdir(parents=True, exist_ok=True)
         self._manifest = self._read_json(self.manifest_path, {"snapshots": {}})
