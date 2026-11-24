@@ -48,6 +48,18 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
             )
         finally:
             await connection.close()
+    if args.command.startswith("cold-"):
+        from src.archive_sync import cold_store
+
+        if args.command == "cold-init":
+            store = cold_store.ColdStore.init(args.root, limit_bytes=int(args.limit_gb * 1024**3))
+            return {"root": str(store.root), "limit_bytes": store.limit_bytes, "initialised": True}
+        if args.command == "cold-ingest":
+            return cold_store.ColdStore(args.root).ingest_directory(args.dir, symbol=args.symbol)
+        if args.command == "cold-verify":
+            return cold_store.ColdStore(args.root).verify()
+        if args.command == "cold-migrate":
+            return cold_store.migrate_store(args.root, args.to)
     if args.command == "transfer":
         target: Any
         if args.local_target:
@@ -101,6 +113,18 @@ def build_parser() -> argparse.ArgumentParser:
     send.add_argument("--remote-dir")
     send.add_argument("--key")
     send.add_argument("--port", type=int)
+    cold = sub.add_parser("cold-init", help="interim file archive with a hard byte budget (INFRA-09 draft)")
+    cold.add_argument("--root", required=True)
+    cold.add_argument("--limit-gb", type=float, default=100.0)
+    cold = sub.add_parser("cold-ingest", help="verify batch files and store them, stop at the budget")
+    cold.add_argument("--root", required=True)
+    cold.add_argument("--dir", required=True)
+    cold.add_argument("--symbol", required=True)
+    cold = sub.add_parser("cold-verify", help="re-hash every stored file")
+    cold.add_argument("--root", required=True)
+    cold = sub.add_parser("cold-migrate", help="copy the store to a new empty root and verify it there")
+    cold.add_argument("--root", required=True)
+    cold.add_argument("--to", required=True)
     for name, text in (
         ("init", "server: create the archive schema"),
         ("state", "server: watermark and open holes"),
@@ -137,6 +161,10 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(report, indent=2, sort_keys=True, default=str))
     if args.command == "health":
         return 0 if report.get("status") in ("OK", "WARN") else 1
+    if args.command == "cold-ingest":
+        return 0 if report.get("halted") is None else 1
+    if args.command in ("cold-verify", "cold-migrate"):
+        return 0 if report.get("status") == "OK" else 1
     if args.command == "import":
         return 1 if report["summary"].get("QUARANTINED") or report["summary"].get("FILE_INVALID") else 0
     return 0
