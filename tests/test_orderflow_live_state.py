@@ -202,7 +202,25 @@ def test_shadow_summary_counts_unknown_side_plans_apart():
     from src.dashboard import orderflow_shadow as shadow
 
     plans = {"a": {"gate_at_plan": shadow.UNBEKANNT, "journal": {"status": "CLOSED", "net_r": -1.0}},
-             "b": {"gate_at_plan": shadow.NEUTRAL, "journal": {"status": "CLOSED", "net_r": 1.0}}}
+             "b": {"gate_at_plan": shadow.NEUTRAL, "lage_at_plan": {"price": 1.0},
+                   "journal": {"status": "CLOSED", "net_r": 1.0}},
+             "c": {"gate_at_plan": shadow.NEUTRAL, "lage_at_plan": None, "journal": {"status": "CLOSED", "net_r": 2.0}}}
     out = shadow.summary({"plans": plans})
     assert out["side_unknown"] == 1
-    assert out["by_gate"] == {shadow.UNBEKANNT: {"n": 1, "sum_net_r": -1.0}, shadow.NEUTRAL: {"n": 1, "sum_net_r": 1.0}}
+    assert out["by_gate"] == {shadow.UNBEKANNT: {"n": 1, "sum_net_r": -1.0}, shadow.NEUTRAL: {"n": 1, "sum_net_r": 1.0},
+                              shadow.OHNE_LAGE: {"n": 1, "sum_net_r": 2.0}}   # no Lage is not neutral flow
+
+
+def test_known_share_boundary_and_lowest_window_counts():
+    from src.dashboard import orderflow_shadow as shadow
+
+    def lage(windows):
+        return {"price": 1.0, "wave": {"direction": "auf"}, "windows": windows}
+
+    at = {"1m": {"volume": 100.0, "unknown_volume": 5.0}}
+    assert shadow.known_share(lage(at)) == 0.95 and shadow.gate("LONG", shadow.lage_view(lage(at))) == shadow.BESTAETIGT
+    below = {"1m": {"volume": 10000.0, "unknown_volume": 501.0}}
+    assert shadow.gate("LONG", shadow.lage_view(lage(below))) == shadow.UNBEKANNT
+    mixed = {"1m": {"volume": 10.0, "unknown_volume": 5.0}, "5m": {"volume": 1000.0, "unknown_volume": 5.0},
+             "15m": {"volume": 0.0, "unknown_volume": 0.0}}               # one bad window is enough, an empty one is skipped
+    assert shadow.known_share(lage(mixed)) == 0.5 and shadow.gate("LONG", shadow.lage_view(lage(mixed))) == shadow.UNBEKANNT
