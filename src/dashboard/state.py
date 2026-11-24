@@ -35,6 +35,8 @@ class DashboardState:
     liquidation: dict[str, Any] = field(default_factory=dict)
     # Live-Orderflow-Lage: wave, levels, perp delta from the newest spot trades (src/orderflow/live_state.py).
     orderflow_live: dict[str, Any] = field(default_factory=dict)
+    # The same for Monero from the XMR perp trades (src/orderflow/xmr_live.py, Paket 3, 24.11.2026).
+    orderflow_live_xmr: dict[str, Any] = field(default_factory=dict)
     # BTC perp trades in the footprint store's shape, and hourly open interest with its Z-score (src/dashboard/perp_flow.py).
     perp_flow: dict[str, Any] = field(default_factory=dict)
     open_interest: dict[str, Any] = field(default_factory=dict)

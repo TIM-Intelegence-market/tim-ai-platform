@@ -108,6 +108,10 @@ class TIMApplication:
         self.history: dict[str, list[Candle]] = {timeframe: [] for timeframe in settings.timeframes}
         self.queue_log = StructuredLog(Path("data/operational/queue.jsonl"))
         self.worker_stop = asyncio.Event()
+        # XMR Live-Orderflow-Lage (Paket 3, 24.11.2026): fed by the perp collector's XMR batches, read every few seconds.
+        from src.orderflow.xmr_live import XmrOrderflowLive
+
+        self.xmr_live = XmrOrderflowLive()
         # Ingestion telemetry is sampled at most once per interval; worker
         # decisions never depend on it (see _refresh_ingestion_health).
         self._ingestion_health_lock = asyncio.Lock()
@@ -646,6 +650,16 @@ class TIMApplication:
                 await asyncio.to_thread(plan_opinion.update, state.plan_opinion_path,
                                         (state.plan_journal_short_path, state.plan_journal_mid_path), lage or None,
                                         symbol=settings.symbol)
+                try:  # XMR Zweitmeinung (Paket 3, 24.11.2026): own file, XMR Lage only; never blocks the BTC steps
+                    from src.dashboard import xmr_shadows
+
+                    with state.lock:
+                        xmr_lage = dict(state.orderflow_live_xmr or {})
+                    await asyncio.to_thread(xmr_shadows.update_opinion, xmr_lage or None)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:  # noqa: BLE001
+                    log.warning("xmr plan opinion failed: %s", type(error).__name__)
                 await asyncio.to_thread(daily_report.update, state.daily_report_path,
                                         {"15m": state.plan_journal_short_path, "1h": state.plan_journal_mid_path}, lage or None,
                                         attention, waiting=waiting_on_uzi.items)
@@ -753,6 +767,20 @@ class TIMApplication:
             except Exception as error:  # noqa: BLE001 - a description must not stop the runtime
                 log.warning("orderflow live state failed: %s: %s", type(error).__name__, error)
             try:
+                # XMR Lage (Paket 3, 24.11.2026): own tracker, own file; the BTC Lage above is untouched.
+                from src.orderflow.xmr_live import DEFAULT_PATH as xmr_lage_path, SYMBOL as XMR
+
+                with self.dashboard_state.lock:
+                    xmr_store = (self.dashboard_state.perp_flows or {}).get(XMR)
+                xmr_state = self.xmr_live.snapshot(datetime.now(timezone.utc), xmr_store)
+                await asyncio.to_thread(live_state.save, xmr_state, xmr_lage_path)
+                with self.dashboard_state.lock:
+                    self.dashboard_state.orderflow_live_xmr = xmr_state
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - a description must not stop the runtime
+                log.warning("xmr orderflow live state failed: %s: %s", type(error).__name__, error)
+            try:
                 await asyncio.wait_for(self.worker_stop.wait(), timeout=ORDERFLOW_LIVE_INTERVAL_SECONDS)
             except TimeoutError:
                 pass
@@ -762,7 +790,9 @@ class TIMApplication:
         # public futures endpoints for the chart, one shared call budget; display only, never on the ingestion path.
         from src.dashboard.perp_flow import run as run_perp_flow
 
-        await run_perp_flow(self.dashboard_state, self.worker_stop, log=log)
+        from src.orderflow.xmr_live import SYMBOL as XMR
+
+        await run_perp_flow(self.dashboard_state, self.worker_stop, log=log, listeners={XMR: self.xmr_live.on_rows})
 
     async def _bybit_flow_loop(self) -> None:
         # Bybit perp trades over the public websocket as the second venue of the chart's bubbles (Issue #162);
@@ -902,6 +932,24 @@ class TIMApplication:
                 raise
             except Exception as error:  # noqa: BLE001 - a journal must not stop the runtime
                 log.warning("xmr journal update failed: %s", type(error).__name__)
+            try:
+                # XMR shadows (Paket 3, 24.11.2026): Orderflow-Schatten and Chart-Urteil on the XMR plans, own files.
+                from src.dashboard import xmr_shadows
+                from src.dashboard.chart_live import PERP_CACHE
+                from src.dashboard.perp_journal import XMR, perp_series
+
+                xmr_series, _ = await asyncio.to_thread(perp_series, PERP_CACHE, XMR)
+                with self.dashboard_state.lock:
+                    xmr_lage = dict(self.dashboard_state.orderflow_live_xmr or {})
+                    xmr_store = (self.dashboard_state.perp_flows or {}).get(XMR)
+                status = await asyncio.to_thread(xmr_shadows.update, xmr_series, xmr_lage or None, xmr_store)
+                for name in ("orderflow", "verdict"):
+                    if "error" in status.get(name, {}):
+                        log.warning("xmr %s shadow failed: %s", name, status[name]["error"])
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - a shadow must not stop the runtime
+                log.warning("xmr shadows update failed: %s", type(error).__name__)
             try:
                 # Orderflow-Schatten (Paket 2, 08.11.2026): gate and orderflow exit for the 15m/1h plans, reads only.
                 from src.dashboard.orderflow_shadow import DEFAULT_PATH as of_shadow_path, update as update_of_shadow

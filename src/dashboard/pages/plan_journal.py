@@ -425,8 +425,18 @@ def xmr_journal_page(state: Any, data: dict[str, Any], page: str) -> str:
     journal.setdefault("rule", RULE_TIM)
     hero = (f"Plan-Journal Monero ({timeframe})",
             f"TIMs Long- und Short-Pläne für XMRUSDT auf dem {timeframe}-Zeitrahmen, nach denselben Regeln wie bei BTC festgehalten und verfolgt.")
+    try:  # the three paper shadows of the XMR plans (Paket 3, 24.11.2026); the page never fails for them
+        from src.dashboard.xmr_shadows import counts
+
+        seen = counts()
+        names = {"orderflow": "Orderflow-Schatten", "verdict": "Chart-Urteil", "opinion": "Zweitmeinung"}
+        line = ", ".join(f"{names[k]} {'noch nicht gestartet' if v is None else f'{v} Pläne'}" for k, v in seen.items())
+        shadows = (f"<li>Schatten (nur Papier, filtern nichts): {_safe(line)}. Sie lesen die XMR-Orderflow-Lage aus den "
+                   "XMR-Perp-Trades, nie die BTC-Lage.</li>")
+    except Exception:  # noqa: BLE001
+        shadows = ""
     return _plan_journal_page(data, journal, page_path=page_path, hero=hero, with_notes=False,
-                              links=XMR_LINKS + f" · <a href='/api/plan-journal?rule=xmr-{timeframe}'>JSON</a>", extra_rule=XMR_RULE)
+                              links=XMR_LINKS + f" · <a href='/api/plan-journal?rule=xmr-{timeframe}'>JSON</a>", extra_rule=XMR_RULE + shadows)
 
 
 def known_plan_keys(state: Any) -> set[str]:
