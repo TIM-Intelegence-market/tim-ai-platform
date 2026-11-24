@@ -12,6 +12,10 @@ Speicher (``LiveOrderflowTracker.ingest``) und beschreibt daraus alle paar Sekun
   Imbalance, Absorption (viel Volumen am Level, Preis kommt nicht durch),
 - Perp-Delta der letzten 5 und 15 Minuten aus dem Perp-Store (5-Minuten-Körbe, grober als Spot).
 
+Aggressorseite (Paket B, #372, 24.11.2026): ``buyer_is_maker`` ist nur als echtes ``True`` / ``False`` bekannt. Jeder andere
+Wert (``None``, Text, Zahl) ist ``UNKNOWN``: er zählt ins Volumen und in ``unknown_volume``, aber nie ins Delta, den CVD oder
+die Käufer-/Verkäuferanteile. ``buy_share`` hat als Nenner nur das Volumen mit bekannter Seite.
+
 Alle Schwellen stehen in ``THRESHOLDS`` und sind unkalibrierte Startwerte (Präreg OF2 entscheidet
 später). Nichts hier handelt, schreibt einen Plan oder ändert einen Score: reine Beschreibung, als
 Datei ``data/orderflow/orderflow_lage.json`` für Chart, Control Center und den Hermes-Leser.
@@ -31,7 +35,8 @@ from typing import Any
 
 from src.models.market_data import Trade
 
-SCHEMA_VERSION = "orderflow-lage/1"
+SCHEMA_VERSION = "orderflow-lage/2"  # 2: unknown aggressor side counted separately (Paket B)
+BUY, SELL, UNKNOWN = 1, -1, 0  # aggressor side of a trade
 DEFAULT_PATH = Path("data/orderflow/orderflow_lage.json")
 WINDOWS = {"1m": 60, "5m": 300, "15m": 900}
 KEEP_SECONDS = 1800  # 15m window plus 20 one-minute baseline buckets, with reserve
@@ -45,6 +50,15 @@ THRESHOLDS = {
     "imbalance_ratio": 3.0,  # ask/bid (or bid/ask) at a level
     "absorption_volume_factor": 3.0,  # level volume vs. the median level volume in the 15m window
 }
+
+
+def aggressor_side(buyer_is_maker: object) -> int:
+    """``SELL`` when the buyer was the maker, ``BUY`` when not, ``UNKNOWN`` for anything that is not a real bool."""
+    if buyer_is_maker is True:
+        return SELL
+    if buyer_is_maker is False:
+        return BUY
+    return UNKNOWN
 
 
 def _epoch(moment: datetime) -> float:
@@ -69,13 +83,15 @@ class LiveOrderflowTracker:
         self.symbol = symbol
         self.tick = float(tick)
         self.keep_seconds = int(keep_seconds)
-        self._trades: deque[tuple[float, float, float, bool]] = deque()  # (time, price, qty, buyer aggressive)
+        self._trades: deque[tuple[float, float, float, int]] = deque()  # (time, price, qty, aggressor side)
         self.last_trade_id: int | None = None
         self.last_trade_time: datetime | None = None
         self.day_key: float | None = None
         self.day_cvd = 0.0
         self.day_high: float | None = None
         self.day_low: float | None = None
+        self.day_unknown_volume = 0.0
+        self.unknown_trades = 0  # since start, trades without a known aggressor side
         self.last_price: float | None = None
         self.ingested = 0
 
@@ -90,14 +106,19 @@ class LiveOrderflowTracker:
             moment = _epoch(trade.event_time)
             if self._trades and moment < self._trades[-1][0]:
                 continue  # out of order: the durable store already has it in order; ignore here
-            buy = not bool(trade.buyer_is_maker) if trade.buyer_is_maker is not None else True
+            side = aggressor_side(trade.buyer_is_maker)
             day = _day_start(trade.event_time)
             if self.day_key != day:
                 self.day_key, self.day_cvd, self.day_high, self.day_low = day, 0.0, None, None
-            self.day_cvd += trade.quantity if buy else -trade.quantity
+                self.day_unknown_volume = 0.0
+            if side == UNKNOWN:
+                self.day_unknown_volume += trade.quantity
+                self.unknown_trades += 1
+            else:
+                self.day_cvd += trade.quantity * side
             self.day_high = trade.price if self.day_high is None else max(self.day_high, trade.price)
             self.day_low = trade.price if self.day_low is None else min(self.day_low, trade.price)
-            self._trades.append((moment, float(trade.price), float(trade.quantity), buy))
+            self._trades.append((moment, float(trade.price), float(trade.quantity), side))
             if trade.trade_id is not None:
                 self.last_trade_id = trade.trade_id
             self.last_trade_time = trade.event_time
@@ -111,26 +132,29 @@ class LiveOrderflowTracker:
         while self._trades and self._trades[0][0] < limit:
             self._trades.popleft()
 
-    def _since(self, start: float) -> Sequence[tuple[float, float, float, bool]]:
+    def _since(self, start: float) -> Sequence[tuple[float, float, float, int]]:
         times = [t[0] for t in self._trades]
         index = bisect_left(times, start)
         return list(self._trades)[index:]
 
     @staticmethod
-    def _window(trades: Sequence[tuple[float, float, float, bool]]) -> dict[str, Any]:
-        buy = sum(q for _, _, q, b in trades if b)
-        sell = sum(q for _, _, q, b in trades if not b)
-        volume = buy + sell
+    def _window(trades: Sequence[tuple[float, float, float, int]]) -> dict[str, Any]:
+        buy = sum(q for _, _, q, side in trades if side == BUY)
+        sell = sum(q for _, _, q, side in trades if side == SELL)
+        unknown = sum(q for _, _, q, side in trades if side == UNKNOWN)
+        known = buy + sell
+        volume = known + unknown
         prices = [p for _, p, _, _ in trades]
         return {"trades": len(trades), "volume": _round(volume), "delta": _round(buy - sell),
-                "buy_share": _round(buy / volume, 3) if volume else None,
+                "buy_share": _round(buy / known, 3) if known else None,
+                "unknown_volume": _round(unknown), "unknown_trades": sum(1 for *_, side in trades if side == UNKNOWN),
                 "high": max(prices) if prices else None, "low": min(prices) if prices else None,
                 "range": _round(max(prices) - min(prices), 2) if prices else 0.0}
 
     def _minutes(self, now: float, count: int) -> list[dict[str, Any]]:
         """Per-minute windows, oldest first, the last one ending at ``now``."""
         trades = self._since(now - 60 * count)
-        buckets: list[list[tuple[float, float, float, bool]]] = [[] for _ in range(count)]
+        buckets: list[list[tuple[float, float, float, int]]] = [[] for _ in range(count)]
         for item in trades:
             index = int((item[0] - (now - 60 * count)) // 60)
             if 0 <= index < count:
@@ -176,7 +200,8 @@ class LiveOrderflowTracker:
 
 def _day_values(tracker: LiveOrderflowTracker, profile: Mapping[str, Any] | None) -> dict[str, Any]:
     """Whole-day CVD/high/low from the running day profile when there is one, else the tracker's own since start."""
-    own = {"cvd": _round(tracker.day_cvd), "high": tracker.day_high, "low": tracker.day_low, "source": "seit Start der Runtime"}
+    own = {"cvd": _round(tracker.day_cvd), "high": tracker.day_high, "low": tracker.day_low,
+           "unknown_volume": _round(tracker.day_unknown_volume), "source": "seit Start der Runtime"}
     if not profile or not profile.get("rows"):
         return own
     prices = [float(r["price"]) for r in profile["rows"] if r.get("volume")]
@@ -187,6 +212,7 @@ def _day_values(tracker: LiveOrderflowTracker, profile: Mapping[str, Any] | None
     if tracker.day_high is not None:
         high, low = max(high, tracker.day_high), min(low, tracker.day_low)
     return {"cvd": _round(float(profile.get("delta") or 0.0)), "high": high, "low": low,
+            "unknown_volume": _round(tracker.day_unknown_volume),
             "source": "Tagesprofil des Spot-Stores (bis 2 min alt) plus Trades seit Start"}
 
 
@@ -217,13 +243,13 @@ def _wave(windows: Mapping[str, Mapping[str, Any]], last_three: Sequence[Mapping
             "delta_per_minute": [_round(m["delta"]) for m in last_three]}
 
 
-def _levels(trades: Sequence[tuple[float, float, float, bool]], levels: Sequence[Mapping[str, Any]],
+def _levels(trades: Sequence[tuple[float, float, float, int]], levels: Sequence[Mapping[str, Any]],
             price: float, tick: float) -> list[dict[str, Any]]:
-    by_level: dict[float, list[float]] = {}
-    for _, p, q, b in trades:
-        row = by_level.setdefault(round(p // tick * tick, 8), [0.0, 0.0])
-        row[1 if b else 0] += q
-    volumes = [a + b for a, b in by_level.values()]
+    by_level: dict[float, list[float]] = {}  # [bid (seller aggressive), ask (buyer aggressive), unknown side]
+    for _, p, q, side in trades:
+        row = by_level.setdefault(round(p // tick * tick, 8), [0.0, 0.0, 0.0])
+        row[{SELL: 0, BUY: 1, UNKNOWN: 2}[side]] += q
+    volumes = [sum(row) for row in by_level.values()]
     typical = median(volumes) if volumes else 0.0
     out = []
     for level in levels:
@@ -235,12 +261,13 @@ def _levels(trades: Sequence[tuple[float, float, float, bool]], levels: Sequence
         if abs(distance_pct) > LEVEL_RANGE_PCT:
             continue
         tolerance = 2 * tick
-        bid = ask = 0.0
-        for key, (b, a) in by_level.items():
+        bid = ask = unknown = 0.0
+        for key, (b, a, u) in by_level.items():
             if abs(key - target) <= tolerance:
                 bid += b
                 ask += a
-        volume = bid + ask
+                unknown += u
+        volume = bid + ask + unknown
         touched = any(abs(p - target) <= tolerance for _, p, _, _ in trades)
         side_now = "über" if price > target else "unter"
         broke = any((p - target) * (price - target) < -tolerance for _, p, _, _ in trades)  # traded on the far side
@@ -252,7 +279,7 @@ def _levels(trades: Sequence[tuple[float, float, float, bool]], levels: Sequence
             imbalance = "Verkäufer"
         absorption = touched and not broke and typical > 0 and volume >= THRESHOLDS["absorption_volume_factor"] * typical
         out.append({"name": str(level.get("name", "Level")), "price": target, "distance_pct": _round(distance_pct, 3),
-                    "side": side_now, "tested_15m": touched, "broke_through": broke, "bid": _round(bid), "ask": _round(ask),
+                    "side": side_now, "tested_15m": touched, "broke_through": broke, "bid": _round(bid), "ask": _round(ask), "unknown": _round(unknown),
                     "delta": _round(ask - bid), "imbalance": imbalance, "absorption": bool(absorption)})
     out.sort(key=lambda row: abs(row["distance_pct"]))
     return out
@@ -296,6 +323,8 @@ def describe(state: Mapping[str, Any]) -> str:
     if state.get("tempo") is not None:
         parts.append(f"Tempo {state['tempo']:.1f}x der letzten 20 Minuten.")
     parts.append(f"Tages-CVD {state['day']['cvd']:+.1f}.")
+    if five.get("unknown_volume"):
+        parts.append(f"Ohne bekannte Seite 5m: {five['unknown_volume']:.2f} Volumen (nicht im Delta).")
     for level in state.get("levels", [])[:2]:
         flags = [f for f, on in (("Absorption", level["absorption"]), (f"Imbalance {level['imbalance']}", level["imbalance"])) if on]
         tag = f" ({', '.join(flags)})" if flags else ""

@@ -131,3 +131,42 @@ def test_day_values_come_from_the_running_profile():
     assert "Tages-Tief" not in names  # 1.3 % away, outside LEVEL_RANGE_PCT
     without = tracker.snapshot(T0 + timedelta(seconds=2))
     assert without["day"]["high"] == 75010 and without["day"]["source"] == "seit Start der Runtime"
+
+
+# Paket B (#372): a trade without a known aggressor side is UNKNOWN, never a buy.
+def _raw(seconds: float, qty: float, maker: object, tid: int, price: float = 75000.0) -> Trade:
+    return Trade(SYMBOL, price, qty, T0 + timedelta(seconds=seconds), tid, buyer_is_maker=maker)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("maker", [None, "false", "true", 0, 1])
+def test_aggressor_side_only_accepts_real_bools(maker):
+    assert ls.aggressor_side(maker) == ls.UNKNOWN
+    assert ls.aggressor_side(True) == ls.SELL and ls.aggressor_side(False) == ls.BUY
+
+
+def test_unknown_side_does_not_raise_buy_delta_or_cvd():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker.ingest([_raw(0, 2.0, None, 1)])
+    state = tracker.snapshot(T0 + timedelta(seconds=5))
+    one = state["windows"]["1m"]
+    assert one["delta"] == 0 and one["buy_share"] is None
+    assert one["volume"] == pytest.approx(2.0) and one["unknown_volume"] == pytest.approx(2.0) and one["unknown_trades"] == 1
+    assert tracker.day_cvd == 0 and state["day"]["unknown_volume"] == pytest.approx(2.0) and tracker.unknown_trades == 1
+    assert state["wave"]["direction"] == "keine"
+
+
+def test_buy_share_denominator_is_known_volume_only():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker.ingest([_raw(0, 1.0, False, 1), _raw(1, 1.0, True, 2), _raw(2, 2.0, None, 3), _raw(3, 4.0, "false", 4)])
+    one = tracker.snapshot(T0 + timedelta(seconds=10))["windows"]["1m"]
+    assert one["buy_share"] == pytest.approx(0.5)  # 1 of 2 known, the 6 unknown are not in the denominator
+    assert one["volume"] == pytest.approx(8.0) and one["delta"] == 0 and one["unknown_volume"] == pytest.approx(6.0)
+
+
+def test_levels_keep_unknown_out_of_bid_ask_and_delta():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker.ingest([_raw(0, 1.0, False, 1, 75000), _raw(1, 3.0, None, 2, 75000)])
+    state = tracker.snapshot(T0 + timedelta(seconds=10), [{"name": "L", "price": 75000.0}])
+    row = state["levels"][0]
+    assert (row["bid"], row["ask"], row["unknown"], row["delta"]) == (0.0, 1.0, 3.0, 1.0)
+    assert state["schema"] == "orderflow-lage/2"

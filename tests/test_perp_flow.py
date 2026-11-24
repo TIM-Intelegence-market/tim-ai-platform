@@ -432,3 +432,18 @@ def test_second_venue_is_published_apart_and_merged_for_the_chart() -> None:
     assert fallback["venues"]["bybit"] is bybit
     assert oi_archive_path("data/perp_flow", "BTCUSDT", "bybit").name == "oi-BTCUSDT-bybit-1h.jsonl"
     assert oi_archive_path("data/perp_flow", "BTCUSDT").name == "oi-BTCUSDT-1h.jsonl"
+
+
+def test_trades_without_a_real_bool_side_go_on_neither_side(tmp_path) -> None:
+    """Paket B (#372): bool("false") is True and bool(None) is False; both must stay unknown, not seller or buyer."""
+    trades = make_trades(start_ms=NOW_MS - 600_000)
+    for row, bad in zip(trades[:3], (None, "false", 1)):
+        row["m"] = bad
+    flow = PerpFlow(tmp_path, fetch=FakeBinance(trades), clock=lambda: NOW.timestamp())
+    collect(flow)
+    good = [t for t in trades if isinstance(t["m"], bool)]
+    rows = [r for day in flow.store()["days"].values() for r in day]
+    assert sum(r[2] + r[3] for r in rows) == pytest.approx(sum(float(t["q"]) for t in good))
+    assert sum(r[3] - r[2] for r in rows) == pytest.approx(sum(float(t["q"]) * (-1 if t["m"] else 1) for t in good))
+    assert flow.unknown_side == 3 and flow.health()["unknown_side"] == 3 and flow.health()["gaps"] == 0
+    assert flow.next_id == trades[-1]["a"] + 1
