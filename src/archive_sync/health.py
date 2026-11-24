@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.archive_sync.common import CANONICAL_SETTINGS, DEFAULT_SCHEMA, canonical_select, checked_schema, disk_gate
-from src.archive_sync.importer import server_state
+from src.archive_sync.importer import archive_layout, row_reference, server_state
 
 
 async def _sha_of_query(connection: Any, query: str, *args: Any) -> tuple[str, int]:
@@ -82,9 +82,12 @@ async def archive_health(
             max(0, verify_last),
         )
         verified = []
+        ref_column, ref_value = row_reference(await archive_layout(connection, schema) or "v1")
         for batch in recent:
             sha, rows = await _sha_of_query(
-                connection, canonical_select(f"{schema}.agg_trades", "batch_id=$1"), batch["batch_id"]
+                connection,
+                canonical_select(f"{schema}.agg_trades", f"{ref_column} = {ref_value.format(schema=schema)}"),
+                batch["batch_id"],
             )
             ok = sha == batch["content_sha256"] and rows == batch["row_count"]
             verified.append({"batch_id": batch["batch_id"], "kind": batch["kind"], "rows": rows, "ok": ok})

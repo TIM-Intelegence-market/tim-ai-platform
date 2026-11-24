@@ -58,8 +58,8 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     connection = await _connect("TIM_ARCHIVE_TARGET_URL")
     try:
         if args.command == "init":
-            await importer.ensure_schema(connection, args.schema)
-            return {"schema": args.schema, "initialised": True}
+            layout = await importer.ensure_schema(connection, args.schema, args.layout)
+            return {"schema": args.schema, "initialised": True, "layout": layout}
         if args.command == "state":
             return await importer.server_state(connection, args.symbol, args.schema)
         if args.command == "import":
@@ -109,6 +109,8 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--schema", default=DEFAULT_SCHEMA)
         if name != "init":
             command.add_argument("--symbol", required=True)
+        else:
+            command.add_argument("--layout", choices=("v1", "v2"), help="only for a new schema; default v1")
         if name == "import":
             command.add_argument("--dir", required=True)
         if name in ("import", "health"):
