@@ -679,3 +679,16 @@ def test_ssh_host_and_key_cannot_inject_options():
     )
     target.sha256("BTCUSDT-new-1.csv.gz")
     assert calls[0][calls[0].index("--") + 1] == "user@archive-host"
+
+
+@pytest.mark.asyncio
+async def test_id_window_exports_only_that_range_and_never_older_data(env):
+    await add_trades(env, [i for i in range(1, 501) if i != 210])
+    await set_cursor(env, 500)
+    report = await exporter.export_batches(
+        env["c"], symbol=SYMBOL, out_dir=env["out"], server_state={"symbol": SYMBOL, "watermark": None, "holes": []},
+        source_schema=env["src"], chunk=60, usage=ROOMY, id_window=(200, 320),
+    )
+    assert [(b["kind"], b["lo"], b["hi"]) for b in report["batches"]] == [("new", 200, 259), ("new", 260, 319), ("new", 320, 320)]
+    result = await run_import(env)
+    assert result["state"] == {**result["state"], "start_id": 200, "watermark": 320, "holes": [[210, 210]]}
