@@ -107,20 +107,35 @@ Die Übertragung läuft über den vorhandenen Weg Mac → Warpgate → Server:
 - Zur Belegung zählt der größere von zwei Werten: was das Ledger verzeichnet oder was wirklich
   auf der Platte liegt.
 - Nichts wird überschrieben. Eine andere Datei unter einem gespeicherten Namen ist ein
-  **CONFLICT** und stoppt den Lauf. Geschrieben wird über `.part` mit fsync und sha256-Vergleich,
-  danach per Hardlink, der nie ersetzt.
+  **CONFLICT** und stoppt den Lauf. Das gilt auch für einen Link oder eine Sonderdatei unter
+  diesem Namen.
+- **Jeder Schreibvorgang bleibt im Store (Nachbesserung 25.11.).** Ordner werden Stück für Stück
+  mit `O_NOFOLLOW` geöffnet. Jede Datei entsteht relativ zu diesem festgehaltenen Ordner mit
+  `O_CREAT | O_EXCL | O_NOFOLLOW` unter einem zufälligen `.tmp-`-Namen, wird mit fsync
+  geschrieben, zurückgelesen und per sha256 verglichen, auf 0444 gesetzt und dann per Hardlink
+  angelegt. Der Hardlink ersetzt nie etwas. Ledger und Sperrdatei werden ebenfalls ohne
+  Link-Folgen geöffnet. Pfade im Ledger müssen `batches/<Symbol>/<Name>` sein, sonst brechen
+  `verify` und der Umzug ab.
+- Das Manifest wird einmal gelesen, geprüft und genau so gespeichert. Die Datendatei wird gegen
+  die sha256 aus dem Manifest kopiert. Ein Austausch zwischen Prüfung und Kopie fällt so auf.
+- Das Symbol im Manifest muss zum angefragten passen, Dateinamen müssen schlicht sein. Eine
+  FIFO im Eingang lässt den Lauf nicht hängen.
 - `LEDGER.jsonl` wird nur ergänzt. Jede Datei steht darin mit sha256, Größe, `batch_id`,
   `content_sha256` und Bereich.
 - Nach einem Absturz setzt ein neuer Lauf fort und meldet **RESUMED**, ohne Doppelte.
-- `verify` hasht jede Datei neu und findet geänderte, fehlende und unbekannte Dateien.
+- `verify` hasht jede Datei neu. Es findet geänderte, fehlende, beschreibbare, verlinkte,
+  mehrfach verlinkte (Hardlink) und unbekannte Dateien sowie liegengebliebene `.tmp-`-Dateien.
+  Diese zählen auch zur Belegung.
 - `migrate_store` kopiert nur in einen leeren Zielordner, prüft dort alles nach und schreibt
   `MIGRATION.json`. Die Quelle bleibt unverändert.
-- **Keine Löschfunktion:** Ein Test stellt sicher, dass das Modul außer seinen eigenen
-  `.part`-Dateien nichts entfernt.
+- **Keine Löschfunktion:** Ein Test stellt sicher, dass das Modul nur seine eigene, gerade mit
+  `O_EXCL` angelegte `.tmp-`-Datei entfernt und nichts umbenennt oder ersetzt.
 - Kommandos: `cold-init`, `cold-ingest`, `cold-verify`, `cold-migrate`.
 
-Tests: `tests/test_archive_cold_store.py` mit 15 Fällen, ohne Datenbank. Echtdatenprobe am Mac
-mit den drei Batches vom 22.11.:
+Tests: `tests/test_archive_cold_store.py` mit 66 Fällen, ohne Datenbank: Negativtests, ein
+Schnappschuss-Test, dass außerhalb von Store und Umzugsziel nichts geschrieben wird, und 25
+Zufallsläufe mit festen Startwerten für Budget und Unversehrtheit. Echtdatenprobe am Mac
+mit den drei Batches vom 22.11. (Stand 18f70e5e):
 
 - Gespeichert wurden 3 Batches mit 13,5 MB. Ein zweiter Lauf meldet 3 × ALREADY.
 - `verify` ist OK.
@@ -143,7 +158,7 @@ mit den drei Batches vom 22.11.:
 | Dienst | Auswirkung |
 |---|---|
 | Warpgate | Die Image-Datei begrenzt die Belegung hart auf 32 GiB, rund 290 GB bleiben frei. Es gibt keine Unterbrechung und keine Konfigurationsänderung. Weil Warpgate auf die ganze Platte schreiben darf, gilt das auch für die Image-Datei. Das ist dasselbe wie heute bei `tim-offload` |
-| Restore-Bereich (`tim-restore-scratch`) | Er liegt auf derselben Platte. Mit den 100-GiB-Deckel bleiben genug Platz für Restore-Tests, für einen vollen 99-GB-Restore wird es aber eng. Chris sollte das bewerten |
+| Restore-Bereich (`tim-restore-scratch`) | Er liegt auf derselben Platte und braucht sonntags rund 208,7 GB. Mit 32 GiB bleiben dabei 20,9 % frei, siehe §10 |
 | Journal-Archiv | 8 MB pro Tag, unkritisch |
 | PostgreSQL | Liegt auf der Systemplatte und ist nicht betroffen. Der Store ist eine reine Dateiablage |
 | Platten-Last | Ein Spot-Tag ist 14 MB und in unter 1 s gespeichert. Ein volles `verify` liest den ganzen Store, deshalb wöchentlich und nicht nächtlich |
@@ -157,10 +172,15 @@ Offen für Chris:
 
 ## 9 Freigaben vor der produktiven Nutzung
 
-1. Chris stimmt Variante A zu und richtet Image, Einhängung und Import-Login (E4) ein.
-2. Codex-PASS für diesen Entwurf sowie für #389, #390, #392 und #393.
-3. Uzis ausdrückliche Freigabe für den ersten Lauf von Hand. Ein Zeitplan braucht danach eine
-   eigene Freigabe, wie S4.
+Stand 25.11. Uzi ist für dieses Volumen berechtigt, Chris bekommt es zur Kenntnis.
+
+1. **Einrichtung (32 GiB, Grenze 26 GiB):** am 24.11. von Uzi genehmigt, aber nur unter
+   Bedingungen. Codex-PASS für #389, #390, #392, #393 und #394. Keine offenen
+   Sicherheitsbefunde. Speicherprüfung direkt vorher. Mindestens 15 % frei auch während des
+   Restore-Tests. Warpgate und alle Dienste unbeeinträchtigt. Bei FAIL oder INCONCLUSIVE:
+   Stopp.
+2. **Erster Archivlauf von Hand:** eigene Freigabe.
+3. **Zeitplan oder automatische Archivierung:** eigene Freigabe, wie S4.
 
 Abbruch bei: BUDGET_STOP, DISK_STOP, CONFLICT, FILE_INVALID, einem `verify` mit FAIL, oder wenn
 Warpgate langsamer reagiert. Rückweg: Lauf anhalten und aushängen. Nichts wird gelöscht.
@@ -207,7 +227,7 @@ Stores verlangt 15 % frei, daraus ergibt sich als Grenze im Store **`--limit-gib
 für rund 3,8 Jahre Binance Spot (20 MB pro Tag) oder für etwa 200 bis 280 Tage aller vier
 Trade-Ströme (geschätzt).
 
-**Entscheidung für Uzi:** 32 GiB jetzt, oder 100 GiB nur dann, wenn der Restore-Test vorher von
+**Entscheidung (Uzi, 24.11.): 32 GiB, Grenze 26 GiB, unter den Bedingungen in §9.** 100 GiB gingen nur, wenn der Restore-Test vorher von
 dieser Platte wegzieht. Das zweite braucht eine eigene Freigabe und eine Abstimmung mit Chris.
 
 ## 11 Einrichtungsplan (erst nach Uzis ausdrücklichem GO, nichts davon ist ausgeführt)
@@ -299,3 +319,66 @@ losetup -j /var/lib/warpgate/tim-archive-img/archive.img   # darf nichts mehr ze
 
 Nach einem Aushängen ist der Einhängepunkt leer und unveränderlich. Ein Lauf findet dann keine
 `STORE.json` und bricht ab, geschrieben wird nichts.
+
+## 12 Wiederherstellung
+
+Das Übergangsarchiv ist eine **Kopie**. Das Original bleibt bis zur Entscheidung über neue
+Platten die Mac-Datenbank und deren Batch-Exporte. Die Stufen:
+
+1. **Prüfen:** `cold-verify` hasht jede Datei neu. Sinnvoll ist ein Lauf pro Woche außerhalb des
+   Restore-Tests, er braucht eine eigene Freigabe wie jeder Zeitplan.
+2. **Zweite Kopie:** `cold-migrate --to <Ziel>` kopiert den ganzen Store in einen leeren Ordner
+   auf einem anderen Datenträger, prüft dort nach und lässt die Quelle unverändert. Getestet:
+   zwei Umzüge hintereinander (Sicherung, dann Rückspielen) ergeben bitgleiche Dateien.
+3. **Zurück in PostgreSQL:** Der vorhandene Importer liest dieselben Dateien. Er legt neue
+   Archive mit Layout v2 an (#393) und prüft vorher Manifest, sha256 und ID-Menge.
+4. **Verlust der Warpgate-Platte:** Der Store ist dann weg, das Original nicht. Die
+   Wiederherstellung ist ein neuer Export vom Mac plus `cold-ingest`. Solange der RAID-Level der
+   Platte unbekannt ist (Frage an Chris), gilt das Übergangsarchiv nicht als Sicherung.
+5. **Unterbrochener Schreibvorgang:** Ein abgerissener Ledger-Rest wird beim nächsten Lauf
+   abgeschnitten und protokolliert. Eine liegengebliebene `.tmp-`-Datei meldet `verify` und
+   zählt zur Belegung. Entfernt wird sie nur von Hand nach Prüfung.
+
+## 13 Speicherinventar aller TIM-Geräte (nur lesend, 25.11. ca. 00:45)
+
+| Gerät | Datenträger | frei | Rolle für das Archiv |
+|---|---|---|---|
+| Mac | 1 TB intern (APFS) | 498 GB | Original der Daten, Export der Batches |
+| Server, Warpgate-Platte | 399 GB (LUKS/ext4) | 325 GB | Übergangsarchiv 32 GiB, Restore-Test, `tim-offload` |
+| Server, Systemplatte | 299 GB, LVM | `/` 35 GB, `/srv` 22 GB (86 % belegt), `/var` 7,4 GB (88 % belegt) | ungeeignet, liegt unter dem 15-%-Tor |
+| PS5 | 120 GB | 99 GB | nur Rechnen, kein Archiv |
+| PS4 | 269 GB (Loop) | 222 GB | nur Rechnen, kein Archiv |
+
+Beide Server-Platten sind drehende Platten. Für 1, 3 und 5 Jahre reicht nichts davon, siehe
+`docs/ARCHIV_SPEICHERPLAN.md`. Die neuen Platten bleiben die eigentliche Lösung.
+
+## 14 Umzug auf neue Platten (vorbereitet)
+
+1. Chris richtet die neuen Platten ein, mit eigenem Dateisystem und eigener Einhängung.
+2. Dort entsteht ein neuer gebundener Store: `cold-migrate --root <alt> --to <neu>/store
+   --volume <neu> --parent <neu>`. Das Ziel muss leer sein. Die Quelle wird gesperrt, damit
+   währenddessen nichts dazukommt.
+3. `MIGRATION.json` und ein `cold-verify` am Ziel belegen gleiche Dateizahl und gleiche Bytes.
+4. Der alte Store bleibt stehen, bis Uzi ausdrücklich über ihn entscheidet. Erst dann darf die
+   Image-Datei weg.
+
+## 15 Offene Fragen an Chris (zur Kenntnis, keine Freigabe nötig)
+
+1. Welchen RAID-Level beziehungsweise welche Redundanz hat die Warpgate-Platte?
+2. Ist die Fernwartungskonsole erreichbar, falls SSH und Warpgate ausfallen?
+3. Bleibt `tim-offload` (46,8 GB) dauerhaft auf dieser Platte?
+4. Wann und wie groß kommen die neuen Platten, und mit welchem Dateisystem?
+5. Soll der sonntägliche Restore-Test langfristig auf dieser Platte bleiben?
+
+## 16 Forschungsbereitschaft nach INFRA-09
+
+Das Übergangsarchiv ändert an Forschungsdaten nichts. Studien lesen weiter die Mac-Datenbank.
+Für die Forschung bringt es einen geprüften, unveränderlichen Stand der Rohdaten mit sha256 je
+Tag. Damit lässt sich später belegen, auf welchen Daten eine Studie lief. Vorbereitet sind:
+
+- Die Liste der archivierten Batches mit `batch_id` und `content_sha256` aus dem Ledger als
+  Herkunftsnachweis für Studien.
+- Der Rückweg in PostgreSQL (§12, Stufe 3) für eine unabhängige Nachrechnung.
+
+Holdout 2025 bleibt unberührt. Der erste Archivlauf braucht Uzis eigene Freigabe.
+

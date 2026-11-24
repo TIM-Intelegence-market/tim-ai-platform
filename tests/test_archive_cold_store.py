@@ -219,7 +219,10 @@ def test_command_line_runs_the_whole_cycle(tmp_path, capsys):
     assert cli.main(["cold-ingest", "--root", root, "--dir", str(tmp_path / "in"), "--symbol", SYMBOL, "--unbound-ok"]) == 0
     assert cli.main(["cold-verify", "--root", root, "--unbound-ok"]) == 0
     assert cli.main(["cold-migrate", "--root", root, "--to", new, "--unbound-ok"]) == 0
-    assert cli.main(["cold-init", "--root", str(tmp_path / "in")]) == 2  # foreign directory refused
+    assert cli.main(["cold-init", "--root", str(tmp_path / "in"), "--limit-gib", "1"]) == 2  # foreign directory refused
+    with pytest.raises(SystemExit):  # the budget is never implied
+        cli.main(["cold-init", "--root", str(tmp_path / "other")])
+    assert not (tmp_path / "other").exists()
     capsys.readouterr()
 
 

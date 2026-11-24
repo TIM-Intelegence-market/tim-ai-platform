@@ -120,7 +120,8 @@ def build_parser() -> argparse.ArgumentParser:
     send.add_argument("--port", type=int)
     cold = sub.add_parser("cold-init", help="interim file archive with a hard byte budget (INFRA-09 draft)")
     cold.add_argument("--root", required=True)
-    cold.add_argument("--limit-gib", type=float, default=100.0, help="hard budget in GiB (1 GiB = 1024^3 bytes)")
+    cold.add_argument("--limit-gib", type=float, required=True,
+                      help="hard budget in GiB (1 GiB = 1024^3 bytes); always explicit, e.g. 26 for the 32 GiB volume")
     cold.add_argument("--volume", help="mounted file system the store is bound to (checked before every write)")
     cold.add_argument("--parent", help="parent file system that must keep 15%% free")
     cold.add_argument("--image", help="image file behind the volume; must stay fully allocated (not sparse)")
