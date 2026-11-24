@@ -1684,7 +1684,7 @@
   // Every layer belongs to exactly one category (Uzi 09.11.2026: each layout a category); a category is a
   // layout of its own, and the ticks under "edit layout" are sorted the same way.
   const CATEGORIES = [
-    { name: L.orderflow, groups: ['fp', 'bubbles', 'bubbles_exo', 'vpoc', 'delta', 'cvd'] },
+    { name: L.orderflow, groups: ['fp', 'bubbles', 'bubbles_exo', 'absorb', 'vpoc', 'delta', 'cvd'] },
     { name: L.profile, groups: ['vp', 'vp_range', 'tpo', 'naked', 'running'] },
     { name: L.levels, groups: ['day', 'week', 'month', 'quarter', 'year', 'session', 'ib'] },
     { name: L.vwap, groups: ['vwap', 'vwap_bands'] },
@@ -1704,14 +1704,14 @@
   const READ = ['session', 'vwap', 'plans_mid'];
   const TIM_LAYOUTS = [
     { id: 'tim:read', name: L.read, groups: READ },
-    { id: 'tim:orderflow', name: L.orderflow, market: 'perp', groups: ['fp', 'bubbles', 'cvd', 'oi', 'liqev', 'vwap'] },
+    { id: 'tim:orderflow', name: L.orderflow, market: 'perp', groups: ['fp', 'bubbles', 'absorb', 'cvd', 'oi', 'liqev', 'vwap'] },
     { id: 'tim:footprint', name: L.footprint, market: 'perp', fp: 'delta', groups: ['fp', 'bubbles', 'delta', 'oi'] },
     { id: 'tim:tpo', name: L.tpo, groups: ['tpo', 'running', 'session', 'ib'] },
     { id: 'tim:vp', name: L.vp, groups: ['vp', 'running', 'vwap', 'vwap_bands'] },
     { id: 'tim:positioning', name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma', 'gamma_ob'] },
     { id: 'tim:macro', name: L.macro, groups: ['dominance', 'macro', 'quarter', 'year'] },
     { id: 'tim:trades', name: L.trades, groups: ['plans_short', 'plans_mid', 'plans_long'] },
-    { id: 'tim:pro', name: L.pro, symbol: 'BTCUSDT', tf: '15m', market: 'perp', fp: 'profile', groups: ['fp', 'bubbles', 'vp', 'cvd', 'oi'] },
+    { id: 'tim:pro', name: L.pro, symbol: 'BTCUSDT', tf: '15m', market: 'perp', fp: 'profile', groups: ['fp', 'bubbles', 'absorb', 'vp', 'cvd', 'oi'] },
     // The three Exo layouts copy the PDF's workspaces (Uzi 15.11.2026: "1 zu 1"). clean: no TIM base levels, like the PDF.
     { id: 'tim:exo', name: L.exo, symbol: 'BTCUSDT', tf: '15m', market: 'perp', clean: true, groups: ['vwap', 'vwap_bands', 'bubbles_exo', 'liqev', 'oi', 'delta', 'cvd'] },
     { id: 'tim:exovp', name: L.exoVp, symbol: 'BTCUSDT', tf: '15m', market: 'perp', clean: true, fp: 'profile', groups: ['vwap', 'vwap_bands', 'vp_range', 'vpoc', 'bubbles_exo', 'delta'] },

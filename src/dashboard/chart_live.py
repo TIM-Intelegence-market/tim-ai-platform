@@ -92,6 +92,7 @@ GROUP_STYLE = {
     "week": ("#b07cff", "solid"),
     "month": ("#ff9f43", "solid"),
     "naked": ("#f5c542", "dashed"),
+    "absorb": ("#35d39a", "solid"),  # summed bubbles bring their own colour (buy green, sell red)
     "running": ("#5ec8d8", "dotted"),
     "session": ("#8a94a6", "dotted"),
     "ib": ("#8a94a6", "dashed"),
@@ -111,6 +112,7 @@ GROUP_NAMES = {
     "day": "Tag (1D)", "week": "Woche (1W)", "month": "Monat (1M)", "quarter": "Quartal (1Q)", "year": "Jahr (1Y)",
     "vwap": "VWAP (Woche, Monat, Quartal, Jahr)",
     "vwap_bands": "VWAP-Bänder Woche (±1σ, ±2σ, schattiert)", "naked": "naked POC",
+    "absorb": "Summen-Blasen (Orders am selben Preis addiert, als Linie)",
     "running": "laufende POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trendlinien", "fib": "Fibonacci (letzter Swing)", "tpo": "TPO (Tagesprofil)",
     "vp": "Volume Profile (Tag, echte Trades)", "fp": "Footprint (Bid × Ask)",
@@ -142,7 +144,7 @@ DAYS_KEPT_TPO = 14  # days the naked tPOC check looks back (same as the trade st
 TPO_BINS = 40  # price rows per day profile
 TPO_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"  # 48 half-hour periods from 00:00 UTC
 # The earlier 30m test versions start hidden: their many closed trades crowd the candles (Uzi 27.10.2026).
-DEFAULT_GROUPS = ("day", "week", "month", "naked", "vwap", "vwap_bands", "structure", "trend", "tpo", "vp", "fp", "bubbles",
+DEFAULT_GROUPS = ("day", "week", "month", "naked", "absorb", "vwap", "vwap_bands", "structure", "trend", "tpo", "vp", "fp", "bubbles",
                   "plans_short", "plans_mid", "plans_long", "gamma", "gamma_ob", "liq", "liqev", "cvd", "oi", "macro", "usdtd_swing", "usdtd_sr", "usdtd_ema")
 # TIM's paper plans on the chart (Uzi 27.10.2026: "man kann nicht richtig sehen wo die Entrys von TIM waren").
 # Journal key -> (layer, short label); the earlier 30m test versions share one layer.
@@ -1361,6 +1363,13 @@ def build_live_chart(symbol: str | None, timeframe: str | None, runtime_series: 
             bybit_trades = bybit if active == "perp" and bybit and bybit.get("symbol") == symbol and bybit.get("days") else None
             model["bubbles"] = merge_bubbles(model["bubbles"], volume_bubbles(bybit_trades, times, INTERVAL_SECONDS[timeframe]) if bybit_trades else None,
                                              bybit_trades is not None)
+            if symbol == "BTCUSDT":  # thresholds are in BTC (bubble_sum.MIN_BTC)
+                from src.dashboard import bubble_sum
+
+                sums = bubble_sum.clusters(bubble_sum.orders_from_store(trades_shown, times[0], times[-1] + INTERVAL_SECONDS[timeframe]))
+                model["bubble_sums"] = {"items": sums, "min_btc": bubble_sum.MIN_BTC, "window_s": bubble_sum.WINDOW_S,
+                                        "price_pct": bubble_sum.PRICE_PCT}
+                model["drawings"] = model["drawings"] + place_drawings(bubble_sum.drawings(sums, now.timestamp()), times)
             model["trade_source"] = trades_shown.get("source")
             model["trades_updated_at"] = trades_shown.get("updated_at")
         if spot_trades or perp_trades:

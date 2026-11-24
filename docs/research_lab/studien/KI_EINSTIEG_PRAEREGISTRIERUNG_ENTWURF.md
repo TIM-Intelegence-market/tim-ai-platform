@@ -107,3 +107,12 @@ also kein Beleg) antwortete DeepSeek SHORT, SHORT, LONG; das lokale Modell dreim
 - Papier-Abwicklung, Kosten und Protokoll wie R-KI-1. Keine Orders, kein Schlüssel.
 - R-KI-1 und R-KI-2 sind zwei Tests nebeneinander (Mehrfachtest, so berichten). Urteil je Lauf frühestens ab
   30 gefüllten Trades; Grenze (Entwurf): Mittel ≥ +0,10 R und untere Grenze > 0. Nicht eingefroren.
+
+## Zusatz 24.11.2026: Summen-Blasen als Zonenmarke
+
+Uzi 24.11.2026 12:25 „go summe“ (Bild der Signalgruppe: dort sind Orders am selben Preis zusammengezählt, Absorption klar
+sichtbar). `src/dashboard/bubble_sum.py`: Binance-Perp-Orders ab 100.000 $ einer Seite, binnen 5 min und 0,10 %
+um den Durchschnittspreis, zusammen mindestens 400 BTC aus mindestens 3 Orders = Summen-Blase; die 8 größten der
+letzten 48 h als Linie im Chart (Gruppe `absorb`). Schwellen am Bild vom 23./24.11. nach Augenmaß gesetzt, nicht
+getestet. Für R-KI-1 und R-KI-2 zählt eine solche Linie ab diesem Stand als Zonenmarke mit Gewicht 2
+(`zones.GROUP_WEIGHT`, steht je Entscheidung in `rules`). Entscheidungen davor hatten diese Marke nicht.
