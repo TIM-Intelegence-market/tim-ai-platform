@@ -275,6 +275,9 @@ def test_context_shows_london_selloff_and_smart_money():
                                   {"side": "short", "price": 70000.0, "usd": 90e6, "start": end - 86400}]}
     zone = {"low": 59950.0, "high": 60050.0, "center": 60000.0, "strength": 9.0, "sources": ["Put Wall"], "rejections": 0}
     ctx = decide.build_context(m, zone, end + 60)
+    assert ctx["zone"]["schluss"] == "in der Zone"   # close 60050 = zone top
+    above = {**zone, "low": 60100.0, "high": 60200.0, "center": 60150.0}
+    assert decide.build_context(m, above, end + 60)["zone"]["schluss"] == "unter der Zone (Bruch nach unten)"
     s = ctx["sitzung"]
     assert s["jetzt"] == "London" and s["asia_tief"] == 60400 and s["asia_hoch"] == 60600
     assert s["london"]["eroeffnung"] == 60450 and s["london"]["asia_tief_genommen"] is True and s["london"]["aenderung_pct"] < 0

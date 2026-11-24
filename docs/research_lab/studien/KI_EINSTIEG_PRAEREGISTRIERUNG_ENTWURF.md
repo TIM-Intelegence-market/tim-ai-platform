@@ -79,6 +79,7 @@ London-Eröffnung ab 09:00 hat sie nicht mehr gesehen, weil die Zone noch 6 Stun
   `smart_money` (Spot- und Perp-CVD über 1 h und 4 h, OI 1 h und 4 h, Liquidationen der letzten 3 h nach Seite,
   die zwei größten Liquidations-Cluster je Seite innerhalb 3 %, große Orders je Seite, Premium). Alles nur aus
   Werten vor dem Schluss der Entscheidungskerze; der laufende Balken wird nicht gezeigt.
+- `zone.schluss`: Schluss der Kerze in, unter oder über der Zone (Bruch sichtbar).
 - Anweisung ergänzt um Sitzung (Stops über Asia-Hoch/unter Asia-Tief, Fortsetzung oder falscher Bruch) und Smart
   Money (Spot vs. Perp, OI mit Preis, Liquidationen, Cluster als Ziel); ein klarer Bruch in Trendrichtung zählt
   wie ein Abpraller.

@@ -246,6 +246,7 @@ def build_context(model: Mapping[str, Any], zone: Mapping[str, Any], now: float)
     delta = _delta(model)
     before = candles[-2]
     came = "von oben" if float(before["close"]) > zone["high"] else ("von unten" if float(before["close"]) < zone["low"] else "aus der Zone")
+    where = "unter der Zone (Bruch nach unten)" if price < zone["low"] else ("über der Zone (Bruch nach oben)" if price > zone["high"] else "in der Zone")
     others = [z for z in zones.build(model, price, candles[:-1]) if z["center"] != zone["center"] and z["strength"] >= 2]
     above = sorted([z for z in others if z["low"] > price], key=lambda z: z["low"])[:3]
     below = sorted([z for z in others if z["high"] < price], key=lambda z: -z["high"])[:3]
@@ -273,7 +274,7 @@ def build_context(model: Mapping[str, Any], zone: Mapping[str, Any], now: float)
     oi_change = round((oi[-1][1] - oi[-25][1]) / oi[-25][1] * 100, 2) if len(oi) >= 25 and oi[-25][1] else None
     return {
         "zeit": _local(float(last["time"]) + BAR_S), "preis": price, "zeitrahmen": "15m (Perp)",
-        "zone": {**show(zone), "annaeherung": came, "fruehere_abpraller": zone.get("rejections", 0)},
+        "zone": {**show(zone), "annaeherung": came, "schluss": where, "fruehere_abpraller": zone.get("rejections", 0)},
         "zonen_darueber": [show(z) for z in above], "zonen_darunter": [show(z) for z in below],
         "kerzen": [[_local(float(c["time"])), c["open"], c["high"], c["low"], c["close"], round(delta.get(int(c["time"]), 0.0), 1),
                     round(float(c.get("volume") or 0), 1)] for c in candles[-12:]],
