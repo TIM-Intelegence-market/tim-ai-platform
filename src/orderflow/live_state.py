@@ -42,7 +42,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src.orderflow.pit_contract import RevisionLog, as_time
+from src.orderflow.pit_contract import RevisionLog, as_time, bucket_size
 from statistics import median
 from typing import Any
 
@@ -229,10 +229,15 @@ class LiveOrderflowTracker:
         """
         if not store or not store.get("days"):
             return None
-        bucket = int(store.get("bucket_seconds") or 300)
         updated = as_time(store.get("updated_at"))
         if updated is not None:
             self._perp_log.observe(store["days"], max(now, updated))
+        # The bucket size decides which buckets are closed by ``now``. It is taken from the store only: a missing or
+        # unusable size is never replaced by an assumed one (F1, #372 Mission 07-FINAL), the perp block is unknown.
+        bucket, bucket_status = bucket_size(store)
+        if bucket is None:
+            return {"status": "Bucket-Größe unbekannt", "bucket_seconds": None, "bucket_seconds_status": bucket_status,
+                    "updated_at": store.get("updated_at"), "store_time_known": updated is not None, "closed_buckets_only": True}
         days, counts = self._perp_log.rows_at(now, bucket)
         moment = _epoch(now)
         delta5 = delta15 = volume15 = 0.0

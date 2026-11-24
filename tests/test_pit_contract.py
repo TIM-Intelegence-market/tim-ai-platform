@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from src.orderflow import pit_contract as pc
 
 T = datetime(2026, 11, 24, 12, 0, tzinfo=timezone.utc)
@@ -63,3 +65,32 @@ def test_open_bucket_restart_and_bad_rows():
     assert log.rows_at(T, 300)[0] == {}
     log.observe(_store([t - 900, 1.0, 1.0, 1.0]), T + timedelta(minutes=5))
     assert log.rows_at(T, 300)[1]["unknown"] == 1                                       # seen after t: not evidence at t
+
+
+@pytest.mark.parametrize("store, expected", [
+    ({"bucket_seconds": 300}, (300, "OK")), ({"bucket_seconds": 60.0}, (60, "OK")),
+    ({}, (None, "MISSING")), (None, (None, "MISSING")), ({"bucket_seconds": None}, (None, "MISSING")),
+    ({"bucket_seconds": 0}, (None, "INVALID")), ({"bucket_seconds": -5}, (None, "INVALID")),
+    ({"bucket_seconds": "300"}, (None, "INVALID")), ({"bucket_seconds": True}, (None, "INVALID")),
+    ({"bucket_seconds": float("nan")}, (None, "INVALID")), ({"bucket_seconds": float("inf")}, (None, "INVALID")),
+    ({"bucket_seconds": 0.5}, (None, "INVALID")),
+])
+def test_bucket_size_is_only_what_the_store_states(store, expected):
+    """Mission 07-FINAL F1: the width decides what is closed at t; a default is not evidence."""
+    from src.orderflow import pit_contract as contract
+
+    assert contract.bucket_size(store) == expected
+
+
+@pytest.mark.parametrize("width", [None, 0, -300, "300", True, float("nan"), float("inf"), 12.5])
+def test_rows_at_without_a_usable_bucket_width_returns_nothing(width):
+    from datetime import datetime, timedelta, timezone
+
+    from src.orderflow import pit_contract as contract
+
+    t0 = datetime(2026, 11, 24, 12, 0, tzinfo=timezone.utc)
+    log = contract.RevisionLog()
+    log.observe({"2026-11-24": [[t0.timestamp() - 3600, 100.0, 1.0, 2.0], [t0.timestamp() - 1800, 100.0, 1.0, 2.0]]}, t0 - timedelta(minutes=10))
+    assert log.rows_at(t0, 300)[1]["kept"] == 2
+    days, counts = log.rows_at(t0, width)
+    assert days == {} and counts == {"kept": 0, "open": 0, "unknown": 2, "revised_later": 0}

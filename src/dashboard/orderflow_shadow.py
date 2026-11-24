@@ -68,28 +68,72 @@ def _number(value: Any) -> Fraction | None:
     return Fraction(value)
 
 
-def known_side(lage: Mapping[str, Any] | None) -> dict[str, Any]:
+_ABSENT = object()
+# Which windows of the Lage a signal model reads (F4, #372 Mission 07-FINAL). A model's verdict needs the known-side
+# check on every one of its windows; a window that is not in the Lage is missing evidence, not an empty window.
+#   welle:       direction, strength, phase, exhaustion come from 5m (delta, volume, range) and 1m (range)
+#   level:       absorption and imbalance at a level come from the trades of the last 15m
+#   of-schatten: the shadow gate and exit judge the wave and keep the level rows, so all three
+REQUIRED_WINDOWS = {"welle": ("1m", "5m"), "level": ("15m",), "of-schatten": ("1m", "5m", "15m")}
+GATE_MODEL = "of-schatten"
+
+
+def _field(window: Mapping[str, Any], name: str) -> tuple[str, Fraction | None]:
+    """(state, value) of one window field. ABSENT (no key), NULL (key with ``None``) and INVALID (anything that is
+    not a finite, non-negative number) carry no value; only a number that is really there does, 0 included."""
+    raw = window.get(name, _ABSENT)
+    if raw is _ABSENT:
+        return "ABSENT", None
+    if raw is None:
+        return "NULL", None
+    value = _number(raw)
+    return ("INVALID", None) if value is None else ("VALUE", value)
+
+
+def known_side(lage: Mapping[str, Any] | None, model: str = GATE_MODEL) -> dict[str, Any]:
     """Known-side check over the Lage's windows, exact (Mission 07: no rounding before the policy).
 
-    ``ok`` is True when every window with volume has known volume >= ``MIN_KNOWN_SHARE`` x volume, compared as exact
-    fractions; False when one is below, a window's numbers are invalid (``status`` INVALID) or no window has volume
-    (``status`` EMPTY: no evidence is never confirmation, Codex #372 Mission 07).
+    Fail closed (Codex #372, Mission 07-FINAL): only a number that is written in the Lage is evidence. ``ok`` is True
+    only when every window ``model`` needs (``REQUIRED_WINDOWS``) is there, every window carries ``volume`` and
+    ``unknown_volume`` as valid numbers (an explicit 0 is a value) and every window with volume has known volume >=
+    ``MIN_KNOWN_SHARE`` x volume, compared as exact fractions. An unknown ``model`` raises ``KeyError``.
+    Otherwise False with ``status`` MISSING (``windows``, a needed window or a field is absent or null, e.g. a Lage written before
+    ``orderflow-lage/2``), INVALID (a field is there but no usable number, or more unknown
+    than volume), EMPTY (no window has volume) or BELOW. A default never stands in for a missing field.
     ``share`` is the lowest raw share for display only, never for the decision."""
+    required = REQUIRED_WINDOWS[model]
     lowest: Fraction | None = None
-    invalid = False
-    for window in ((lage or {}).get("windows") or {}).values():
+    invalid = missing = False
+    windows = (lage or {}).get("windows")
+    if windows is None:
+        return {"ok": False, "status": "MISSING", "share": None}
+    if not isinstance(windows, Mapping):
+        return {"ok": False, "status": "INVALID", "share": None}
+    if any(name not in windows for name in required):
+        missing = True
+    for window in windows.values():
         if not isinstance(window, Mapping):
             invalid = True
             continue
-        volume, unknown = _number(window.get("volume", 0)), _number(window.get("unknown_volume", 0))
-        if volume is None or unknown is None or unknown > (volume or 0):
+        (volume_state, volume), (unknown_state, unknown) = _field(window, "volume"), _field(window, "unknown_volume")
+        states = {volume_state, unknown_state}
+        if states & {"ABSENT", "NULL"}:
+            missing = True
+        if "INVALID" in states:
+            invalid = True
+        if volume is None or unknown is None:
+            continue
+        if unknown > volume:
             invalid = True
             continue
         if volume > 0:
             share = (volume - unknown) / volume
             lowest = share if lowest is None else min(lowest, share)
+    display = float(lowest) if lowest is not None else None
     if invalid:
-        return {"ok": False, "status": "INVALID", "share": float(lowest) if lowest is not None else None}
+        return {"ok": False, "status": "INVALID", "share": display}
+    if missing:
+        return {"ok": False, "status": "MISSING", "share": display}
     if lowest is None:
         return {"ok": False, "status": "EMPTY", "share": None}
     ok = lowest >= MIN_KNOWN
@@ -109,13 +153,16 @@ def lage_view(lage: Mapping[str, Any] | None) -> dict[str, Any] | None:
     near = [{"name": l["name"], "distance_pct": l["distance_pct"], "absorption": l.get("absorption"),
              "imbalance": l.get("imbalance")} for l in (lage.get("levels") or [])[:3]]
     perp = lage.get("perp") or {}
+    windows = lage.get("windows")
+    five = windows.get("5m") if isinstance(windows, Mapping) else None
     return {"as_of": lage.get("as_of"), "price": lage.get("price"), "direction": wave.get("direction"),
             "strength": wave.get("strength"), "phase": wave.get("phase"), "exhaustion": bool(wave.get("exhaustion")),
-            "tempo": lage.get("tempo"), "delta_5m": (lage.get("windows") or {}).get("5m", {}).get("delta"),
-            "perp_delta_5m": perp.get("delta_5m"), "levels": near, **_side_fields(lage)}
+            "tempo": lage.get("tempo"), "delta_5m": five.get("delta") if isinstance(five, Mapping) else None,
+            "perp_delta_5m": perp.get("delta_5m"), "levels": near, **side_fields(lage)}
 
 
-def _side_fields(lage: Mapping[str, Any]) -> dict[str, Any]:
+def side_fields(lage: Mapping[str, Any]) -> dict[str, Any]:
+    """The known-side result every view of the Lage must carry before :func:`gate` may judge it."""
     side = known_side(lage)
     return {"known_share": side["share"], "side_ok": side["ok"], "side_status": side["status"]}
 
@@ -150,13 +197,18 @@ def gate(direction: str, view: Mapping[str, Any] | None) -> str:
 
 
 def side_unknown(view: Mapping[str, Any] | None) -> bool:
-    """True when the view's side check failed (below the policy or invalid numbers). Views noted before Mission 07
-    carry only ``known_share``: then the raw share is compared."""
-    view = view or {}
+    """True when the view's side check failed or was never made. Views noted before Mission 07 carry only
+    ``known_share``: then the raw share is compared. A view with neither field (written before Paket B, or a share of
+    ``None``) has no evidence about the side and is unknown, never known (fail closed). No view at all is not a
+    side problem: that is NEUTRAL / OHNE LAGE, decided by the caller."""
+    if not view:
+        return False
     if "side_ok" in view:
-        return view["side_ok"] is False
+        return view["side_ok"] is not True
     share = view.get("known_share")
-    return share is not None and share < MIN_KNOWN_SHARE
+    if isinstance(share, bool) or not isinstance(share, (int, float)) or not math.isfinite(share):
+        return True
+    return share < MIN_KNOWN_SHARE
 
 
 def should_exit(direction: str, view: Mapping[str, Any] | None) -> str | None:

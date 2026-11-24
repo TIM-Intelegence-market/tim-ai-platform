@@ -156,3 +156,18 @@ def test_paket_e_plan_gets_the_lage_of_its_moment_or_none(tmp_path):
     state = cv.update(path2, [journal], series, lage("auf", at=NOW + timedelta(seconds=30)), now=NOW + timedelta(minutes=1))
     record = state["plans"]["tim_plan_journal_mid.json:p1"]
     assert record["lage_at_plan_status"] == pit_lage.UNKNOWN_NO_HISTORY and record["chart_at_plan"]["orderflow"] is None
+
+
+def test_r7_never_judges_a_wave_whose_side_is_not_proven():
+    """Mission 07-FINAL: the chart verdict uses the shadow's gate, so it needs the known-side check too."""
+    base = lage("auf", price=73700.0, at=NOW)
+    legacy = {**base, "windows": {name: {"volume": 10.0, "delta": 3.0} for name in ("1m", "5m", "15m")}}  # no unknown_volume
+    for broken, status in ((legacy, "MISSING"), ({**base, "windows": {"5m": base["windows"]["5m"]}}, "MISSING"),
+                           ({k: v for k, v in base.items() if k != "windows"}, "MISSING")):
+        flow = cv.orderflow_view(broken, NOW)
+        assert flow["side_ok"] is False and flow["side_status"] == status
+        v = cv.judge("LONG", 73700.0, chart(orderflow=flow), stop=73400.0, target=74000.0)
+        assert "R7" not in sides(v) and any(text.startswith("R7 Seite") for text in v["skipped"])
+    v = cv.judge("LONG", 73700.0, chart(orderflow={"direction": "auf", "strength": 2, "levels": []}), stop=73400.0, target=74000.0)
+    assert "R7" not in sides(v)                                    # a stored view without the fields is not judged either
+    assert sides(cv.judge("LONG", 73700.0, chart(orderflow=cv.orderflow_view(base, NOW)), stop=73400.0, target=74000.0))["R7"] == cv.FOR

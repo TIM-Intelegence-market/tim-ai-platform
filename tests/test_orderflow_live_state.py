@@ -298,9 +298,10 @@ def test_known_share_boundary_and_lowest_window_counts():
     def lage(windows):
         return {"price": 1.0, "wave": {"direction": "auf"}, "windows": windows}
 
-    at = {"1m": {"volume": 100.0, "unknown_volume": 5.0}}
+    full = {"volume": 100.0, "unknown_volume": 0.0}
+    at = {"1m": {"volume": 100.0, "unknown_volume": 5.0}, "5m": full, "15m": full}
     assert shadow.known_share(lage(at)) == 0.95 and shadow.gate("LONG", shadow.lage_view(lage(at))) == shadow.BESTAETIGT
-    below = {"1m": {"volume": 10000.0, "unknown_volume": 501.0}}
+    below = {"1m": {"volume": 10000.0, "unknown_volume": 501.0}, "5m": full, "15m": full}
     assert shadow.gate("LONG", shadow.lage_view(lage(below))) == shadow.UNBEKANNT
     mixed = {"1m": {"volume": 10.0, "unknown_volume": 5.0}, "5m": {"volume": 1000.0, "unknown_volume": 5.0},
              "15m": {"volume": 0.0, "unknown_volume": 0.0}}               # one bad window is enough, an empty one is skipped
@@ -415,7 +416,7 @@ def test_known_side_is_compared_exactly_not_rounded():
 
     def view(volume, unknown):
         return shadow.lage_view({"price": 100.0, "wave": {"direction": "auf"},
-                                 "windows": {"1m": {"volume": volume, "unknown_volume": unknown}}})
+                                 "windows": {name: {"volume": volume, "unknown_volume": unknown} for name in ("1m", "5m", "15m")}})
 
     assert shadow.gate("LONG", view(100000.0, 5004.0)) == shadow.UNBEKANNT            # 0.94996
     assert shadow.gate("LONG", view(100000.0, 5000.0)) == shadow.BESTAETIGT           # exactly 0.95
@@ -438,8 +439,130 @@ def test_empty_volume_is_no_evidence_and_old_views_still_work():
     from src.dashboard import orderflow_shadow as shadow
 
     # Codex Mission 07: volume 0 (or none) is no evidence, so even a forced wave "auf" is UNBEKANNT, never BESTÄTIGT.
-    empty = shadow.lage_view({"price": 100.0, "wave": {"direction": "auf", "strength": 2}, "windows": {"5m": {"volume": 0.0, "unknown_volume": 0.0}}})
+    empty = shadow.lage_view({"price": 100.0, "wave": {"direction": "auf", "strength": 2}, "windows": {name: {"volume": 0.0, "unknown_volume": 0.0} for name in ("1m", "5m", "15m")}})
     assert empty["side_ok"] is False and empty["side_status"] == "EMPTY" and shadow.gate("LONG", empty) == shadow.UNBEKANNT
     no_windows = shadow.lage_view({"price": 100.0, "wave": {"direction": "auf", "strength": 2}})
-    assert shadow.gate("LONG", no_windows) == shadow.UNBEKANNT
+    assert shadow.gate("LONG", no_windows) == shadow.UNBEKANNT and no_windows["side_status"] == "MISSING"
     assert shadow.side_unknown({"known_share": 0.9}) and not shadow.side_unknown({"known_share": 0.95})  # pre-07 views
+
+
+_WAVE = {"price": 100.0, "wave": {"direction": "auf", "strength": 3}}
+_FULL = {"volume": 100.0, "unknown_volume": 0.0}
+
+
+def _without(name):
+    return {k: v for k, v in _FULL.items() if k != name}
+
+
+@pytest.mark.parametrize("window, status", [
+    (_without("unknown_volume"), "MISSING"),            # Codex Mission 07-FINAL: absent is not a proven 0
+    (_without("volume"), "MISSING"),
+    ({}, "MISSING"),                                    # a window with neither field
+    ({**_FULL, "unknown_volume": None}, "MISSING"),     # null is no number either
+    ({**_FULL, "volume": None}, "MISSING"),
+    ({**_FULL, "unknown_volume": "0"}, "INVALID"),
+    ({**_FULL, "unknown_volume": False}, "INVALID"),    # False is not 0
+    ({"volume": "x"}, "INVALID"),                       # invalid wins over missing
+])
+def test_missing_null_and_invalid_fields_are_never_a_known_side(window, status):
+    from src.dashboard import orderflow_shadow as shadow
+
+    for bad in ("1m", "5m", "15m"):
+        windows = {name: window if name == bad else dict(_FULL) for name in ("1m", "5m", "15m")}
+        v = shadow.lage_view({**_WAVE, "windows": windows})
+        assert (v["side_ok"], v["side_status"]) == (False, status)
+        for direction in ("LONG", "SHORT"):
+            assert shadow.gate(direction, v) == shadow.UNBEKANNT and shadow.should_exit(direction, v) is None
+
+
+def test_explicit_zero_is_a_value_and_the_only_way_to_a_known_side():
+    from src.dashboard import orderflow_shadow as shadow
+
+    for zero in (0, 0.0):
+        v = shadow.lage_view({**_WAVE, "windows": {name: {"volume": 100.0, "unknown_volume": zero} for name in ("1m", "5m", "15m")}})
+        assert (v["side_ok"], v["side_status"], v["known_share"]) == (True, "OK", 1.0)
+        assert shadow.gate("LONG", v) == shadow.BESTAETIGT and shadow.gate("SHORT", v) == shadow.GEGEN
+    for windows, status in ((None, "MISSING"), ({}, "MISSING"), ([], "INVALID"), ("1m", "INVALID"),
+                            ({"1m": None, "5m": dict(_FULL), "15m": dict(_FULL)}, "INVALID")):
+        v = shadow.lage_view({**_WAVE, "windows": windows})
+        assert (v["side_ok"], v["side_status"]) == (False, status) and shadow.gate("LONG", v) == shadow.UNBEKANNT
+
+
+def test_a_lage_written_before_the_side_fields_existed_is_unknown_not_confirmed():
+    """Upgrade path: an ``orderflow-lage/1`` file (volume, no unknown_volume) read by the new code."""
+    from src.dashboard import orderflow_shadow as shadow
+
+    legacy = {"schema": "orderflow-lage/1", **_WAVE,
+              "windows": {name: {"trades": 5, "volume": 12.0, "delta": 3.0} for name in ("1m", "5m", "15m")}}
+    v = shadow.lage_view(legacy)
+    assert v["side_status"] == "MISSING" and v["known_share"] is None and shadow.gate("LONG", v) == shadow.UNBEKANNT
+
+
+def test_the_tracker_always_writes_both_fields_also_for_empty_windows():
+    """Producer side of the contract: every window of a real snapshot carries both numbers explicitly."""
+    from src.dashboard import orderflow_shadow as shadow
+
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    for state in (tracker.snapshot(T0),):
+        for window in state["windows"].values():
+            assert isinstance(window["volume"], float) and isinstance(window["unknown_volume"], float)
+    quiet_baseline(tracker)
+    state = tracker.snapshot(T0 + timedelta(seconds=20 * 60))
+    assert all(type(w["unknown_volume"]) is float and type(w["volume"]) is float for w in state["windows"].values())
+    assert shadow.known_side(state)["status"] == "OK"
+
+
+@pytest.mark.parametrize("present", [(), ("1m",), ("5m",), ("15m",), ("1m", "5m"), ("1m", "15m"), ("5m", "15m")])
+def test_a_window_the_gate_model_needs_but_the_lage_lacks_is_missing_evidence(present):
+    """F4: the shadow gate reads 1m, 5m and 15m; a Lage without one of them is never judged."""
+    from src.dashboard import orderflow_shadow as shadow
+
+    v = shadow.lage_view({**_WAVE, "windows": {name: dict(_FULL) for name in present}})
+    assert (v["side_ok"], v["side_status"]) == (False, "MISSING")
+    assert shadow.gate("LONG", v) == shadow.UNBEKANNT and shadow.should_exit("SHORT", v) is None
+
+
+def test_required_windows_per_signal_model():
+    from src.dashboard import orderflow_shadow as shadow
+
+    assert shadow.REQUIRED_WINDOWS == {"welle": ("1m", "5m"), "level": ("15m",), "of-schatten": ("1m", "5m", "15m")}
+    assert set(shadow.REQUIRED_WINDOWS["of-schatten"]) == set(ls.WINDOWS)       # the producer writes exactly these
+    lage = {**_WAVE, "windows": {"1m": dict(_FULL), "5m": dict(_FULL)}}
+    assert shadow.known_side(lage, "welle")["status"] == "OK"
+    assert shadow.known_side(lage, "level")["status"] == "MISSING" and shadow.known_side(lage)["status"] == "MISSING"
+    extra = {**_WAVE, "windows": {"15m": dict(_FULL), "1h": {"volume": 5.0}}}  # a present window is always checked
+    assert shadow.known_side(extra, "level")["status"] == "MISSING"
+    with pytest.raises(KeyError):
+        shadow.known_side(lage, "unbekanntes-modell")
+
+
+def _perp_store(now, **bucket):
+    return {"symbol": "BTCUSDT", "updated_at": now.isoformat(), **bucket,
+            "days": {"2026-11-08": [[now.timestamp() - 600, 74950.0, 3.0, 1.0], [now.timestamp() - 900, 74950.0, 1.0, 5.0]]}}
+
+
+@pytest.mark.parametrize("bucket, status", [
+    ({}, "MISSING"), ({"bucket_seconds": None}, "MISSING"),
+    ({"bucket_seconds": 0}, "INVALID"), ({"bucket_seconds": -300}, "INVALID"), ({"bucket_seconds": "300"}, "INVALID"),
+    ({"bucket_seconds": True}, "INVALID"), ({"bucket_seconds": float("nan")}, "INVALID"),
+    ({"bucket_seconds": float("inf")}, "INVALID"), ({"bucket_seconds": 299.5}, "INVALID"),
+])
+def test_perp_without_a_usable_bucket_size_is_unknown_never_assumed(bucket, status):
+    """F1 (#372 Mission 07-FINAL): the 300 s default decided which buckets are closed; now there is no default."""
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    _feed(tracker, [trade(0, 75000, 1.0, True, 1)])
+    now = T0 + timedelta(seconds=1)
+    state = tracker.snapshot(now, perp_store=_perp_store(now, **bucket))
+    perp = state["perp"]
+    assert perp["bucket_seconds"] is None and perp["bucket_seconds_status"] == status
+    assert "delta_5m" not in perp and "delta_15m" not in perp and "Perp-Delta" not in state["text"]
+    assert json.dumps(state)
+
+
+@pytest.mark.parametrize("seconds", [60, 300, 300.0, 900])
+def test_perp_uses_the_bucket_size_the_store_states(seconds):
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    _feed(tracker, [trade(0, 75000, 1.0, True, 1)])
+    now = T0 + timedelta(seconds=1)
+    perp = tracker.snapshot(now, perp_store=_perp_store(now, bucket_seconds=seconds))["perp"]
+    assert perp["bucket_seconds"] == int(seconds) and type(perp["bucket_seconds"]) is int and "bucket_seconds_status" not in perp
