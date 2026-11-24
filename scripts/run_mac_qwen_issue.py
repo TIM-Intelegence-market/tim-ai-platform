@@ -35,7 +35,7 @@ REPO = "TIM-Intelegence-market/tim-ai-platform"
 # The server never sees GitHub: only prompt in, text out. Server-preferred mode also routes
 # small issues there. Hard issues always wait instead of falling back to the Mac model.
 HARD_MODEL_DEFAULT = "qwen3-coder:30b"
-HARD_REQUEST_TIMEOUT = "900"
+HARD_REQUEST_TIMEOUT = "1800"  # one server turn on tim-core-01 may take longer than 15 min (#387)
 REVIEW_MAX_DIFF_CHARS = 60_000
 # Mac and tim-core-01 use this account, each with its own token (Barti, 25.10.2026).
 WORKER_LOGIN = "tim-issue-worker-t330"
@@ -252,9 +252,11 @@ def _run_local_task(worktree: Path, task: dict, *, codex_fallback: bool,
             env["TIM_QWEN_HARD_RUN"] = "1"
     returncode = _run_task_group(
         [sys.executable, "scripts/run_local_qwen_build_queue.py", "--task-id", task["task_id"]],
-        # 900s shared Qwen budget + two 300s helpers + their 300s test
-        # runs, with time left for acceptance and durable result writes.
-        worktree, env, timeout=2400)
+        # 900s shared Qwen budget (1800s for agent:qwen-hard) + two 300s helpers + their 300s
+        # test runs, with time left for acceptance and durable result writes. The hard limit
+        # (55 min) plus review (10 min) and merge wait (30 min) stays inside the server unit's
+        # TimeoutStartSec=100min.
+        worktree, env, timeout=3300 if hard else 2400)
     acceptance = state / "acceptance-results" / f"{task['task_id']}.json"
     result = state / "developer-results" / f"{task['task_id']}.json"
     if returncode or not acceptance.is_file() or not result.is_file():
