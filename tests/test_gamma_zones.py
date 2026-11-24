@@ -450,3 +450,39 @@ def test_gamma_notes_are_english_on_the_public_page() -> None:
         _, notes = gamma_zones.chart_drawings(gamma_zones.build(gamma, _walls_view(NOW), NOW), None, NOW)
         (note,) = notes
         assert english in english_note(note), note
+
+
+def test_archive_is_idempotent_after_a_crash_between_archive_and_log(tmp_path: Path, monkeypatch) -> None:
+    """Mission 05: a crash after the archive append and before the log save must not duplicate or lose visits."""
+    monkeypatch.setattr(gamma_zones, "MAX_VISITS", 1)
+    path, ok = tmp_path / "watch.json", _view(NOW)
+    archive = gamma_zones.archive_path(path)
+
+    def step(minute: int, price: float) -> dict:
+        return gamma_zones.update(path, ok, price, NOW + timedelta(minutes=minute))
+
+    for minute, price in enumerate((99_500.0, 99_150.0, 99_450.0, 99_500.0, 99_150.0)):   # visit 1 closed, visit 2 open
+        step(minute, price)
+    before = gamma_zones.load(path)
+    real_save = gamma_zones._save
+
+    def crash(*_args):
+        raise OSError("crash")
+
+    monkeypatch.setattr(gamma_zones, "_save", crash)
+    try:
+        step(5, 99_450.0)                                              # visit 2 closes: visit 1 archived, log not saved
+    except OSError:
+        pass
+    assert gamma_zones.load(path) == before and len(gamma_zones.read_archive(archive)) == 1
+    with archive.open("ab") as fh:                                     # plus a half-written line from the crash
+        fh.write(b'{"opened_at": "cut')
+    monkeypatch.setattr(gamma_zones, "_save", real_save)
+    state = step(6, 99_450.0)                                          # restart: the same overflow is offered again
+    rows = gamma_zones.read_archive(archive)
+    assert len(rows) == 1 and rows[0]["opened_at"] == (NOW + timedelta(minutes=1)).isoformat()   # once, not twice
+    assert len(state["visits"]) == 1 and state["visits"][0]["opened_at"] == (NOW + timedelta(minutes=4)).isoformat()
+    assert state["archived"] == 1                                      # counter follows the archive, not the crash
+    for minute, price in ((7, 99_500.0), (8, 99_150.0), (9, 99_450.0)):
+        state = step(minute, price)
+    assert [r["opened_at"][11:16] for r in gamma_zones.read_archive(archive)] == ["12:01", "12:04"]

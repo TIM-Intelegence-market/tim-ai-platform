@@ -311,12 +311,47 @@ def update(path: Path, view: Mapping[str, Any] | None, price: float | None, now:
     at = (now or datetime.now(timezone.utc)).isoformat()
     state = track(load(path), view, float(price), at)
     overflow = state["visits"][:-MAX_VISITS]
-    if overflow:                                   # retention: keep the newest in the log, the rest appended, not lost
-        archive = archive_path(path)
-        archive.parent.mkdir(parents=True, exist_ok=True)
-        with archive.open("a", encoding="utf-8") as fh:
-            for visit in overflow:
-                fh.write(json.dumps(visit, ensure_ascii=False, default=str) + "\n")
-        state = {**state, "visits": state["visits"][-MAX_VISITS:], "archived": int(state.get("archived") or 0) + len(overflow)}
+    if overflow:                                   # retention: keep the newest in the log, the rest archived, not lost
+        total = _archive(archive_path(path), overflow)
+        state = {**state, "visits": state["visits"][-MAX_VISITS:], "archived": total}
     _save(state, log_path(path))
     return state
+
+
+def _visit_id(visit: Mapping[str, Any]) -> str:
+    return f"{visit.get('opened_at')}|{visit.get('key')}|{visit.get('wall_low')}|{visit.get('closed_at')}"
+
+
+def read_archive(path: Path) -> list[dict[str, Any]]:
+    """Archived visits; a line cut by a crash is skipped, never fatal."""
+    out = []
+    if Path(path).is_file():
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict):
+                out.append(row)
+    return out
+
+
+def _archive(path: Path, visits: Sequence[Mapping[str, Any]]) -> int:
+    """Append visits not yet in the archive, then fsync; the log is saved only after this. Returns the archive size.
+
+    Crash-safe and idempotent: a crash after the append and before the log is saved leaves the overflow in the log, the
+    next step offers the same visits again and they are skipped by id; a half-written last line is cut off by a newline
+    before the next append and skipped when read."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    known = {_visit_id(v) for v in read_archive(path)}
+    new = [v for v in visits if _visit_id(v) not in known]
+    if not new:
+        return len(known)
+    with path.open("ab") as fh:
+        if fh.tell() and path.read_bytes()[-1:] != b"\n":
+            fh.write(b"\n")
+        for visit in new:
+            fh.write((json.dumps(visit, ensure_ascii=False, default=str) + "\n").encode("utf-8"))
+        fh.flush()
+        os.fsync(fh.fileno())
+    return len(known) + len(new)
