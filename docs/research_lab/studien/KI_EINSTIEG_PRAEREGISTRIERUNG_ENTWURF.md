@@ -80,6 +80,9 @@ London-Eröffnung ab 09:00 hat sie nicht mehr gesehen, weil die Zone noch 6 Stun
   die zwei größten Liquidations-Cluster je Seite innerhalb 3 %, große Orders je Seite, Premium). Alles nur aus
   Werten vor dem Schluss der Entscheidungskerze; der laufende Balken wird nicht gezeigt.
 - `zone.schluss`: Schluss der Kerze in, unter oder über der Zone (Bruch sichtbar).
+- Antwortfeld `lesart` (HAELT / BRICHT / UNKLAR) vor der Aktion; NICHTS nur bei UNKLAR oder ohne sinnvollen
+  Stop/Ziel. Grund: Nachspielen des Morgens 24.11. (09:15, 09:30, 09:45) mit dem neuen Bild ergab dreimal NICHTS,
+  zweimal mit dem eigenen Grund „klarer Bruch nach unten“. Das ist ein Nachspielen, kein Beleg.
 - Anweisung ergänzt um Sitzung (Stops über Asia-Hoch/unter Asia-Tief, Fortsetzung oder falscher Bruch) und Smart
   Money (Spot vs. Perp, OI mit Preis, Liquidationen, Cluster als Ziel); ein klarer Bruch in Trendrichtung zählt
   wie ein Abpraller.

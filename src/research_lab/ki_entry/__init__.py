@@ -18,3 +18,4 @@ RULE = "R-KI-1/0.2-entwurf"
 SCHEMA = "tim_ki_entry_decision/1"
 PROMPT_VERSION = "ki-einstieg/2"
 ACTIONS = ("LONG", "SHORT", "NICHTS")
+READINGS = ("HAELT", "BRICHT", "UNKLAR")   # 0.2: the AI states its reading before the action

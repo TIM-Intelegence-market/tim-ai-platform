@@ -22,7 +22,14 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from src.research_lab.ki_entry import ACTIONS, PROMPT_VERSION, RULE, SCHEMA, zones
+from src.research_lab.ki_entry import (
+    ACTIONS,
+    PROMPT_VERSION,
+    READINGS,
+    RULE,
+    SCHEMA,
+    zones,
+)
 from src.research_lab.ki_filter.decide import append_log, read_log
 
 UTC = timezone.utc
@@ -50,9 +57,10 @@ ANSWER_SCHEMA = {
     "type": "object",
     "properties": {"aktion": {"type": "string", "enum": list(ACTIONS)},
                    "einstieg": {"type": "number"}, "stop": {"type": "number"}, "ziel": {"type": "number"},
+                   "lesart": {"type": "string", "enum": list(READINGS)},
                    "vertrauen": {"type": "number", "minimum": 0, "maximum": 1},
                    "grund": {"type": "string", "maxLength": REASON_MAX}},
-    "required": ["aktion", "einstieg", "stop", "ziel", "vertrauen", "grund"],
+    "required": ["lesart", "aktion", "einstieg", "stop", "ziel", "vertrauen", "grund"],
 }
 INSTRUCTIONS = f"""Du bist ein erfahrener BTC-Orderflow-Trader (Bitunix-Perp). Der Preis ist gerade in eine starke Zone gelaufen:
 dort liegen mehrere Marken übereinander (zum Beispiel Gamma-Wand, POC, Wochen- oder Monatsmarke, meistgehandelter Preis).
@@ -66,7 +74,9 @@ Smart Money: Spot-CVD zeigt echte Käufer/Verkäufer, Perp-CVD den Hebel. Fallen
 mit fallendem OI = Longs geben auf. Große Liquidationen sind erzwungene Orders, oft das Ende eines Schubs.
 Liquidations-Cluster ziehen den Preis an (gute Ziele). Ein klarer Bruch der Zone in Trendrichtung ist genauso ein Trade wie
 ein Abpraller.
-Antworte LONG oder SHORT nur, wenn das Bild klar ist, sonst NICHTS. Bei LONG/SHORT: Einstieg als Limit nahe dem aktuellen
+Lies zuerst, dann entscheide: "lesart" ist HAELT (Zone hält, Trade weg von der Zone), BRICHT (Zone bricht, Trade in
+Bruchrichtung, Einstieg am Rücklauf an die Zone) oder UNKLAR. Bei HAELT oder BRICHT gib den passenden Trade (LONG oder
+SHORT); NICHTS nur bei UNKLAR oder wenn kein sinnvoller Stop und kein Ziel möglich ist. Bei LONG/SHORT: Einstieg als Limit nahe dem aktuellen
 Preis (höchstens {ENTRY_MAX_PCT} % entfernt), Stop hinter der Zone, Ziel an der nächsten Gegenzone, Ziel mindestens {MIN_RR}-mal
 so weit weg wie der Stop. Kosten etwa {COST_PCT} % vom Preis pro Trade. Bei NICHTS setze Einstieg, Stop und Ziel auf 0.
 Du siehst nur Daten bis jetzt. Erfinde nichts. Grund: ein bis zwei kurze Sätze auf Deutsch. Antworte nur mit JSON."""
@@ -400,7 +410,9 @@ def run(model: Mapping[str, Any], log_path: Path, ask: Callable[[str], Any], mod
         try:
             context = build_context(model, zone, now)
             prompt = build_prompt(context)
-            action, plan, confidence, reason, problem = check_answer(ask(prompt), float(candle["close"]))
+            answer = ask(prompt)
+            action, plan, confidence, reason, problem = check_answer(answer, float(candle["close"]))
+            reading = answer.get("lesart") if answer.get("lesart") in READINGS else None
         except Exception as error:  # noqa: BLE001 - data, AI or answer unusable: nothing written, next run retries
             summary["failed"] = type(error).__name__
         else:
@@ -411,10 +423,10 @@ def run(model: Mapping[str, Any], log_path: Path, ask: Callable[[str], Any], mod
                 "decided_at": stamp, "price": float(candle["close"]), "zone_key": zone_key(zone),
                 "zone": {k: zone[k] for k in ("low", "high", "strength", "sources", "rejections")},
                 "action": "UNGUELTIG" if problem else action, "answer_action": action, "problem": problem, "plan": plan,
-                "confidence": round(confidence, 3), "reason": reason, "context_hash": hashlib.sha256(prompt.encode()).hexdigest(),
+                "reading": reading, "confidence": round(confidence, 3), "reason": reason, "context_hash": hashlib.sha256(prompt.encode()).hexdigest(),
                 "context": context, "rules": list(PLAN_RULES) + list(zones.ZONE_RULES), "written_at": _iso(now),
             }, records)
-            summary["decision"] = {k: record[k] for k in ("id", "action", "price", "plan", "reason", "problem")}
+            summary["decision"] = {k: record[k] for k in ("id", "action", "reading", "price", "plan", "reason", "problem")}
     if records:
         summary["head"] = {"count": len(records), "hash": records[-1]["hash"]}
     return summary
@@ -433,6 +445,6 @@ def report(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             "no_data": sum(1 for r in results.values() if r["outcome"] == "Daten fehlen"),
             "sum_r": round(sum(rs), 3), "mean_r": round(sum(rs) / len(rs), 3) if rs else None,
             "wins": sum(1 for r in rs if r > 0),
-            "last": [{"zeit": _local(float(d["candle_epoch"])), "aktion": d["action"], "preis": d["price"], "plan": d.get("plan"),
+            "last": [{"zeit": _local(float(d["candle_epoch"])), "aktion": d["action"], "lesart": d.get("reading"), "preis": d["price"], "plan": d.get("plan"),
                       "grund": d.get("reason"), "problem": d.get("problem"), "ergebnis": results.get(d["id"], {}).get("outcome"),
                       "r": results.get(d["id"], {}).get("r")} for d in decisions[-10:]]}

@@ -287,7 +287,8 @@ def test_context_shows_london_selloff_and_smart_money():
     assert sm["oi_aenderung_pct"]["1h"] == 0.99 and sm["liquidiert_3h_mio_usd"]["long"] == 2.0
     assert sm["liq_cluster_darunter"] == [{"preis": 59500.0, "mio_usd": 30.0}]
     assert sm["liq_cluster_darueber"] == [{"preis": 61000.0, "mio_usd": 20.0}]   # 70k is more than 3 % away
-    assert "Asia-Tief" in decide.build_prompt(ctx) and "Smart Money" in decide.INSTRUCTIONS
+    assert "Asia-Tief" in decide.build_prompt(ctx) and "Smart Money" in decide.INSTRUCTIONS and "BRICHT" in decide.INSTRUCTIONS
+    assert decide.ANSWER_SCHEMA["properties"]["lesart"]["enum"] == ["HAELT", "BRICHT", "UNKLAR"]
 
 
 def test_new_session_asks_again_at_the_same_zone(tmp_path: Path):
@@ -301,7 +302,7 @@ def test_new_session_asks_again_at_the_same_zone(tmp_path: Path):
     cs.append({"time": day + 31 * 900, "open": 60100, "high": 60120, "low": 60010, "close": 60050, "volume": 100.0, "closed": True})  # still Asia
     assert decide.run(model(cs), log, nothing, "test", now=cs[-1]["time"] + 960)["waiting"] == "Zone kürzlich gefragt"
     cs.append({"time": day + 32 * 900, "open": 60050, "high": 60080, "low": 59990, "close": 60000, "volume": 100.0, "closed": True})  # 08:00 UTC London
-    out = decide.run(model(cs), log, nothing, "test", now=cs[-1]["time"] + 960)
-    assert out["decision"]["action"] == "NICHTS"
+    out = decide.run(model(cs), log, lambda p: {**nothing(p), "lesart": "UNKLAR"}, "test", now=cs[-1]["time"] + 960)
+    assert out["decision"]["action"] == "NICHTS" and out["decision"]["reading"] == "UNKLAR"
     rep = decide.report(read_log(log))
     assert rep["by_prompt"] == {"ki-einstieg/2": 2} and rep["rule"] == "R-KI-1/0.2-entwurf"
