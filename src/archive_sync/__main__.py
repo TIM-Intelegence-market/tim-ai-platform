@@ -53,7 +53,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
 
         if args.command == "cold-init":
             store = cold_store.ColdStore.init(args.root, limit_bytes=int(args.limit_gib * 1024**3),
-                                              volume_mount=args.volume, parent=args.parent)
+                                              volume_mount=args.volume, parent=args.parent, image=args.image)
             return {"root": str(store.root), "limit_bytes": store.limit_bytes, "initialised": True,
                     "volume": store.volume}
         store = cold_store.ColdStore(args.root)
@@ -123,6 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
     cold.add_argument("--limit-gib", type=float, default=100.0, help="hard budget in GiB (1 GiB = 1024^3 bytes)")
     cold.add_argument("--volume", help="mounted file system the store is bound to (checked before every write)")
     cold.add_argument("--parent", help="parent file system that must keep 15%% free")
+    cold.add_argument("--image", help="image file behind the volume; must stay fully allocated (not sparse)")
     cold = sub.add_parser("cold-ingest", help="verify batch files and store them, stop at the budget")
     cold.add_argument("--root", required=True)
     cold.add_argument("--unbound-ok", action="store_true", help=argparse.SUPPRESS)

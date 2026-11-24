@@ -428,3 +428,21 @@ def test_backup_and_restore_through_two_migrations_is_bit_identical(tmp_path):
     assert all(sha256_file(restored.root / p) == h for p, h in original.items())
     # A restored store accepts the same inbox as ALREADY: no duplicates after a restore.
     assert restored.ingest_directory(tmp_path / "in", symbol=SYMBOL)["summary"] == {"ALREADY": 2}
+
+
+def test_sparse_volume_image_stops_every_write(tmp_path):
+    volume = tmp_path / "vol"
+    volume.mkdir()
+    image = tmp_path / "archive.img"
+    with image.open("wb") as handle:
+        handle.write(b"\0" * 65536)
+        handle.flush()
+        os.fsync(handle.fileno())
+    mounts = FakeMounts(volume)
+    s = cold_store.ColdStore.init(volume / "store", volume_mount=volume, image=image, is_mount=mounts, usage=ROOMY)
+    assert s.check_volume()["bound"] is True
+    with image.open("r+b") as handle:  # make the file sparse, as a trim of the loop file system would
+        handle.truncate(64 * 1024 * 1024)
+    make_batch(tmp_path / "in", 1, 100)
+    with pytest.raises(ArchiveSyncError, match="sparse"):
+        s.ingest_directory(tmp_path / "in", symbol=SYMBOL)

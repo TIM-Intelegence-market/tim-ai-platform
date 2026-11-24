@@ -179,6 +179,14 @@ class ColdStore:
             raise ArchiveSyncError("store root lies outside its volume") from None
         if os.stat(self.root).st_dev != os.stat(mount).st_dev:
             raise ArchiveSyncError("store root is not on the bound volume; nothing written")
+        image = self.volume.get("image")
+        if image:
+            try:
+                info = os.stat(image)
+            except OSError:
+                raise ArchiveSyncError("volume image file not reachable; nothing written") from None
+            if info.st_blocks * 512 < info.st_size:
+                raise ArchiveSyncError("volume image is no longer fully allocated (sparse); nothing written")
         parent = self.volume.get("parent")
         if parent:
             gate = disk_gate(parent, 0, min_free_ratio=PARENT_MIN_FREE_RATIO, usage=self._usage)
@@ -201,7 +209,8 @@ class ColdStore:
 
     @classmethod
     def init(cls, root: str | Path, *, limit_bytes: int = DEFAULT_LIMIT_BYTES, volume_mount: str | Path | None = None,
-             parent: str | Path | None = None, is_mount: MountCheck = os.path.ismount, **kwargs: Any) -> "ColdStore":
+             parent: str | Path | None = None, image: str | Path | None = None,
+             is_mount: MountCheck = os.path.ismount, **kwargs: Any) -> "ColdStore":
         root = Path(os.path.abspath(root))
         if limit_bytes <= 0:
             raise ArchiveSyncError("limit must be positive")
@@ -232,7 +241,8 @@ class ColdStore:
                     handle.write(volume_id + "\n")
                 os.chmod(marker, 0o444)
             volume = {"mount": str(mount), "volume_id": volume_id,
-                      "parent": str(os.path.abspath(parent)) if parent else None}
+                      "parent": str(os.path.abspath(parent)) if parent else None,
+                      "image": str(os.path.abspath(image)) if image else None}
         root.mkdir(parents=True, exist_ok=True)
         if any(p.name not in (STORE_FILE,) for p in root.iterdir()):
             raise ArchiveSyncError(f"{root} is not empty; a cold store needs its own directory")
