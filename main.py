@@ -650,12 +650,10 @@ class TIMApplication:
                 await asyncio.to_thread(plan_opinion.update, state.plan_opinion_path,
                                         (state.plan_journal_short_path, state.plan_journal_mid_path), lage or None,
                                         symbol=settings.symbol)
-                try:  # XMR Zweitmeinung (Paket 3, 24.11.2026): own file, XMR Lage only; never blocks the BTC steps
+                try:  # XMR Zweitmeinung (Paket 3, 24.11.2026): own file, XMR Lage at plan time only; never blocks the BTC steps
                     from src.dashboard import xmr_shadows
 
-                    with state.lock:
-                        xmr_lage = dict(state.orderflow_live_xmr or {})
-                    await asyncio.to_thread(xmr_shadows.update_opinion, xmr_lage or None)
+                    await asyncio.to_thread(xmr_shadows.update_opinion, lage_at=self.xmr_live.lage_at)
                 except asyncio.CancelledError:
                     raise
                 except Exception as error:  # noqa: BLE001
@@ -944,7 +942,8 @@ class TIMApplication:
                 with self.dashboard_state.lock:
                     xmr_lage = dict(self.dashboard_state.orderflow_live_xmr or {})
                     xmr_store = (self.dashboard_state.perp_flows or {}).get(XMR)
-                status = await asyncio.to_thread(xmr_shadows.update, xmr_series, xmr_lage or None, xmr_store)
+                status = await asyncio.to_thread(xmr_shadows.update, xmr_series, xmr_lage or None, xmr_store,
+                                                 lage_at=self.xmr_live.lage_at)
                 for name in ("orderflow", "verdict"):
                     if "error" in status.get(name, {}):
                         log.warning("xmr %s shadow failed: %s", name, status[name]["error"])

@@ -97,8 +97,13 @@ def summary(state: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | None, now: datetime | None = None,
-           ask: Ask | None = None, symbol: str = "BTCUSDT", max_calls: int = 1) -> dict[str, Any]:
-    """One step: note new plans with the Lage of this moment, ask for at most ``max_calls`` opinions, follow the results."""
+           ask: Ask | None = None, symbol: str = "BTCUSDT", max_calls: int = 1,
+           lage_at: Callable[[datetime], Mapping[str, Any] | None] | None = None) -> dict[str, Any]:
+    """One step: note new plans with the Lage of this moment, ask for at most ``max_calls`` opinions, follow the results.
+
+    ``lage_at`` (optional): the new plan gets ``lage_at(created_at)`` (point in time, None when there is none)
+    instead of the Lage of this step. Without it (BTC, unchanged) as before.
+    """
     from src.dashboard.plan_journal import load_view
 
     now = now or datetime.now(timezone.utc)
@@ -118,7 +123,8 @@ def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | 
             record = plans.setdefault(str(entry["id"]), {
                 "id": entry["id"], "journal_file": Path(journal_path).name, "timeframe": entry.get("timeframe"),
                 "direction": entry.get("direction"), "created_at": entry["created_at"], "entry": entry.get("entry"),
-                "stop": entry.get("stop"), "targets": list(entry.get("targets") or [])[:3], "lage_at_plan": view, "attempts": 0})
+                "stop": entry.get("stop"), "targets": list(entry.get("targets") or [])[:3],
+                "lage_at_plan": lage_view(lage_at(_time(entry["created_at"]))) if lage_at is not None else view, "attempts": 0})
             record["journal"] = {"status": entry.get("status"), "filled_at": entry.get("filled_at"), "closed_at": entry.get("closed_at"),
                                  "exit_reason": entry.get("exit_reason"), "net_r": entry.get("net_r")}
     calls = 0

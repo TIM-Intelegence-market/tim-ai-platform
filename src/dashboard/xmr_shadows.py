@@ -9,13 +9,16 @@ For BTC, every 15m/1h plan is also read by three shadows that never change a pla
 This module runs the same three functions on the XMR journals (``perp_journal.XMR_PATHS``) with the XMR perp
 candles, the XMR perp trades and the XMR Live-Orderflow-Lage (``src.orderflow.xmr_live``). Own files (``PATHS``),
 so a BTC shadow file is never read or written here. A Lage of another symbol is dropped (``xmr_live.for_symbol``):
-an XMR plan never gets BTC's wave. Paper only: nothing here filters, changes a plan or trades.
+an XMR plan never gets BTC's wave. Point in time (Codex review PR #369): the plan and fill Lage come from
+``lage_at`` (``XmrOrderflowLive.lage_at``), a Lage taken at or before that moment, never this step's later Lage.
+Paper only: nothing here filters, changes a plan or trades.
 """
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from src.orderflow.xmr_live import SYMBOL, for_symbol
 
@@ -27,7 +30,8 @@ PATHS = {
 
 
 def _journals(journal_paths: Mapping[str, Path] | None) -> tuple[Path, ...]:
-    from src.dashboard.perp_journal import PATHS as BTC_PERP_PATHS, XMR_PATHS
+    from src.dashboard.perp_journal import PATHS as BTC_PERP_PATHS
+    from src.dashboard.perp_journal import XMR_PATHS
 
     paths = tuple(Path(p) for p in (journal_paths or XMR_PATHS).values())
     if set(paths) & set(BTC_PERP_PATHS.values()):
@@ -48,14 +52,19 @@ def _own(paths: Mapping[str, Path] | None) -> dict[str, Path]:
 
 def update(series: Mapping[str, Sequence[Mapping[str, Any]]], lage: Mapping[str, Any] | None, store: Mapping[str, Any] | None,
            now: datetime | None = None, journal_paths: Mapping[str, Path] | None = None,
-           paths: Mapping[str, Path] | None = None) -> dict[str, Any]:
-    """Orderflow-Schatten and Chart-Urteil for the XMR plans. Each runs on its own: one failing leaves the other."""
+           paths: Mapping[str, Path] | None = None,
+           lage_at: Callable[[datetime], Mapping[str, Any] | None] | None = None) -> dict[str, Any]:
+    """Orderflow-Schatten and Chart-Urteil for the XMR plans. Each runs on its own: one failing leaves the other.
+
+    ``lage_at`` gives the XMR Lage known at a moment; without one no plan or fill gets a Lage (UNKNOWN), so the
+    current Lage never stands in for an earlier moment. The current Lage only drives the orderflow exit, now.
+    """
     from src.dashboard import chart_verdict, orderflow_shadow
 
-    journals, own, xmr_lage = _journals(journal_paths), _own(paths), for_symbol(lage)
+    journals, own, xmr_lage, at = _journals(journal_paths), _own(paths), for_symbol(lage), _point_in_time(lage_at)
     status: dict[str, Any] = {"lage": bool(xmr_lage)}
-    for name, step in (("orderflow", lambda: orderflow_shadow.update(own["orderflow"], journals, xmr_lage, now, series=series)),
-                       ("verdict", lambda: chart_verdict.update(own["verdict"], journals, series, xmr_lage, now, trades=store or None))):
+    for name, step in (("orderflow", lambda: orderflow_shadow.update(own["orderflow"], journals, xmr_lage, now, series=series, lage_at=at)),
+                       ("verdict", lambda: chart_verdict.update(own["verdict"], journals, series, None, now, trades=store or None, lage_at=at))):
         try:
             result = step()
             status[name] = {"plans": len(result.get("plans") or {})}
@@ -64,12 +73,24 @@ def update(series: Mapping[str, Sequence[Mapping[str, Any]]], lage: Mapping[str,
     return status
 
 
-def update_opinion(lage: Mapping[str, Any] | None, now: datetime | None = None, ask: Any = None,
-                   journal_paths: Mapping[str, Path] | None = None, paths: Mapping[str, Path] | None = None) -> dict[str, Any]:
-    """Zweitmeinung for new XMR plans (at most one Hermes call per step, as for BTC), symbol XMRUSDT in the prompt."""
+def update_opinion(now: datetime | None = None, ask: Any = None,
+                   journal_paths: Mapping[str, Path] | None = None, paths: Mapping[str, Path] | None = None,
+                   lage_at: Callable[[datetime], Mapping[str, Any] | None] | None = None) -> dict[str, Any]:
+    """Zweitmeinung for new XMR plans (at most one Hermes call per step, as for BTC), symbol XMRUSDT in the prompt.
+
+    The plan's Lage is ``lage_at(created_at)`` (point in time), never the Lage of this later step.
+    """
     from src.dashboard import plan_opinion
 
-    return plan_opinion.update(_own(paths)["opinion"], _journals(journal_paths), for_symbol(lage), now, ask=ask, symbol=SYMBOL)
+    return plan_opinion.update(_own(paths)["opinion"], _journals(journal_paths), None, now, ask=ask, symbol=SYMBOL,
+                               lage_at=_point_in_time(lage_at))
+
+
+def _point_in_time(lage_at: Callable[[datetime], Mapping[str, Any] | None] | None) -> Callable[[datetime], dict[str, Any] | None]:
+    """``lage_at`` limited to XMR Lagen; without a source every moment is UNKNOWN (None)."""
+    if lage_at is None:
+        return lambda moment: None
+    return lambda moment: for_symbol(lage_at(moment))
 
 
 def counts(paths: Mapping[str, Path] | None = None) -> dict[str, int | None]:
