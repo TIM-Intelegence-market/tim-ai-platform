@@ -71,6 +71,10 @@ _VOLUME_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 _HALT_ERRNOS = {errno.ENOSPC, errno.EROFS, errno.EDQUOT, errno.EIO}
 
 
+class SourceChanged(ArchiveSyncError):
+    """The source changed or grew after its check; nothing was published for it."""
+
+
 # ---------------------------------------------------------------------- safe file system access
 def _safe_name(name: str) -> str:
     """A plain file name: no separator, no '..', not hidden, not one of our temporary names."""
@@ -226,7 +230,7 @@ def _write_new(dir_fd: int, name: str, chunks: Iterable[bytes], expected_sha256:
             for chunk in chunks:
                 written += len(chunk)
                 if max_bytes is not None and written > max_bytes:  # a growing source never fills the disk
-                    raise ArchiveSyncError(f"{name}: source is larger than declared ({max_bytes} bytes); refused")
+                    raise SourceChanged(f"{name}: source is larger than declared ({max_bytes} bytes); refused")
                 handle.write(chunk)
             handle.flush()
             os.fsync(handle.fileno())
@@ -237,7 +241,7 @@ def _write_new(dir_fd: int, name: str, chunks: Iterable[bytes], expected_sha256:
             size = handle.tell()
             os.fchmod(handle.fileno(), mode)
         if digest.hexdigest() != expected_sha256:
-            raise ArchiveSyncError(f"{name}: sha256 changed while copying")
+            raise SourceChanged(f"{name}: sha256 changed while copying")
         try:
             os.link(temp, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd, follow_symlinks=False)
         except FileExistsError:
@@ -669,9 +673,7 @@ class ColdStore:
                     self.check_volume()
                     try:
                         _copy_verified(inbox / stored_name, target_dir / stored_name, sha, data=data, size=size)
-                    except ArchiveSyncError as error:
-                        if "larger than declared" not in str(error) and "sha256 changed" not in str(error):
-                            raise
+                    except SourceChanged as error:
                         problem = str(error)  # the source changed after its check; nothing was published
                         break
                 self._append({
