@@ -38,7 +38,7 @@ from datetime import datetime, timedelta, timezone
 from threading import Lock
 from typing import Any
 
-from src.orderflow.pit_contract import RevisionLog
+from src.orderflow.pit_contract import RevisionLog, bucket_size
 
 PIT_VERSION = "pit/1"
 MAX_AGE = timedelta(minutes=3)  # the Lage refreshes every 10 s and consumers run every minute: 3 min is ample
@@ -164,7 +164,9 @@ def store_until(store: Mapping[str, Any] | None, target: Any) -> dict[str, Any] 
     moment = _time(target)
     if not store or moment is None:
         return None
-    bucket = int(store.get("bucket_seconds") or 300)
+    bucket, _ = bucket_size(store)   # no assumed width (F1): without it nothing can be called closed
+    if bucket is None:
+        return None
     limit = moment.timestamp()
     days = {}
     for key, rows in (store.get("days") or {}).items():
@@ -219,7 +221,9 @@ def store_known_at(store: Mapping[str, Any] | None, symbol: str, target: Any) ->
         flags = dict(_COMPLETE.get(symbol.upper()) or {})
     if log is None:
         return None
-    bucket = int(store.get("bucket_seconds") or 300)
+    bucket, _ = bucket_size(store)
+    if bucket is None:
+        return None
     days, counts = log.rows_at(moment, bucket)
     written = _time(store.get("updated_at"))
     plain = store_until(store, moment) if written is not None and written <= moment else None
