@@ -169,4 +169,78 @@ def test_levels_keep_unknown_out_of_bid_ask_and_delta():
     state = tracker.snapshot(T0 + timedelta(seconds=10), [{"name": "L", "price": 75000.0}])
     row = state["levels"][0]
     assert (row["bid"], row["ask"], row["unknown"], row["delta"]) == (0.0, 1.0, 3.0, 1.0)
-    assert state["schema"] == "orderflow-lage/2"
+    assert state["schema"] == "orderflow-lage/3"  # 2 from Paket B, 3 from Paket A
+
+
+# Paket A (#372): point-in-time. A snapshot at t sees only trades with event time and availability <= t.
+def _stream(n: int = 40) -> list[Trade]:
+    """One trade every 30 s for 20 minutes, alternating sides, rising price, ids 1..n."""
+    return [trade(i * 30, 75000 + i, 0.1 + (i % 3) * 0.05, i % 2 == 0, i + 1) for i in range(n)]
+
+
+def test_future_trade_does_not_change_an_earlier_snapshot():
+    base = _stream(20)
+    clean = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    clean.ingest(base)
+    at = T0 + timedelta(seconds=19 * 30 + 5)
+    expected = clean.snapshot(at)
+    leaked = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    leaked.ingest(base + [trade(19 * 30 + 35, 76000, 2.0, True, 99)])  # 30 s after the snapshot moment
+    state = leaked.snapshot(at)
+    assert state["snapshot_hash"] == expected["snapshot_hash"]
+    assert state["windows"] == expected["windows"] and state["price"] == expected["price"] and state["day"] == expected["day"]
+    assert state["future_trades"] == 1 and state["stale"] is False and state["last_trade_at"] == expected["last_trade_at"]
+
+
+def test_codex_reproduction_future_trade_is_not_counted():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker.ingest([trade(30, 75000, 2.0, True, 1)])
+    state = tracker.snapshot(T0)
+    assert state["windows"]["1m"]["delta"] == 0 and state["price"] is None and state["stale"] is True
+    assert state["future_trades"] == 1
+
+
+def test_trade_is_invisible_before_it_was_available():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker.ingest([trade(0, 75000, 1.0, True, 1)], available_at=T0 + timedelta(seconds=20))
+    assert tracker.snapshot(T0 + timedelta(seconds=10))["windows"]["1m"]["trades"] == 0
+    assert tracker.snapshot(T0 + timedelta(seconds=25))["windows"]["1m"]["trades"] == 1
+
+
+def test_late_trade_is_counted_not_inserted_back_in_time():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker.ingest([trade(60, 75000, 1.0, True, 2)])
+    tracker.ingest([trade(30, 75000, 5.0, True, 3)])
+    state = tracker.snapshot(T0 + timedelta(seconds=90))
+    assert state["late_dropped"] == 1 and state["windows"]["5m"]["volume"] == pytest.approx(1.0)
+
+
+def test_replay_in_chunks_equals_all_at_once_at_every_step():
+    stream = _stream()
+    whole = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    whole.ingest(stream)
+    chunked = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    fed = 0
+    for step in range(1, 21):
+        now = T0 + timedelta(seconds=step * 60)
+        upto = [t for t in stream if t.event_time <= now]
+        chunked.ingest(upto[fed:], available_at=now)
+        fed = len(upto)
+        assert chunked.snapshot(now)["snapshot_hash"] == whole.snapshot(now)["snapshot_hash"], step
+
+
+def test_snapshot_time_cannot_go_backwards():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker.snapshot(T0 + timedelta(seconds=60))
+    with pytest.raises(ValueError):
+        tracker.snapshot(T0)
+
+
+def test_perp_buckets_after_now_are_ignored_and_running_bucket_dropped_for_newer_store():
+    now = T0 + timedelta(minutes=10)
+    t = int(now.timestamp())
+    rows = [[t - 600, 75000.0, 1.0, 2.0], [t - 120, 75000.0, 0.0, 1.0], [t + 300, 75000.0, 0.0, 9.0]]
+    live = ls._perp({"days": {"d": rows}, "bucket_seconds": 300, "updated_at": now.isoformat()}, t)
+    assert live["delta_15m"] == pytest.approx(2.0) and live["closed_buckets_only"] is False
+    later = ls._perp({"days": {"d": rows}, "bucket_seconds": 300, "updated_at": (now + timedelta(hours=1)).isoformat()}, t)
+    assert later["delta_15m"] == pytest.approx(1.0) and later["closed_buckets_only"] is True
