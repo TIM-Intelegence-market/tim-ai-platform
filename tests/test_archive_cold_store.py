@@ -62,7 +62,7 @@ def test_stores_original_files_bit_identical_with_a_ledger(tmp_path):
     assert len(entries) == 4 and [e["role"] for e in entries] == ["data", "manifest", "data", "manifest"]
     assert all(sha256_file(s.root / e["path"]) == e["sha256"] for e in entries)
     assert s.verify()["status"] == "OK"
-    assert not list(s.root.rglob("*.part"))
+    assert not list(s.root.rglob("*.part")) and not list(s.root.rglob(".tmp-*"))
 
 
 def test_running_twice_changes_nothing(tmp_path):
@@ -145,11 +145,11 @@ def test_crash_after_the_data_file_is_resumed_without_duplicates(tmp_path, monke
     real = cold_store._copy_verified
     calls = {"n": 0}
 
-    def dying(src, dst, sha):
+    def dying(src, dst, sha, **kw):
         calls["n"] += 1
         if calls["n"] == 2:
             raise OSError("process died before the manifest was stored")
-        return real(src, dst, sha)
+        return real(src, dst, sha, **kw)
 
     monkeypatch.setattr(cold_store, "_copy_verified", dying)
     with pytest.raises(OSError):
@@ -203,8 +203,9 @@ def test_init_refuses_a_foreign_directory_and_a_silent_limit_change(tmp_path):
 def test_module_has_no_delete_path():
     source = Path(cold_store.__file__).read_text()
     assert "rmtree" not in source and "os.remove" not in source
-    # The only unlink calls remove the module's own temporary ".part" files.
-    assert source.count(".unlink(") == source.count("part.unlink(")
+    # The only unlink removes a temporary file this process created itself (guarded by its prefix).
+    assert source.count(".unlink(") == 1 and "os.unlink(name, dir_fd=dir_fd)" in source
+    assert "os.replace" not in source and ".replace(info)" not in source and "os.rename" not in source
 
 
 def test_command_line_runs_the_whole_cycle(tmp_path, capsys):
@@ -268,8 +269,8 @@ def test_mount_disappearing_between_two_files_stops_the_next_write(tmp_path, mon
     make_batch(tmp_path / "in", 1, 100)
     real = cold_store._copy_verified
 
-    def copy_then_unmount(src, dst, sha):
-        real(src, dst, sha)
+    def copy_then_unmount(src, dst, sha, **kw):
+        real(src, dst, sha, **kw)
         mounts.mounted.clear()
 
     monkeypatch.setattr(cold_store, "_copy_verified", copy_then_unmount)
@@ -446,3 +447,192 @@ def test_sparse_volume_image_stops_every_write(tmp_path):
     make_batch(tmp_path / "in", 1, 100)
     with pytest.raises(ArchiveSyncError, match="sparse"):
         s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+
+
+# ---------------------------------------------------------------- INFRA-09 remediation: confinement
+def snapshot(folder: Path, skip=()) -> dict[str, tuple]:
+    """Every entry below folder (no links followed) with its content hash, except the skipped trees."""
+    found = {}
+    for path in sorted(folder.rglob("*")):
+        rel = str(path.relative_to(folder))
+        if any(rel == s or rel.startswith(s + "/") for s in skip):
+            continue
+        info = path.lstat()
+        body = path.read_bytes() if path.is_file() and not path.is_symlink() else None
+        found[rel] = (oct(info.st_mode), hashlib.sha256(body).hexdigest() if body is not None else None,
+                      os.readlink(path) if path.is_symlink() else None)
+    return found
+
+
+def test_planted_link_under_a_stored_name_is_a_conflict_and_the_outside_file_is_untouched(tmp_path):
+    s = store(tmp_path)
+    manifest = make_batch(tmp_path / "in", 1, 100)
+    victim = tmp_path / "victim.txt"
+    victim.write_bytes(b"precious")
+    folder = s.root / "batches" / SYMBOL
+    folder.mkdir()
+    (folder / json.loads(manifest.read_text())["file"]).symlink_to(victim)
+    report = s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    assert report["summary"] == {"CONFLICT": 1} and victim.read_bytes() == b"precious"
+    assert s.ledger() == []
+
+
+def test_symbol_directory_replaced_by_a_link_is_refused(tmp_path):
+    s = store(tmp_path)
+    make_batch(tmp_path / "in", 1, 100)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (s.root / "batches" / SYMBOL).symlink_to(outside)
+    with pytest.raises(ArchiveSyncError, match="symbolic link"):
+        s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    assert list(outside.iterdir()) == [] and s.ledger() == []
+
+
+def test_ledger_and_lock_replaced_by_links_are_refused(tmp_path):
+    s = store(tmp_path)
+    make_batch(tmp_path / "in", 1, 100)
+    victim = tmp_path / "victim.txt"
+    victim.write_bytes(b"precious, no newline at the end")
+    ledger = s.root / "LEDGER.jsonl"
+    ledger.rename(tmp_path / "ledger.saved")
+    ledger.symlink_to(victim)
+    with pytest.raises(ArchiveSyncError, match="symbolic link"):
+        s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    assert victim.read_bytes() == b"precious, no newline at the end"  # not truncated, not appended
+    ledger.unlink()
+    (tmp_path / "ledger.saved").rename(ledger)
+    lock = s.root / ".lock"
+    lock.unlink()
+    lock.symlink_to(tmp_path / "planted-lock")
+    with pytest.raises(ArchiveSyncError, match="symbolic link"):
+        s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    assert not (tmp_path / "planted-lock").exists()
+
+
+def test_ledger_path_leaving_the_store_stops_verify_and_migration(tmp_path):
+    s = store(tmp_path)
+    make_batch(tmp_path / "in", 1, 100)
+    s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    ledger = s.root / "LEDGER.jsonl"
+    entry = json.loads(ledger.read_text().splitlines()[0])
+    for evil in ("../../escape.txt", "batches/BTCUSDT/../../../escape.txt", "/etc/passwd", "STORE.json"):
+        ledger.write_text(ledger.read_text() + json.dumps({**entry, "path": evil}) + "\n")
+        with pytest.raises(ArchiveSyncError, match="outside batches"):
+            s.verify()
+        with pytest.raises(ArchiveSyncError, match="outside batches"):
+            cold_store.migrate_store(s.root, tmp_path / f"m-{len(evil)}")
+        ledger.write_text("".join(line + "\n" for line in ledger.read_text().splitlines()[:-1]))
+    assert not (tmp_path / "escape.txt").exists() and s.verify()["status"] == "OK"
+
+
+def test_manifest_with_foreign_symbol_or_unsafe_file_name_is_invalid(tmp_path):
+    s = store(tmp_path)
+    manifest = make_batch(tmp_path / "in", 1, 100)
+    body = json.loads(manifest.read_text())
+    for change, reason in (({"symbol": "ETHUSDT"}, "symbol"), ({"file": ".hidden.csv.gz"}, "file name"),
+                           ({"file": "../x.csv.gz"}, "file name")):
+        manifest.write_text(json.dumps({**body, **change}))
+        report = s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+        assert report["summary"] == {"FILE_INVALID": 1} and reason in report["results"][0]["reason"]
+    assert s.ledger() == [] and not list((s.root / "batches").rglob("*.gz"))
+
+
+def test_fifo_in_the_inbox_does_not_hang_and_is_invalid(tmp_path):
+    s = store(tmp_path)
+    manifest = make_batch(tmp_path / "in", 1, 100)
+    data = tmp_path / "in" / json.loads(manifest.read_text())["file"]
+    data.unlink()
+    os.mkfifo(data)
+    report = s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    assert report["summary"] == {"FILE_INVALID": 1}
+
+
+def test_manifest_changed_after_the_check_stores_the_checked_bytes(tmp_path, monkeypatch):
+    s = store(tmp_path)
+    manifest = make_batch(tmp_path / "in", 1, 100)
+    checked = manifest.read_bytes()
+    real = cold_store._check_batch
+
+    def swap_after_reading(path, parsed=None, symbol=None):
+        result = real(path, parsed, symbol)
+        path.write_bytes(checked.replace(b'"kind": "new"', b'"kind": "new", "x": 1'))
+        return result
+
+    monkeypatch.setattr(cold_store, "_check_batch", swap_after_reading)
+    assert s.ingest_directory(tmp_path / "in", symbol=SYMBOL)["summary"] == {"STORED": 1}
+    assert (s.root / "batches" / SYMBOL / manifest.name).read_bytes() == checked
+
+
+def test_data_changed_after_the_check_is_refused_without_leftovers(tmp_path, monkeypatch):
+    s = store(tmp_path)
+    manifest = make_batch(tmp_path / "in", 1, 100)
+    data = tmp_path / "in" / json.loads(manifest.read_text())["file"]
+    real = cold_store._check_batch
+
+    def swap_after_check(path, parsed=None, symbol=None):
+        result = real(path, parsed, symbol)
+        data.write_bytes(gzip.compress(b"forged\n", mtime=0))
+        return result
+
+    monkeypatch.setattr(cold_store, "_check_batch", swap_after_check)
+    with pytest.raises(ArchiveSyncError, match="sha256 changed"):
+        s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    assert list((s.root / "batches" / SYMBOL).iterdir()) == [] and s.ledger() == []
+
+
+def test_verify_reports_extra_hard_links_and_left_over_temporary_files(tmp_path):
+    s = store(tmp_path)
+    make_batch(tmp_path / "in", 1, 100)
+    s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+    stored = s.root / s.ledger()[0]["path"]
+    os.link(stored, tmp_path / "second-name")
+    (stored.parent / ".tmp-0123").write_bytes(b"x" * 10)
+    problems = s.verify()["problems"]
+    assert any(p.startswith("extra hard link") for p in problems)
+    assert any(p.startswith("left-over temporary file") for p in problems)
+    assert s.used_bytes() >= sum(e["bytes"] for e in s.ledger()) + 10
+
+
+def test_planted_volume_marker_link_is_refused(tmp_path):
+    volume = tmp_path / "vol"
+    volume.mkdir()
+    victim = tmp_path / "victim.txt"
+    (volume / cold_store.VOLUME_MARKER).symlink_to(victim)
+    with pytest.raises(ArchiveSyncError, match="symbolic link"):
+        cold_store.ColdStore.init(volume / "store", volume_mount=volume, is_mount=FakeMounts(volume), usage=ROOMY)
+    assert not victim.exists()
+
+
+def test_full_cycle_writes_nothing_outside_the_store_and_the_migration_target(tmp_path):
+    s, volume, mounts = bound(tmp_path)
+    for lo in range(1, 501, 100):
+        make_batch(tmp_path / "in", lo, lo + 99)
+    before = snapshot(tmp_path, skip=("vol/store", "copy"))
+    assert s.ingest_directory(tmp_path / "in", symbol=SYMBOL)["summary"] == {"STORED": 5}
+    assert s.verify()["status"] == "OK"
+    assert cold_store.migrate_store(s.root, tmp_path / "copy", source_is_mount=mounts)["status"] == "OK"
+    assert snapshot(tmp_path, skip=("vol/store", "copy")) == before
+
+
+@pytest.mark.parametrize("seed", range(25))
+def test_random_runs_keep_the_budget_and_integrity_invariants(tmp_path, seed):
+    import random
+
+    rng = random.Random(seed)
+    sizes = [rng.randint(20, 400) for _ in range(rng.randint(3, 9))]
+    lo = 1
+    for size in sizes:
+        make_batch(tmp_path / "in", lo, lo + size - 1, holes=[(lo + 5, lo + 7)] if rng.random() < 0.3 else ())
+        lo += size
+    one = sum(p.stat().st_size for p in (tmp_path / "in").iterdir()) / len(sizes)
+    limit = int(one * rng.uniform(0.5, len(sizes) + 1))
+    s = store(tmp_path, limit=limit)
+    for _ in range(rng.randint(1, 4)):  # repeated runs, as after restarts
+        report = s.ingest_directory(tmp_path / "in", symbol=SYMBOL)
+        assert report["used_bytes"] <= limit
+        assert set(report["summary"]) <= {"STORED", "ALREADY", "BUDGET_STOP", "NOT_TRIED"}
+    paths = [e["path"] for e in s.ledger()]
+    assert len(paths) == len(set(paths)) and len(paths) % 2 == 0
+    assert s.used_bytes() <= limit and s.verify()["status"] == "OK"
+    for entry in s.ledger():  # every stored file equals its original byte for byte
+        assert (s.root / entry["path"]).read_bytes() == (tmp_path / "in" / Path(entry["path"]).name).read_bytes()
