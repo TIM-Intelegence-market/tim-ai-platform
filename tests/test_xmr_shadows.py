@@ -138,3 +138,19 @@ def test_opinion_asks_with_the_xmr_symbol(tmp_path: Path) -> None:
                                        ask=ask, journal_paths=journals, paths=own)
     assert prompts and "XMRUSDT" in prompts[0] and "BTCUSDT" not in prompts[0]
     assert any(p.get("opinion") for p in state["plans"].values())
+
+
+def test_run_attaches_the_reader_to_xmr_only(tmp_path: Path) -> None:
+    import asyncio
+    import threading
+
+    flows = [perp_flow.PerpFlow(tmp_path / s, fetch=lambda *_: [], clock=lambda: NOW.timestamp(), symbol=s) for s in ("BTCUSDT", "XMRUSDT")]
+    reader = lambda symbol, rows: None  # noqa: E731
+
+    class State:
+        lock = threading.Lock()
+
+    stop = asyncio.Event()
+    stop.set()  # attach, then end at once
+    asyncio.run(perp_flow.run(State(), stop, flows=flows, listeners={"XMRUSDT": reader}))
+    assert flows[0].listeners == [] and flows[1].listeners == [reader]

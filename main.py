@@ -779,6 +779,8 @@ class TIMApplication:
             except asyncio.CancelledError:
                 raise
             except Exception as error:  # noqa: BLE001 - a description must not stop the runtime
+                with self.dashboard_state.lock:  # never leave an old XMR Lage behind as if it were current
+                    self.dashboard_state.orderflow_live_xmr = {}
                 log.warning("xmr orderflow live state failed: %s: %s", type(error).__name__, error)
             try:
                 await asyncio.wait_for(self.worker_stop.wait(), timeout=ORDERFLOW_LIVE_INTERVAL_SECONDS)
