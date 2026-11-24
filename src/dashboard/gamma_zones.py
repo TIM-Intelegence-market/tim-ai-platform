@@ -36,8 +36,11 @@ from src.research_lab.orderbook import walls as wall_rules
 
 # 1.1 (22.11.2026): every standing wall counts, not only the 5 largest per side.
 # 1.2 (24.11.2026): zones only when the gamma snapshot is fresh too (no old, missing or future ``as_of``) and the book
-# time is not in the future. Visits of 1.2 carry ``ruleset``; older visits stay in the log untouched and are counted
-# apart (``summary``), never mixed into the 1.2 count.
+# time is not in the future. Point in time: a source time after now (even by a second) is not yet available, so no
+# zone; a skew beyond ``FUTURE_SKEW`` is flagged apart as a probable clock error (diagnosis only, not a gate).
+# Rollback-safe: 1.2 writes its own file (``log_path``), the 1.1 log stays byte for byte as it was, so a revert to 1.1
+# sees only 1.1 visits and a return to 1.2 continues its own file. Visits beyond ``MAX_VISITS`` go to an archive
+# file next to it (append only), never lost.
 RULESET = "gamma-orderbuch/1.2"
 SCHEMA = "tim_gamma_zone_watch/1"
 LEVEL_KEYS = ("flip", "call_wall", "put_wall", "oi_call", "oi_put")  # expected move and max pain are no gamma levels
@@ -45,7 +48,7 @@ TOLERANCE_PCT = 0.003   # wall within 0.3 % of the gamma level
 PAD_PCT = 0.001         # a visit ends when the price is 0.1 % outside the zone
 STALE_AFTER = timedelta(minutes=10)  # walls older than this are not drawn (recorder or reader stands still)
 GAMMA_STALE_AFTER = gamma_data.STALE_AFTER  # gamma snapshot older than this: no zones (same limit as the gamma lines)
-FUTURE_SKEW = timedelta(seconds=60)  # a source time more than this ahead of now is a clock or data error
+FUTURE_SKEW = timedelta(seconds=60)  # diagnosis: a source time more than this ahead of now is a clock error
 # Statuses with a fresh book: the price is known, so the runtime may advance the shadow log (open visits close by
 # price). Only "OK" ever opens a visit (``track``).
 WATCH_STATUSES = ("OK", "NO_GAMMA", "STALE_GAMMA", "FUTURE_GAMMA")
@@ -107,15 +110,16 @@ def _parse_time(value: Any) -> datetime | None:
 
 def gamma_check(gamma: Mapping[str, Any] | None, now: datetime) -> tuple[str, str | None, dict[str, Any]]:
     """Status of the gamma snapshot for the zones: OK, NO_GAMMA, STALE_GAMMA or FUTURE_GAMMA, a note and its times."""
-    times: dict[str, Any] = {"gamma_as_of": None, "gamma_age_seconds": None}
+    times: dict[str, Any] = {"gamma_as_of": None, "gamma_age_seconds": None, "gamma_clock_skew_suspect": False}
     if not gamma or not gamma.get("levels"):
         return "NO_GAMMA", "kein Gamma-Stand", times
     moment = _parse_time(gamma.get("as_of"))
     if moment is None:
         return "NO_GAMMA", "Gamma-Stand ohne gültige Zeit, Zonen ausgeblendet", times
     age = now - moment
-    times = {"gamma_as_of": moment.isoformat(), "gamma_age_seconds": int(age.total_seconds())}
-    if age < -FUTURE_SKEW:
+    times = {"gamma_as_of": moment.isoformat(), "gamma_age_seconds": int(age.total_seconds()),
+             "gamma_clock_skew_suspect": age < -FUTURE_SKEW}
+    if age < timedelta(0):                       # not yet available at ``now``: never a zone, whatever the cause
         return "FUTURE_GAMMA", "Gamma-Stand liegt in der Zukunft, Zonen ausgeblendet", times
     if age > GAMMA_STALE_AFTER:
         return "STALE_GAMMA", "Gamma-Stand ist alt, Zonen ausgeblendet", times
@@ -132,13 +136,14 @@ def build(gamma: Mapping[str, Any] | None, walls_view: Mapping[str, Any] | None,
     gamma_status, gamma_note, gamma_times = gamma_check(gamma, now)
     out: dict[str, Any] = {"ruleset": RULESET, "walls_ruleset": wall_rules.RULESET, "as_of": now.isoformat(),
                            "status": "OK", "note": None, "walls": [], "zones": [], "mid": None,
-                           "walls_as_of": None, **gamma_times}
+                           "walls_as_of": None, "walls_clock_skew_suspect": False, **gamma_times}
     if not walls_view or walls_view.get("last_event_ms") is None:
         return {**out, "status": "MISSING", "note": "kein Orderbuch-Archiv gefunden oder noch kein Stand"}
     out["mid"] = walls_view.get("mid")
     walls_at = datetime.fromtimestamp(walls_view["last_event_ms"] / 1000, timezone.utc)
     out["walls_as_of"] = walls_at.isoformat()
-    if walls_at - now > FUTURE_SKEW:
+    out["walls_clock_skew_suspect"] = walls_at - now > FUTURE_SKEW
+    if walls_at > now:
         return {**out, "status": "FUTURE_BOOK", "note": "Orderbuch-Zeit liegt in der Zukunft, Zonen ausgeblendet"}
     if not walls_view.get("caught_up"):
         return {**out, "status": "CATCHING_UP", "note": "Orderbuch-Archiv wird noch eingelesen"}
@@ -212,8 +217,20 @@ def chart_drawings(view: Mapping[str, Any] | None, watch: Mapping[str, Any] | No
 
 # --- shadow log ---------------------------------------------------------------------------------------------------
 
+def log_path(path: Path = DEFAULT_PATH) -> Path:
+    """The file of the current ruleset next to ``path`` (``path`` itself holds the 1.1 log and is never written)."""
+    path = Path(path)
+    return path.with_name(f"{path.stem}.{RULESET.replace('/', '-')}{path.suffix}")
+
+
+def archive_path(path: Path = DEFAULT_PATH) -> Path:
+    target = log_path(path)
+    return target.with_name(target.stem + ".archive.jsonl")
+
+
 def load(path: Path = DEFAULT_PATH) -> dict[str, Any] | None:
-    target = Path(path)
+    """The shadow log of the current ruleset (see :func:`log_path`)."""
+    target = log_path(path)
     if not target.is_file():
         return None
     try:
@@ -230,8 +247,8 @@ def _save(state: Mapping[str, Any], path: Path) -> None:
 
 
 def summary(state: Mapping[str, Any] | None) -> dict[str, int]:
-    """Counts of the current ``RULESET`` only. Visits of an earlier ruleset (1.1 visits carry no ``ruleset``) stay
-    in the log untouched and are counted apart in ``earlier_open`` / ``earlier_closed``."""
+    """Counts of the current ``RULESET`` only. Visits of an earlier ruleset (1.1 visits carry no ``ruleset``) are
+    never counted in; should a log hold some, they show in ``earlier_open`` / ``earlier_closed``."""
     every = (state or {}).get("visits") or []
     every_open = (state or {}).get("open") or []
     visits = [v for v in every if v.get("ruleset") == RULESET]
@@ -257,6 +274,7 @@ def track(state: Mapping[str, Any] | None, view: Mapping[str, Any], price: float
     """
     previous = state or {}
     out = {"schema": SCHEMA, "ruleset": RULESET, "started_at": previous.get("started_at") or at, "open": [],
+           "archived": int(previous.get("archived") or 0),
            "visits": list(previous.get("visits") or []), "last_price": price, "updated_at": at}
     zones = (view.get("zones") or []) if view.get("status") == "OK" else None   # None: nothing known about the book now
     for visit in previous.get("open") or []:
@@ -283,7 +301,6 @@ def track(state: Mapping[str, Any] | None, view: Mapping[str, Any], price: float
                             "wall_qty": zone["wall_qty"], "wall_usd": zone["wall_usd"], "wall_ratio": zone["wall_ratio"],
                             "pad": price * PAD_PCT, "entry_price": price, "from": "unten" if last < zone["low"] else "oben",
                             "wall_pulled": False, "ruleset": RULESET})
-    out["visits"] = out["visits"][-MAX_VISITS:]
     return out
 
 
@@ -293,5 +310,13 @@ def update(path: Path, view: Mapping[str, Any] | None, price: float | None, now:
         return None
     at = (now or datetime.now(timezone.utc)).isoformat()
     state = track(load(path), view, float(price), at)
-    _save(state, Path(path))
+    overflow = state["visits"][:-MAX_VISITS]
+    if overflow:                                   # retention: keep the newest in the log, the rest appended, not lost
+        archive = archive_path(path)
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        with archive.open("a", encoding="utf-8") as fh:
+            for visit in overflow:
+                fh.write(json.dumps(visit, ensure_ascii=False, default=str) + "\n")
+        state = {**state, "visits": state["visits"][-MAX_VISITS:], "archived": int(state.get("archived") or 0) + len(overflow)}
+    _save(state, log_path(path))
     return state

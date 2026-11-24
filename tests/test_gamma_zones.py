@@ -209,7 +209,7 @@ def test_refresh_and_update_write_only_state_and_their_own_file(tmp_path: Path) 
     saved = gamma_zones.update(path, view, view["mid"], now)
     assert saved["ruleset"] == gamma_zones.RULESET and gamma_zones.load(path)["last_price"] == view["mid"]
     assert gamma_zones.update(path, None, 1.0) is None
-    assert sorted(p.name for p in (tmp_path / "journal").iterdir()) == ["watch.json"]
+    assert sorted(p.name for p in (tmp_path / "journal").iterdir()) == ["watch.gamma-orderbuch-1.2.json"]
 
 
 def test_chart_model_carries_the_group_and_the_script_draws_the_band() -> None:
@@ -304,12 +304,15 @@ def test_stale_gamma_with_a_fresh_book_is_not_ok() -> None:
     assert at_limit["status"] == "OK" and len(at_limit["zones"]) == 1
 
 
-def test_future_gamma_is_not_ok_but_a_small_clock_skew_is() -> None:
+def test_future_gamma_is_never_ok_and_a_large_skew_is_flagged_apart() -> None:
+    """Codex #378: a gamma snapshot 30 s ahead is not yet available; no zone, even inside the clock tolerance."""
     skew = gamma_zones.FUTURE_SKEW
     ahead = _status(_gamma(NOW, -(skew + timedelta(seconds=1))), _walls_view(NOW))
-    assert ahead["status"] == "FUTURE_GAMMA" and ahead["gamma_age_seconds"] < 0
-    small = _status(_gamma(NOW, -skew), _walls_view(NOW))
-    assert small["status"] == "OK" and len(small["zones"]) == 1
+    assert ahead["status"] == "FUTURE_GAMMA" and ahead["gamma_age_seconds"] < 0 and ahead["gamma_clock_skew_suspect"]
+    small = _status(_gamma(NOW, -timedelta(seconds=30)), _walls_view(NOW))
+    assert small["status"] == "FUTURE_GAMMA" and small["zones"] == [] and small["gamma_age_seconds"] == -30
+    assert small["gamma_clock_skew_suspect"] is False                  # diagnosis apart from the gate
+    assert _status(_gamma(NOW, timedelta(0)), _walls_view(NOW))["status"] == "OK"
 
 
 def test_old_book_and_future_book_are_not_ok() -> None:
@@ -318,8 +321,11 @@ def test_old_book_and_future_book_are_not_ok() -> None:
     future_ms = int((NOW + gamma_zones.FUTURE_SKEW + timedelta(seconds=1)).timestamp() * 1000)
     future = _status(_gamma(NOW), _walls_view(NOW, last_event_ms=future_ms))
     assert future["status"] == "FUTURE_BOOK" and future["walls"] == []
-    near_ms = int((NOW + gamma_zones.FUTURE_SKEW).timestamp() * 1000)
-    assert _status(_gamma(NOW), _walls_view(NOW, last_event_ms=near_ms))["status"] == "OK"
+    assert future["walls_clock_skew_suspect"] is True
+    near_ms = int((NOW + timedelta(seconds=1)).timestamp() * 1000)
+    near = _status(_gamma(NOW), _walls_view(NOW, last_event_ms=near_ms))
+    assert near["status"] == "FUTURE_BOOK" and near["walls_clock_skew_suspect"] is False
+    assert _status(_gamma(NOW), _walls_view(NOW, last_event_ms=int(NOW.timestamp() * 1000)))["status"] == "OK"
 
 
 def test_every_view_carries_both_source_times() -> None:
@@ -373,8 +379,8 @@ def test_update_in_an_invalid_state_writes_no_visit(tmp_path: Path) -> None:
     assert saved["open"] == [] and saved["visits"] == [] and gamma_zones.load(path)["open"] == []
 
 
-def test_earlier_ruleset_visits_are_kept_and_counted_apart(tmp_path: Path) -> None:
-    """A 1.1 log (visits without ``ruleset``) stays untouched; the summary counts only the current ruleset."""
+def test_rollback_1_1_to_1_2_to_1_1_mixes_nothing_and_loses_nothing(tmp_path: Path) -> None:
+    """Codex #378: the 1.1 log stays byte for byte; 1.2 writes its own file; a revert sees only 1.1 visits."""
     old_visit = {"opened_at": "2026-11-22T10:00:00+00:00", "key": "put_wall", "name": "Put Wall", "level": 99_000.0,
                  "low": 99_000.0, "high": 99_050.0, "side": "bid", "wall_low": 99_000.0, "pad": 99.0, "from": "oben",
                  "wall_pulled": False, "closed_at": "2026-11-22T10:10:00+00:00", "exit_price": 99_300.0, "left": "oben",
@@ -385,19 +391,53 @@ def test_earlier_ruleset_visits_are_kept_and_counted_apart(tmp_path: Path) -> No
     path.write_text(json.dumps({"schema": gamma_zones.SCHEMA, "ruleset": "gamma-orderbuch/1.1",
                                 "started_at": "2026-11-22T09:00:00+00:00", "open": [old_open], "visits": [old_visit] * 3,
                                 "last_price": 99_500.0, "updated_at": NOW.isoformat()}), encoding="utf-8")
-    assert gamma_zones.summary(gamma_zones.load(path)) == {"open": 0, "closed": 0, "held": 0, "broken": 0, "pulled": 0,
-                                                            "earlier_open": 1, "earlier_closed": 3}
+    before = path.read_bytes()
+    assert gamma_zones.load(path) is None                              # 1.2 starts its own log
     ok = _view(NOW)
+    gamma_zones.update(path, ok, 99_500.0, NOW)
     gamma_zones.update(path, ok, 99_150.0, NOW + timedelta(minutes=1))   # into the zone from above: a 1.2 visit
     state = gamma_zones.update(path, ok, 99_450.0, NOW + timedelta(minutes=2))
-    assert state["visits"][:3] == [old_visit] * 3 and state["started_at"] == "2026-11-22T09:00:00+00:00"
-    closed_old = state["visits"][3]                                   # the 1.1 visit still open at the switch ends by price
-    assert "ruleset" not in closed_old and closed_old["opened_at"] == old_open["opened_at"] and state["open"] == []
-    assert state["visits"][4]["ruleset"] == gamma_zones.RULESET
+    assert path.read_bytes() == before                                 # 1.1 log untouched (also its open visit)
+    assert [v["ruleset"] for v in state["visits"]] == [gamma_zones.RULESET]
     assert gamma_zones.summary(state) == {"open": 0, "closed": 1, "held": 1, "broken": 0, "pulled": 0,
-                                          "earlier_open": 0, "earlier_closed": 4}
-    _, notes = gamma_zones.chart_drawings(ok, state, NOW)
+                                          "earlier_open": 0, "earlier_closed": 0}
+    reverted = json.loads(path.read_text(encoding="utf-8"))           # what 1.1 code reads after a revert
+    assert len(reverted["visits"]) == 3 and all("ruleset" not in v for v in reverted["visits"])
+    again = gamma_zones.update(path, ok, 99_500.0, NOW + timedelta(minutes=3))   # back on 1.2: its file goes on
+    assert len(again["visits"]) == 1 and again["started_at"] == NOW.isoformat()
+    _, notes = gamma_zones.chart_drawings(ok, gamma_zones.load(path), NOW)
     assert notes == ["Gamma-Level mit Orderbuch-Mauer: 1, Berührungen 1 (1 gehalten, 0 gebrochen), Urteil ab 30."]
+
+
+def test_retention_archives_visits_beyond_the_cap(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(gamma_zones, "MAX_VISITS", 2)
+    path, ok = tmp_path / "watch.json", _view(NOW)
+    minute = 0
+    for _ in range(3):                                                 # three visits: in from above, out above
+        for price in (99_500.0, 99_150.0, 99_450.0):
+            state = gamma_zones.update(path, ok, price, NOW + timedelta(minutes=minute))
+            minute += 1
+    assert len(state["visits"]) == 2 and state["archived"] == 1
+    lines = gamma_zones.archive_path(path).read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1 and json.loads(lines[0])["opened_at"] == (NOW + timedelta(minutes=1)).isoformat()
+
+
+def test_future_gamma_end_to_end_build_then_track_opens_no_visit(tmp_path: Path) -> None:
+    path = tmp_path / "watch.json"
+    ahead = gamma_zones.build(_gamma(NOW, -timedelta(seconds=30)), _walls_view(NOW), NOW)
+    assert ahead["status"] in gamma_zones.WATCH_STATUSES             # the runtime does advance the log ...
+    gamma_zones.update(path, ahead, 99_500.0, NOW)
+    saved = gamma_zones.update(path, ahead, 99_150.0, NOW + timedelta(minutes=1))
+    assert saved["open"] == [] and saved["visits"] == []             # ... but never opens a visit on it
+
+
+def test_gamma_data_with_age_marks_a_future_snapshot_stale() -> None:
+    from src.dashboard import gamma_data
+    snap = {"as_of": (NOW + timedelta(seconds=30)).isoformat()}
+    aged = gamma_data.with_age(snap, NOW)
+    assert aged["future"] is True and aged["stale"] is True and aged["age_seconds"] == -30
+    now_snap = gamma_data.with_age({"as_of": NOW.isoformat()}, NOW)
+    assert now_snap["future"] is False and now_snap["stale"] is False
 
 
 def test_gamma_notes_are_english_on_the_public_page() -> None:

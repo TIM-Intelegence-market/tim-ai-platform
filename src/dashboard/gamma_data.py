@@ -191,12 +191,15 @@ def append_level_log(snapshot: Mapping[str, Any], symbol: str, path: Path) -> bo
 
 
 def with_age(snapshot: Mapping[str, Any] | None, now: datetime | None = None) -> dict[str, Any] | None:
-    """Snapshot plus ``age_seconds`` and ``stale``; None when there is none."""
+    """Snapshot plus ``age_seconds``, ``future`` and ``stale``; None when there is none.
+
+    A snapshot from after ``now`` is not yet available (point in time): ``future`` and ``stale`` are both True."""
     if not snapshot:
         return None
     now = now or datetime.now(timezone.utc)
     age = now - datetime.fromisoformat(str(snapshot["as_of"]))
-    return {**snapshot, "age_seconds": int(age.total_seconds()), "stale": age > STALE_AFTER}
+    future = age < timedelta(0)
+    return {**snapshot, "age_seconds": int(age.total_seconds()), "future": future, "stale": future or age > STALE_AFTER}
 
 
 def prep_block(snapshot: Mapping[str, Any] | None, now: datetime | None = None) -> dict[str, Any]:
