@@ -533,3 +533,35 @@ def test_required_windows_per_signal_model():
     assert shadow.known_side(extra, "level")["status"] == "MISSING"
     with pytest.raises(KeyError):
         shadow.known_side(lage, "unbekanntes-modell")
+
+
+def _perp_store(now, **bucket):
+    return {"symbol": "BTCUSDT", "updated_at": now.isoformat(), **bucket,
+            "days": {"2026-11-08": [[now.timestamp() - 600, 74950.0, 3.0, 1.0], [now.timestamp() - 900, 74950.0, 1.0, 5.0]]}}
+
+
+@pytest.mark.parametrize("bucket, status", [
+    ({}, "MISSING"), ({"bucket_seconds": None}, "MISSING"),
+    ({"bucket_seconds": 0}, "INVALID"), ({"bucket_seconds": -300}, "INVALID"), ({"bucket_seconds": "300"}, "INVALID"),
+    ({"bucket_seconds": True}, "INVALID"), ({"bucket_seconds": float("nan")}, "INVALID"),
+    ({"bucket_seconds": float("inf")}, "INVALID"), ({"bucket_seconds": 299.5}, "INVALID"),
+])
+def test_perp_without_a_usable_bucket_size_is_unknown_never_assumed(bucket, status):
+    """F1 (#372 Mission 07-FINAL): the 300 s default decided which buckets are closed; now there is no default."""
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    _feed(tracker, [trade(0, 75000, 1.0, True, 1)])
+    now = T0 + timedelta(seconds=1)
+    state = tracker.snapshot(now, perp_store=_perp_store(now, **bucket))
+    perp = state["perp"]
+    assert perp["bucket_seconds"] is None and perp["bucket_seconds_status"] == status
+    assert "delta_5m" not in perp and "delta_15m" not in perp and "Perp-Delta" not in state["text"]
+    assert json.dumps(state)
+
+
+@pytest.mark.parametrize("seconds", [60, 300, 300.0, 900])
+def test_perp_uses_the_bucket_size_the_store_states(seconds):
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    _feed(tracker, [trade(0, 75000, 1.0, True, 1)])
+    now = T0 + timedelta(seconds=1)
+    perp = tracker.snapshot(now, perp_store=_perp_store(now, bucket_seconds=seconds))["perp"]
+    assert perp["bucket_seconds"] == int(seconds) and type(perp["bucket_seconds"]) is int and "bucket_seconds_status" not in perp
