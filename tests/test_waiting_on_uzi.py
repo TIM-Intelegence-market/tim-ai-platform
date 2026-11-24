@@ -14,7 +14,7 @@ def _write(root: Path, relative: Path, payload) -> None:
 
 
 def _closed(count: int) -> dict:
-    return {f"plan-{i}": {"journal": {"status": "CLOSED", "net_r": 1.0}} for i in range(count)}
+    return {f"plan-{i}": {"pit": "pit/1", "journal": {"status": "CLOSED", "net_r": 1.0}} for i in range(count)}
 
 
 def test_nothing_waiting_in_an_empty_root(tmp_path):

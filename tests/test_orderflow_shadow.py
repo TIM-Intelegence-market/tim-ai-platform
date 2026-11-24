@@ -1,14 +1,25 @@
 """Orderflow-Schatten (src/dashboard/orderflow_shadow.py) and the Lage tile/section (src/dashboard/orderflow_tile.py)."""
 from __future__ import annotations
 
+import pytest
+
 import json
 from datetime import datetime, timedelta, timezone
 
 from src.dashboard import orderflow_shadow as shadow
 from src.dashboard import orderflow_tile as tile
 from src.dashboard.plan_journal import SCHEMA
+from src.dashboard import pit_lage
 
 T0 = datetime(2026, 11, 8, 12, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_pit_history():
+    """Paket E: the Lage history is per process; every test starts without one."""
+    pit_lage.reset()
+    yield
+    pit_lage.reset()
 
 
 def lage(direction: str, strength: int = 2, exhaustion: bool = False, price: float = 75000.0, at: datetime = T0) -> dict:

@@ -7,7 +7,7 @@ und Struktur macht keinen Sinn." Until now the plan journals and the engine saw 
 Paket 1, Chart-Lage (``chart_lage``): what the chart shows at one moment, built from the same functions that draw
 the chart (``chart_live.level_drawings``, ``market_structure``, ``trend_drawings``) and from the Live-Orderflow-Lage
 (``src/orderflow/live_state.py``). Candles are cut at the moment with ``analytical_series`` (closed candles only),
-the orderflow counts only when it was taken within ``LAGE_MAX_AGE`` of that moment. No look-ahead.
+the orderflow counts only when it was taken at or before that moment, within ``LAGE_MAX_AGE`` (Paket E). No look-ahead.
 
 Paket 2, Chart-Urteil (``judge``): fixed rules, frozen before the start as ``RULESET``, each one a point for or
 against the plan with its reason in words. No fitted weights: score = points for minus points against.
@@ -22,6 +22,9 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+
+from src.dashboard import pit_lage as pit
+from src.dashboard.pit_lage import PIT_VERSION
 
 SCHEMA = "tim_chart_verdict/1"
 RULESET = "chart-urteil/1.0"  # frozen 11.11.2026; a rule change needs a new version and a new start
@@ -64,11 +67,14 @@ def _p(value: float | None) -> str:
 
 
 def orderflow_view(lage: Mapping[str, Any] | None, at: datetime) -> dict[str, Any] | None:
-    """The Live-Orderflow-Lage, only when fresh and taken within ``LAGE_MAX_AGE`` around ``at``, never after it plus that."""
+    """The Live-Orderflow-Lage, only when fresh and taken at or before ``at``, at most ``LAGE_MAX_AGE`` earlier.
+
+    One-sided since Paket E (#372): a Lage taken after ``at`` never counts, also not a few seconds after.
+    """
     if not lage or lage.get("stale") or lage.get("price") is None or not lage.get("as_of"):
         return None
     taken = _time(lage["as_of"])
-    if abs((taken - at).total_seconds()) > LAGE_MAX_AGE.total_seconds():
+    if taken > at or (at - taken) > LAGE_MAX_AGE:
         return None
     wave = dict(lage.get("wave") or {})
     levels = [{"name": str(l.get("name")), "price": _num(l.get("price")), "absorption": bool(l.get("absorption")),
@@ -272,7 +278,9 @@ def _save(state: Mapping[str, Any], path: Path) -> None:
 
 def summary(state: Mapping[str, Any], now: datetime) -> dict[str, Any]:
     """Closed plans by the Urteil's decision against all closed plans (the journal as it trades now)."""
-    plans = list((state.get("plans") or {}).values())
+    every = list((state.get("plans") or {}).values())
+    plans = [p for p in every if p.get("pit")]  # older plans: Lage and trade levels possibly from after the plan
+    legacy = [p for p in every if not p.get("pit")]
     closed = [p for p in plans if (p.get("journal") or {}).get("status") == "CLOSED" and p["journal"].get("net_r") is not None
               and p.get("urteil")]
     rows: dict[str, dict[str, Any]] = {}
@@ -287,16 +295,24 @@ def summary(state: Mapping[str, Any], now: datetime) -> dict[str, Any]:
     days = (now - _time(state["started_at"])).days
     return {"ruleset": RULESET, "plans": len(plans), "closed": len(closed), "days": days,
             "min_closed": MIN_CLOSED, "min_days": MIN_DAYS, "judgeable": len(closed) >= MIN_CLOSED and days >= MIN_DAYS,
-            "by_decision": rows,
+            "by_decision": rows, "pit": PIT_VERSION,
+            "legacy": {"plans": len(legacy), "note": "vor pit/1 beurteilt, Lage/Level-Zeitpunkt ungeprüft, nicht in der Statistik"},
             "ohne_auslassen": {"n": len(kept), "sum_net_r": round(sum(float(p["journal"]["net_r"]) for p in kept), 4)}}
 
 
 def update(path: Path, journal_paths: Sequence[Path], series: Mapping[str, Sequence[Mapping[str, Any]]],
-           lage: Mapping[str, Any] | None, now: datetime | None = None, trades: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    """One step: every new plan gets the Chart-Lage and the Urteil at its creation, closed plans get the journal result."""
+           lage: Mapping[str, Any] | None, now: datetime | None = None, trades: Mapping[str, Any] | None = None,
+           symbol: str | None = None) -> dict[str, Any]:
+    """One step: every new plan gets the Chart-Lage and the Urteil at its creation, closed plans get the journal result.
+
+    Point-in-time (Paket E): the orderflow is the Lage known at the plan's creation (:func:`pit_lage.lage_at`, else
+    UNKNOWN) and the trade levels come from the store cut to buckets ended by then (:func:`pit_lage.store_until`).
+    """
     from src.dashboard.plan_journal import load_view
 
     now = now or datetime.now(timezone.utc)
+    key_symbol = (symbol or (lage or {}).get("symbol") or "BTCUSDT").upper()
+    pit.observe(lage, now, key_symbol)
     state = load(Path(path)) or {"schema": SCHEMA, "ruleset": RULESET, "started_at": _iso(now),
                                  "sources": [Path(p).name for p in journal_paths], "plans": {}}
     started = _time(state["started_at"])
@@ -315,13 +331,14 @@ def update(path: Path, journal_paths: Sequence[Path], series: Mapping[str, Seque
                 entry_price, stop = _num(entry.get("entry")), _num(entry.get("stop"))
                 targets = [t for t in (entry.get("targets") or []) if _num(t) is not None]
                 target = _num(targets[0]) if targets else None
-                # The live Lage counts only if this step runs close to the plan's creation (orderflow_view checks it).
-                chart = chart_lage(series, created, lage, trades)
+                known, status = pit.lage_at(key_symbol, created)
+                chart = chart_lage(series, created, known, pit.store_until(trades, created))
                 urteil = judge(str(entry.get("direction")), entry_price, chart, stop, target) if entry_price else None
                 record = plans[key] = {"id": entry["id"], "journal_file": Path(journal_path).name, "timeframe": entry.get("timeframe"),
                                        "direction": entry.get("direction"), "created_at": entry["created_at"],
                                        "entry": entry_price, "stop": stop, "target_1": target,
-                                       "seen_at": _iso(now), "chart_at_plan": chart, "urteil": urteil}
+                                       "seen_at": _iso(now), "chart_at_plan": chart, "urteil": urteil,
+                                       "pit": PIT_VERSION, "symbol": key_symbol, "lage_at_plan_status": status}
             record["journal"] = {"status": entry.get("status"), "filled_at": entry.get("filled_at"), "closed_at": entry.get("closed_at"),
                                  "exit_reason": entry.get("exit_reason"), "net_r": entry.get("net_r")}
     state["checked_at"] = _iso(now)
