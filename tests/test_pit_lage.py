@@ -239,3 +239,61 @@ def test_a_store_without_a_usable_bucket_width_is_no_evidence(bucket):
     store = {**{k: v for k, v in good.items() if k != "bucket_seconds"}, **bucket}
     assert pit.store_known_at(store, "BTCUSDT", H11) is None
     assert pit.store_until(store, H11) is None
+
+
+def test_a_later_change_of_a_nested_field_cannot_rewrite_the_history():
+    """Codex 7141057171: the history kept a flat copy, so a nested mutation changed the stored Lage."""
+    seen = {"as_of": T0.isoformat(), "price": 100, "wave": {"direction": "auf"}, "windows": {"1m": {"delta": 5.0}}}
+    pit.observe(seen, T0, "BTCUSDT")
+    seen["wave"]["direction"] = "ab"
+    seen["windows"]["1m"]["delta"] = -5.0
+    first, status = pit.lage_at("BTCUSDT", T0)
+    assert status == pit.OK and first["wave"] == {"direction": "auf"} and first["windows"]["1m"]["delta"] == 5.0
+    first["wave"]["direction"] = "ab"  # nor may a caller change it through what it was handed
+    assert pit.lage_at("BTCUSDT", T0)[0]["wave"] == {"direction": "auf"}
+
+
+def test_live_exit_needs_a_lage_between_the_fill_and_the_decision_time():
+    now = T0 + timedelta(minutes=2)
+    assert pit.live_after({"as_of": T0.isoformat()}, T0, now)
+    assert pit.live_after({"as_of": now.isoformat()}, T0, now)
+    assert not pit.live_after({"as_of": (now + timedelta(hours=1)).isoformat()}, T0, now)  # dated in the future
+    assert not pit.live_after({"as_of": (T0 - timedelta(seconds=1)).isoformat()}, T0, now)
+    assert not pit.live_after({"as_of": T0.isoformat()}, T0, None)
+    assert not pit.live_after({"as_of": "kaputt"}, T0, now)
+
+
+def test_live_exit_needs_a_fresh_lage_whose_last_trade_is_not_in_the_future():
+    now = T0 + timedelta(minutes=10)
+    old = {"as_of": (now - pit.MAX_AGE - timedelta(seconds=1)).isoformat()}
+    assert not pit.live_after(old, T0, now)  # after the fill, but too old at the decision
+    assert pit.live_after({"as_of": (now - pit.MAX_AGE).isoformat()}, T0, now)
+    assert not pit.live_after({"as_of": now.isoformat(), "last_trade_at": (now + timedelta(seconds=1)).isoformat()}, T0, now)
+    assert not pit.live_after({"as_of": now.isoformat(), "last_trade_at": "kaputt"}, T0, now)
+    assert pit.live_after({"as_of": now.isoformat(), "last_trade_at": now.isoformat()}, T0, now)
+
+
+def test_a_lage_dated_after_its_own_sighting_is_never_kept():
+    later = T0 + timedelta(minutes=1)
+    pit.observe({"as_of": later.isoformat(), "price": 100}, T0, "BTCUSDT")
+    pit.observe({"as_of": T0.isoformat(), "price": 100, "last_trade_at": later.isoformat()}, T0, "BTCUSDT")
+    pit.observe({"as_of": T0.isoformat(), "price": 100, "last_trade_at": "kaputt"}, T0, "BTCUSDT")
+    assert pit.lage_at("BTCUSDT", later + timedelta(minutes=1)) == (None, pit.UNKNOWN_NO_HISTORY)
+
+
+def test_a_target_after_the_decision_time_is_unknown_not_the_newest_lage():
+    pit.observe({"as_of": T0.isoformat(), "price": 100}, T0, "BTCUSDT")
+    assert pit.lage_at("BTCUSDT", T0 + timedelta(minutes=1), until=T0) == (None, pit.UNKNOWN_FUTURE_TIME)
+    assert pit.lage_at("BTCUSDT", T0, until=T0)[1] == pit.OK
+    assert pit.lage_at("BTCUSDT", T0, until="kaputt") == (None, pit.UNKNOWN_NO_TIME)
+
+
+def test_shadow_does_not_freeze_a_fill_dated_after_the_decision_time(tmp_path):
+    """A fill stamped later than ``now`` must not take today's Lage as 'known at fill' for good."""
+    journal = tmp_path / "tim_plan_journal_15m.json"
+    write_journal(journal, plan("FILLED", filled_at=(T0 + timedelta(minutes=30)).isoformat(), fill_price=75000.0))
+    state = shadow.update(tmp_path / "shadow.json", [journal], lage("ab", strength=3), now=T0)
+    record = state["plans"]["p1"]
+    assert record["lage_at_plan_status"] == pit.OK
+    assert record["lage_at_fill"] is None and record["lage_at_fill_status"] == pit.UNKNOWN_FUTURE_TIME
+    assert not record.get("of_exit")  # the opposing wave is dated before that fill: no exit on it

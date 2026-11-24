@@ -155,7 +155,8 @@ def test_paket_e_plan_gets_the_lage_of_its_moment_or_none(tmp_path):
     cv.update(path2, [journal], series, None, now=NOW - timedelta(minutes=1))
     state = cv.update(path2, [journal], series, lage("auf", at=NOW + timedelta(seconds=30)), now=NOW + timedelta(minutes=1))
     record = state["plans"]["tim_plan_journal_mid.json:p1"]
-    assert record["lage_at_plan_status"] == pit_lage.UNKNOWN_NO_HISTORY and record["chart_at_plan"]["orderflow"] is None
+    # the plan is dated after that first decision time: unknown for that reason (round 5), never the newest Lage
+    assert record["lage_at_plan_status"] == pit_lage.UNKNOWN_FUTURE_TIME and record["chart_at_plan"]["orderflow"] is None
 
 
 def test_r7_never_judges_a_wave_whose_side_is_not_proven():

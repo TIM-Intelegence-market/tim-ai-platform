@@ -33,6 +33,7 @@ the earlier version is never written again, byte for byte: a revert reads only i
 from __future__ import annotations
 
 from collections import deque
+from copy import deepcopy
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from threading import Lock
@@ -48,6 +49,7 @@ UNKNOWN_NO_HISTORY = "UNKNOWN_NO_HISTORY"  # nothing kept from that time (restar
 UNKNOWN_TOO_OLD = "UNKNOWN_TOO_OLD"  # the newest Lage known at t is older than MAX_AGE
 UNKNOWN_STALE = "UNKNOWN_STALE"  # the Lage known at t said itself that its trades were stale
 UNKNOWN_NO_TIME = "UNKNOWN_NO_TIME"  # target time missing or unreadable
+UNKNOWN_FUTURE_TIME = "UNKNOWN_FUTURE_TIME"  # target lies after the decision time: what will be known then is not known yet
 
 _LOCK = Lock()
 _HISTORY: dict[str, deque[dict[str, Any]]] = {}
@@ -101,12 +103,15 @@ def observe(lage: Mapping[str, Any] | None, seen_at: datetime, symbol: str | Non
     """Keep ``lage`` as available from ``seen_at`` on; the same ``as_of`` is kept once (first sighting wins)."""
     if not lage or _time(lage.get("as_of")) is None or seen_at.tzinfo is None:
         return
+    last = lage.get("last_trade_at")
+    if _time(lage.get("as_of")) > seen_at or (last and (_time(last) is None or _time(last) > seen_at)):
+        return  # dated after its own sighting: it cannot have been available then, so it is no evidence
     key = (symbol or _symbol(lage)).upper()
     with _LOCK:
         kept = _HISTORY.setdefault(key, deque())
         if any(item["lage"].get("as_of") == lage.get("as_of") for item in kept):
             return
-        kept.append({"seen_at": seen_at, "lage": dict(lage)})
+        kept.append({"seen_at": seen_at, "lage": deepcopy(dict(lage))})  # nested fields too: a later change must not rewrite history
         newest = max(item["seen_at"] for item in kept)
         while kept and kept[0]["seen_at"] < newest - KEEP:
             kept.popleft()
@@ -125,11 +130,22 @@ def reset(symbol: str | None = None) -> None:
             _COMPLETE.pop(symbol.upper(), None)
 
 
-def lage_at(symbol: str, target: Any, max_age: timedelta = MAX_AGE) -> tuple[dict[str, Any] | None, str]:
-    """The Lage known at ``target`` and its status; ``(None, UNKNOWN_*)`` when there is none."""
+def lage_at(symbol: str, target: Any, max_age: timedelta = MAX_AGE, *,
+            until: Any = None) -> tuple[dict[str, Any] | None, str]:
+    """The Lage known at ``target`` and its status; ``(None, UNKNOWN_*)`` when there is none.
+
+    ``until`` is the decision time of the caller: a ``target`` after it is ``UNKNOWN_FUTURE_TIME``, because the
+    history cannot yet hold what will have been seen by then.
+    """
     moment = _time(target)
     if moment is None:
         return None, UNKNOWN_NO_TIME
+    if until is not None:
+        limit = _time(until)
+        if limit is None:
+            return None, UNKNOWN_NO_TIME
+        if moment > limit:
+            return None, UNKNOWN_FUTURE_TIME
     with _LOCK:
         kept = list(_HISTORY.get(symbol.upper()) or ())
     known = []
@@ -150,13 +166,22 @@ def lage_at(symbol: str, target: Any, max_age: timedelta = MAX_AGE) -> tuple[dic
         return None, UNKNOWN_TOO_OLD
     if lage.get("stale") or lage.get("price") is None:
         return None, UNKNOWN_STALE
-    return dict(lage), OK
+    return deepcopy(lage), OK  # the caller gets its own copy, the history stays as first seen
 
 
-def live_after(lage: Mapping[str, Any] | None, moment: Any) -> bool:
-    """True when the current ``lage`` was taken at or after ``moment`` (a live exit may use it then, never before)."""
-    as_of, since = _time((lage or {}).get("as_of")), _time(moment)
-    return as_of is not None and since is not None and as_of >= since
+def live_after(lage: Mapping[str, Any] | None, moment: Any, until: Any, max_age: timedelta = MAX_AGE) -> bool:
+    """True when the current ``lage`` may carry a live exit decided at ``until`` for a fill at ``moment``.
+
+    It was taken at or after the fill, not after the decision time, is at most ``max_age`` old at the decision,
+    and its last trade (when stated) is readable and not after the decision. Anything else is no evidence.
+    """
+    as_of, since, limit = _time((lage or {}).get("as_of")), _time(moment), _time(until)
+    if as_of is None or since is None or limit is None or not since <= as_of <= limit:
+        return False
+    if limit - as_of > max_age:
+        return False
+    last = (lage or {}).get("last_trade_at")
+    return not last or (_time(last) is not None and _time(last) <= limit)
 
 
 def store_until(store: Mapping[str, Any] | None, target: Any) -> dict[str, Any] | None:

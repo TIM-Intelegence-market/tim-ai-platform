@@ -351,7 +351,7 @@ def update(path: Path, journal_paths: Sequence[Path], series: Mapping[str, Seque
                 entry_price, stop = _num(entry.get("entry")), _num(entry.get("stop"))
                 targets = [t for t in (entry.get("targets") or []) if _num(t) is not None]
                 target = _num(targets[0]) if targets else None
-                known, status = pit.lage_at(key_symbol, created)
+                known, status = pit.lage_at(key_symbol, created, until=now)
                 cut = pit.store_known_at(trades, key_symbol, created)
                 chart = chart_lage(series, created, known, cut)
                 urteil = judge(str(entry.get("direction")), entry_price, chart, stop, target) if entry_price else None
