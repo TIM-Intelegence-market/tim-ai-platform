@@ -503,7 +503,9 @@ async def run(args: argparse.Namespace) -> int:
 
         # A server tool loop and its structured retry used to each receive 900s.
         # Share one budget so CLI helpers can run before the parent kills the group.
-        deadline = time.monotonic() + 900 if os.getenv("TIM_QWEN_GITHUB_RUN") == "1" else None
+        # agent:qwen-hard runs on the slow tim-server CPU model and gets 1800s (#387).
+        budget = 1800 if os.getenv("TIM_QWEN_HARD_RUN") == "1" else 900
+        deadline = time.monotonic() + budget if os.getenv("TIM_QWEN_GITHUB_RUN") == "1" else None
         for attempt in range(2):
             remaining = None if deadline is None else deadline - time.monotonic()
             if remaining is not None:

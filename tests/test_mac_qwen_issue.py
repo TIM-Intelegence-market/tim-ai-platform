@@ -186,3 +186,25 @@ def test_review_patch_is_advisory_and_redacted(monkeypatch):
     monkeypatch.setattr(run_mac_qwen_issue, "_hard_backend", lambda: ("http://127.0.0.1:11435", "m"))
     monkeypatch.setattr(module, "OllamaClient", BrokenClient)
     assert run_mac_qwen_issue._review_patch(task, "+x\n") is None
+
+
+def test_hard_issue_gets_longer_process_group_limit(tmp_path: Path, monkeypatch):
+    """tim-core-01 answers slowly; the hard lane gets 55 min, the Mac lane keeps 40 min (#387)."""
+    from scripts import run_mac_qwen_issue
+
+    limits = []
+
+    def fake_group(command, cwd, env, *, timeout):
+        limits.append(timeout)
+        return 2
+
+    monkeypatch.setattr(run_mac_qwen_issue, "_run_task_group", fake_group)
+    monkeypatch.setattr(run_mac_qwen_issue, "_hard_backend", lambda: ("http://127.0.0.1:11435", "qwen3-coder:30b"))
+    task = {"task_id": "github-issue-9", "allowed_paths": ["src/a.py"], "tests": ["tests/test_a.py"]}
+    for hard in (True, False):
+        with pytest.raises(PipelineError):
+            run_mac_qwen_issue._run_local_task(tmp_path, task, codex_fallback=False, hard=hard)
+    assert limits == [3300, 2400]
+    # 55 min task + 10 min review + 30 min merge wait stay inside TimeoutStartSec=100min.
+    assert 3300 + 600 + 1800 < 100 * 60
+    assert run_mac_qwen_issue.HARD_REQUEST_TIMEOUT == "1800"

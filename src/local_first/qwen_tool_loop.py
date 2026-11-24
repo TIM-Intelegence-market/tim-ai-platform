@@ -43,8 +43,10 @@ MAX_PARSE_CHARS = 40_000  # bounds the text-call regexes on runaway model output
 CHAT_OPTIONS = {"temperature": 0.2, "num_ctx": 32768, "num_predict": 8192}
 # agent:qwen-hard runs on the tim-server model (262k context) and may hold files up to 96 000 characters.
 HARD_NUM_CTX = 65536
-HARD_MAX_SECONDS = 900.0
-HARD_CHAT_TURN_SECONDS = 900.0
+# tim-core-01 gives Ollama two physical cores: about 16 prompt and 8.5 output tokens per second
+# (measured 24.11.2026, idle server). The first turn of #387 got no answer within 900 s twice.
+HARD_MAX_SECONDS = 1800.0
+HARD_CHAT_TURN_SECONDS = 1800.0
 
 
 def chat_options() -> dict[str, Any]:

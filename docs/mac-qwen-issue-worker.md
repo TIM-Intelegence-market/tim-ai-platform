@@ -132,7 +132,7 @@ from `127.0.0.1:11435` to the server's Ollama. The worker reads two variables:
 
 An issue labelled `agent:qwen-hard` plus `status:ready` is picked like a
 `agent:qwen-ready` issue, but its local Qwen step runs against the server model
-with a 900 s request timeout. When the tunnel does not answer or the model is
+with a 1800 s request timeout. When the tunnel does not answer or the model is
 not installed there, the issue waits for the server without spending a repair
 attempt. This also holds when the server disappears between selection and
 starting the model process. Earlier genuine failures remain in the ledger.
@@ -264,10 +264,12 @@ Issue contracts may not list `src/local_first/` or `src/llm/` either, so the wor
 patch its own gates, sandbox or tool loop.
 
 GitHub issue runs share a 900-second generation budget between Qwen's tool loop
-and structured retry. A retry receives only the remaining time; after exhaustion,
+and structured retry (1800 seconds for `agent:qwen-hard`: tim-core-01 gives Ollama
+two physical cores, about 16 prompt and 8.5 output tokens per second, and the first
+turn of #387 found no answer within 900 seconds). A retry receives only the remaining time; after exhaustion,
 the configured CLI helpers still run. The build-queue supervisor does not repeat
 the entire provider chain inside an issue attempt: the issue ledger owns its two
-attempts. The outer process-group limit is 40 minutes, allowing for Qwen, both
+attempts. The outer process-group limit is 40 minutes (55 for `agent:qwen-hard`), allowing for Qwen, both
 helpers, sandboxed verification and durable result writes. These limits do not
 change standalone local build-queue runs.
 The daemon allows 90 minutes for the whole intake, including the task, up to

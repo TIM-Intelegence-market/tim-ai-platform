@@ -240,7 +240,7 @@ def test_hard_loop_allows_server_cold_start_and_keeps_total_deadline(sandbox, mo
     loop = make_loop(sandbox, chat, clock=lambda: now[0])
     result = asyncio.run(loop.run("sys", "user"))
     assert result.stats["submitted"]
-    assert chat.timeouts == [900.0, 550.0]
+    assert chat.timeouts == [1800.0, 1450.0]
     assert loop_mod.chat_options()["num_ctx"] == 65536
     assert loop_mod.chat_options()["num_batch"] == 256
 
@@ -436,6 +436,26 @@ def test_issue_budget_exhaustion_still_runs_helper_and_persists_result(sandbox, 
     assert result["fallback_provider"] == "CLAUDE_CLI" and len(helpers) == 1
     assert result["model_calls"] == 1
     assert "budget exhausted" in result["qwen_blocker_reason"]
+
+
+def test_hard_issue_budget_is_longer_on_the_server(sandbox, monkeypatch):
+    monkeypatch.setenv("TIM_QWEN_TOOL_LOOP", "1")
+    monkeypatch.setenv("TIM_QWEN_GITHUB_RUN", "1")
+    monkeypatch.setenv("TIM_QWEN_HARD_RUN", "1")
+    monkeypatch.setenv("TIM_CODEX_PATCH_FALLBACK", "0")
+    monkeypatch.setenv("TIM_CLAUDE_PATCH_FALLBACK", "0")
+    clock = [100.0]
+    monkeypatch.setattr(developer.time, "monotonic", lambda: clock[0])
+    limits = []
+
+    async def exhausted(*args, max_seconds):
+        limits.append(max_seconds)
+        clock[0] += max_seconds
+        return None, {"ended": "budget"}
+
+    monkeypatch.setattr(developer, "_tool_loop_proposal", exhausted)
+    run_developer(sandbox, monkeypatch, chat_replies=[])
+    assert limits == [1800.0]
 
 
 def test_issue_structured_retry_uses_only_remaining_budget(sandbox, monkeypatch):
