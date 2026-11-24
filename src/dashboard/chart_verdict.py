@@ -332,13 +332,15 @@ def update(path: Path, journal_paths: Sequence[Path], series: Mapping[str, Seque
                 targets = [t for t in (entry.get("targets") or []) if _num(t) is not None]
                 target = _num(targets[0]) if targets else None
                 known, status = pit.lage_at(key_symbol, created)
-                chart = chart_lage(series, created, known, pit.store_until(trades, created))
+                cut = pit.store_until(trades, created)
+                chart = chart_lage(series, created, known, cut)
                 urteil = judge(str(entry.get("direction")), entry_price, chart, stop, target) if entry_price else None
                 record = plans[key] = {"id": entry["id"], "journal_file": Path(journal_path).name, "timeframe": entry.get("timeframe"),
                                        "direction": entry.get("direction"), "created_at": entry["created_at"],
                                        "entry": entry_price, "stop": stop, "target_1": target,
                                        "seen_at": _iso(now), "chart_at_plan": chart, "urteil": urteil,
-                                       "pit": PIT_VERSION, "symbol": key_symbol, "lage_at_plan_status": status}
+                                       "pit": PIT_VERSION, "symbol": key_symbol, "lage_at_plan_status": status,
+                                       "store_rows_arrival": (cut or {}).get("rows_arrival")}
             record["journal"] = {"status": entry.get("status"), "filled_at": entry.get("filled_at"), "closed_at": entry.get("closed_at"),
                                  "exit_reason": entry.get("exit_reason"), "net_r": entry.get("net_r")}
     state["checked_at"] = _iso(now)

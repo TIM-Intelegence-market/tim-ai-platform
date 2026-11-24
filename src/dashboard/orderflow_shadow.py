@@ -35,6 +35,7 @@ TARGET_TRADES = 30
 COST_R_PER_SIDE_BPS = 5  # Kraken taker, as measured 04.11.2026 (exit_variants.KRAKEN)
 AGAINST_STRENGTH = 2
 BESTAETIGT, GEGEN, NEUTRAL = "BESTÄTIGT", "GEGEN", "NEUTRAL"
+OHNE_LAGE = "OHNE LAGE"  # summary only: NEUTRAL because no Lage was there, kept apart from a Lage without a wave
 WITH = {"LONG": "auf", "SHORT": "ab"}
 # UTC hour -> session. Fixed UTC bounds so the label never moves with daylight saving.
 SESSIONS = ((0, "Asien"), (7, "London"), (13, "London+NY"), (16, "NY"), (21, "nach NY"))
@@ -141,6 +142,9 @@ def summary(state: Mapping[str, Any]) -> dict[str, Any]:
     by_gate: dict[str, dict[str, Any]] = {}
     for plan in closed:
         verdict = plan.get("gate_at_fill") or plan.get("gate_at_plan") or NEUTRAL
+        seen = plan.get("lage_at_fill") if plan.get("gate_at_fill") else plan.get("lage_at_plan")
+        if verdict == NEUTRAL and not seen:
+            verdict = OHNE_LAGE   # missing evidence is not neutral flow (Mission 05, #372)
         row = by_gate.setdefault(verdict, {"n": 0, "sum_net_r": 0.0})
         row["n"] += 1
         row["sum_net_r"] = round(row["sum_net_r"] + float(plan["journal"]["net_r"]), 4)

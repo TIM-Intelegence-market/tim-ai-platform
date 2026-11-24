@@ -12,7 +12,9 @@ that answers "which Lage was known at moment t?":
   and ``t - as_of <= MAX_AGE`` (one-sided, no tolerance after t), not stale. Otherwise ``None`` with a reason
   (``UNKNOWN_*``). A missing historical Lage is never replaced by the current one.
 - ``store_until(store, t)`` cuts a footprint store (spot or perp, rows ``[bucket_time, level, bid, ask]``) to the
-  buckets that had ended by t, so value levels and naked POCs drawn for t see no later trade.
+  buckets that had ended by t, so value levels and naked POCs drawn for t see no later trade. Limit: the stores keep no
+  arrival time per row, so a bucket written later (backfill after a gap, revision) still counts once its bucket time
+  is before t. The cut says so (``rows_arrival``): ``"UNVERIFIED"`` whenever the store was written after t.
 
 The history lives in memory: after a restart older moments are UNKNOWN. Plans recorded before ``PIT_VERSION`` keep
 their values untouched and are counted apart (``legacy``) by the consumers.
@@ -136,4 +138,7 @@ def store_until(store: Mapping[str, Any] | None, target: Any) -> dict[str, Any] 
         kept = [row for row in rows if isinstance(row, (list, tuple)) and row and float(row[0]) <= limit * 1000]  # ms
         if kept:
             bubbles[key] = kept
-    return {**store, "days": days, "complete": complete, "bubbles": bubbles, "cut_at": moment.isoformat()}
+    written = _time(store.get("updated_at"))
+    arrival = "OK" if written is not None and written <= moment else "UNVERIFIED"
+    return {**store, "days": days, "complete": complete, "bubbles": bubbles, "cut_at": moment.isoformat(),
+            "rows_arrival": arrival}

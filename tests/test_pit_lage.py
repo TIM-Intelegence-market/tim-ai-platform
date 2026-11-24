@@ -134,3 +134,27 @@ def test_plan_opinion_prompt_says_unknown_without_a_lage_of_that_time(tmp_path):
     record = state["plans"]["p1"]
     assert record["lage_at_plan"] is None and record["lage_at_plan_status"] == pit.UNKNOWN_NO_HISTORY
     assert "Orderflow zur Planzeit: unbekannt" in asked[0]
+
+
+def test_store_until_cannot_see_a_backfill_and_says_so():
+    """Mission 05: rows carry no arrival time; a bucket backfilled after t still counts, so the cut is UNVERIFIED."""
+    t = int(H11.timestamp())
+    early = {"bucket_seconds": 300, "updated_at": (H11 - timedelta(seconds=5)).isoformat(),
+             "days": {"2026-11-08": [[t - 600, 1.0, 1.0, 2.0]]}}
+    assert pit.store_until(early, H11)["rows_arrival"] == "OK"        # written before t: nothing can be later
+    backfilled = {**early, "updated_at": (H11 + timedelta(hours=1)).isoformat(),
+                  "days": {"2026-11-08": [[t - 600, 1.0, 1.0, 2.0], [t - 900, 1.0, 7.0, 0.0]]}}  # gap filled at 12:00
+    cut = pit.store_until(backfilled, H11)
+    assert [t - 900, 1.0, 7.0, 0.0] in cut["days"]["2026-11-08"]       # the backfilled bucket is still in ...
+    assert cut["rows_arrival"] == "UNVERIFIED"                         # ... and the cut does not claim otherwise
+    assert pit.store_until({**early, "updated_at": None}, H11)["rows_arrival"] == "UNVERIFIED"
+
+
+def test_shadow_summary_keeps_plans_without_a_lage_apart(tmp_path):
+    journal, path = tmp_path / "tim_plan_journal_short.json", tmp_path / "shadow.json"
+    shadow.update(path, [journal], None, now=H11 - timedelta(minutes=1))
+    pit.reset()                                                         # the runtime restarts before the plan
+    write_journal(journal, plan("CLOSED", created_at=H11.isoformat(), filled_at=H1115.isoformat(), fill_price=75000.0, net_r=1.0))
+    state = shadow.update(path, [journal], lage("ab", strength=3, at=T0), now=T0)   # restart: no Lage of 11:00
+    assert state["plans"]["p1"]["gate_at_plan"] == shadow.NEUTRAL
+    assert state["summary"]["by_gate"] == {shadow.OHNE_LAGE: {"n": 1, "sum_net_r": 1.0}}
