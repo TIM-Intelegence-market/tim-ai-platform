@@ -512,11 +512,12 @@ def test_chart_reading_needs_login_and_comes_in_two_languages(server):
     assert "data-layout='tim:ai'" in body and "data-space='reading'" in body and "data-lang='de'" in body
     assert "tim_chart.js" in body and "script-src 'self'" in headers["Content-Security-Policy"]
     assert "class='rd-list'" in body
-    assert "aria-current='page'>BTC 1h" in body and "aria-current='page'>Deutsch" in body
+    assert "aria-current='page'>Deutsch" in body and "data-tf='30m'" in body and "BTC 1h" not in body  # one chart, one reading
+    assert "Das große Bild" in body
     style = re.search(r"<style>(.*?)</style>", body, re.S).group(1)
     assert base64.b64encode(hashlib.sha256(style.encode()).digest()).decode() in headers["Content-Security-Policy"]
     status, _, body = _get(base + "/reading?tf=evil&lang=xx", headers=_login())
-    assert status == 200 and "TIM chart reading" in body and "aria-current='page'>BTC 30m" in body
+    assert status == 200 and "TIM chart reading" in body and "The big picture" in body
     assert "href='/reading'" in _get(base + "/chart")[2]
 
 

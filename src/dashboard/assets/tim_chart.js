@@ -1559,6 +1559,17 @@
               }
               const drawn = [];
               for (const box of data.boxes || []) {
+                if (box.pin) {  // the big picture (Uzi 24.11.2026): top left under the head line, no leader line
+                  ctx.font = titleFont;
+                  const titleW = ctx.measureText(box.title).width;
+                  ctx.font = textFont;
+                  const lines = wrapText(ctx, box.text, maxW);
+                  const w = Math.min(maxW, Math.max(titleW, ...lines.map(l => ctx.measureText(l).width))) + 16;
+                  const h = lh + 6 + lines.length * lh + 8;
+                  placed.push({ x: 8, y: 26, w, h });
+                  drawn.push({ box, lines, bx: 8, by: 26, w, h, ax: null, ay: null, color: READ_TONE[box.tone] || READ_TONE.flat });
+                  continue;
+                }
                 const ay = reading.series.priceToCoordinate(box.price);
                 if (ay === null || ay < 0 || ay > H) continue;
                 let ax = box.time == null ? W - 70 : scale.timeToCoordinate(local(box.time));
@@ -1591,6 +1602,7 @@
               }
               // All leader lines first, then the boxes: a line never runs across another box's text.
               for (const d of drawn) {
+                if (d.ax === null) continue;
                 const cx = Math.max(d.bx, Math.min(d.ax, d.bx + d.w)), cy = Math.max(d.by, Math.min(d.ay, d.by + d.h));
                 ctx.strokeStyle = d.color; ctx.lineWidth = 1.2;
                 ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(d.ax, d.ay); ctx.stroke();

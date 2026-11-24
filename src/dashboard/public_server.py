@@ -318,14 +318,30 @@ class PublicDashboardServer:
                                  context=chart_context(query.get("symbol")))
         return model
 
+    def english_model(self, symbol: str | None, tf: str, market: str | None, member: bool) -> dict[str, Any]:
+        """One timeframe of the chart as the visitor sees it, cached briefly (the reading needs 30m and 4h on every view)."""
+        from src.dashboard.public_en import english_chart_model
+
+        key = f"reading-model|{symbol}|{tf}|{market}|{member}"
+        return self.cache.get(key, API_TTL, lambda: english_chart_model(
+            self.chart_model({"symbol": symbol, "tf": tf, "market": market}, member)))
+
+    def reading_overlay(self, query: dict[str, str], shown: dict[str, Any], member: bool) -> dict[str, Any] | None:
+        """Uzi 24.11.2026: one reading for every timeframe (details 30m, big picture 4h), drawn on the shown candles."""
+        from src.dashboard.chart_reading import unified_overlay
+
+        return unified_overlay(shown, lambda tf: self.english_model(query.get("symbol"), tf, query.get("market"), member))
+
     def reading_page(self, query: dict[str, str]) -> str:
         """TIM chart reading for logged-in traders (Uzi 23.11.2026): BTC, plain sentences in English or German."""
         from src.dashboard import chart_reading, public_en
 
-        tf = query.get("tf") if query.get("tf") in chart_reading.TIMEFRAMES else chart_reading.DEFAULT_TF
+        # One reading, one chart (Uzi 24.11.2026): details from 30m, the big picture from 4h, whatever "tf" says.
         lang = query.get("lang") if query.get("lang") in chart_reading.LANGS else "en"
-        model = public_en.english_chart_model(self.chart_model({"symbol": "BTCUSDT", "tf": tf}))
-        return public_en.reading_page(chart_reading.render(chart_reading.build_reading(model, lang=lang), drawing=False), tf, lang)
+        model = self.english_model("BTCUSDT", chart_reading.BASE_TF, None, True)
+        big = self.english_model("BTCUSDT", chart_reading.BIG_TF, None, True)
+        reading = chart_reading.build_unified(model, big, lang=lang)
+        return public_en.reading_page(chart_reading.render(reading, drawing=False), chart_reading.BASE_TF, lang)
 
     def render_api(self, path: str, query: dict[str, str], member: bool = False) -> bytes:
         if path == "/api/chart/live":
@@ -335,9 +351,7 @@ class PublicDashboardServer:
 
             out = english_chart_model(model)
             if member:  # TIM's reading as boxes on the chart, for logged-in traders only (Uzi 23.11.2026)
-                from src.dashboard.chart_reading import overlay
-
-                out["reading"] = overlay(out)
+                out["reading"] = self.reading_overlay(query, out, member)
             return json.dumps({**out, "app_version": APP_VERSION}, default=str).encode()
         from src.dashboard.plan_cost_check import with_cost_check
         from src.dashboard.plan_journal import load_view
