@@ -91,3 +91,19 @@ London-Eröffnung ab 09:00 hat sie nicht mehr gesehen, weil die Zone noch 6 Stun
 - Entscheidungen 0.1 und 0.2 stehen im selben Protokoll und werden über `prompt_version` getrennt gezählt
   (`by_prompt` im Bericht). Bisher (24.11. 10:00) nur drei Entscheidungen 0.1, alle NICHTS, kein Trade.
 - Nicht eingefroren. Ein Urteil gibt es erst mit genügend 0.2-Trades; die Grenze steht noch aus.
+
+## R-KI-2 0.1 (24.11.2026, Entwurf): DeepSeek entscheidet selbst
+
+Anlass: Uzi 24.11.2026 11:03 „go deepseek“. Beim Nachspielen des Morgens (09:15, 09:30, 09:45, Zonen von heute,
+also kein Beleg) antwortete DeepSeek SHORT, SHORT, LONG; das lokale Modell dreimal NICHTS.
+
+- Gleiche Auslöser, gleiches Bild und gleiche Anweisung wie R-KI-1 0.2 (`ki-einstieg/2`), Entscheider ist DeepSeek
+  über Hermes (`deepseek.py`). Eigenes Protokoll `ki_entry_decisions_deepseek.jsonl`, eigenes Bitunix-Papierkonto
+  (1.000 USDT, 1 % Risiko). DeepSeek ist ein Cloud-Dienst: im Auftrag stehen nur öffentliche Marktzahlen.
+- Zweimal gefragt; Trade nur, wenn beide Antworten dieselbe Aktion nennen, sonst NICHTS („Antworten uneinig“).
+  Plan (Einstieg, Stop, Ziel) aus der ersten Antwort.
+- Feste Schutzregeln (`decide.DEEPSEEK_PROFILE`), von der KI nicht änderbar: Stop mindestens 0,5 %, Ziel mindestens
+  2 × Stop, höchstens 3 Trades je Tag (Ortszeit), nach 2 Verlusten in Folge am selben Tag keine Frage mehr.
+- Papier-Abwicklung, Kosten und Protokoll wie R-KI-1. Keine Orders, kein Schlüssel.
+- R-KI-1 und R-KI-2 sind zwei Tests nebeneinander (Mehrfachtest, so berichten). Urteil je Lauf frühestens ab
+  30 gefüllten Trades; Grenze (Entwurf): Mittel ≥ +0,10 R und untere Grenze > 0. Nicht eingefroren.

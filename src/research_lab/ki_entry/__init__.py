@@ -15,6 +15,7 @@ session may ask again at a zone already asked about.
 """
 
 RULE = "R-KI-1/0.2-entwurf"
+RULE_DEEPSEEK = "R-KI-2/0.1-entwurf"   # DeepSeek decides itself, own log and paper account (Uzi 24.11.2026 "go deepseek")
 SCHEMA = "tim_ki_entry_decision/1"
 PROMPT_VERSION = "ki-einstieg/2"
 ACTIONS = ("LONG", "SHORT", "NICHTS")
