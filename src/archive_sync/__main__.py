@@ -52,14 +52,19 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         from src.archive_sync import cold_store
 
         if args.command == "cold-init":
-            store = cold_store.ColdStore.init(args.root, limit_bytes=int(args.limit_gb * 1024**3))
-            return {"root": str(store.root), "limit_bytes": store.limit_bytes, "initialised": True}
+            store = cold_store.ColdStore.init(args.root, limit_bytes=int(args.limit_gib * 1024**3),
+                                              volume_mount=args.volume, parent=args.parent)
+            return {"root": str(store.root), "limit_bytes": store.limit_bytes, "initialised": True,
+                    "volume": store.volume}
+        store = cold_store.ColdStore(args.root)
+        if store.volume is None and not args.unbound_ok:
+            raise ArchiveSyncError("store is not bound to a mounted volume; refusing (use --unbound-ok only for local tests)")
         if args.command == "cold-ingest":
-            return cold_store.ColdStore(args.root).ingest_directory(args.dir, symbol=args.symbol)
+            return store.ingest_directory(args.dir, symbol=args.symbol)
         if args.command == "cold-verify":
-            return cold_store.ColdStore(args.root).verify()
+            return store.verify()
         if args.command == "cold-migrate":
-            return cold_store.migrate_store(args.root, args.to)
+            return cold_store.migrate_store(args.root, args.to, volume_mount=args.volume, parent=args.parent)
     if args.command == "transfer":
         target: Any
         if args.local_target:
@@ -115,16 +120,23 @@ def build_parser() -> argparse.ArgumentParser:
     send.add_argument("--port", type=int)
     cold = sub.add_parser("cold-init", help="interim file archive with a hard byte budget (INFRA-09 draft)")
     cold.add_argument("--root", required=True)
-    cold.add_argument("--limit-gb", type=float, default=100.0)
+    cold.add_argument("--limit-gib", type=float, default=100.0, help="hard budget in GiB (1 GiB = 1024^3 bytes)")
+    cold.add_argument("--volume", help="mounted file system the store is bound to (checked before every write)")
+    cold.add_argument("--parent", help="parent file system that must keep 15%% free")
     cold = sub.add_parser("cold-ingest", help="verify batch files and store them, stop at the budget")
     cold.add_argument("--root", required=True)
+    cold.add_argument("--unbound-ok", action="store_true", help=argparse.SUPPRESS)
     cold.add_argument("--dir", required=True)
     cold.add_argument("--symbol", required=True)
     cold = sub.add_parser("cold-verify", help="re-hash every stored file")
     cold.add_argument("--root", required=True)
+    cold.add_argument("--unbound-ok", action="store_true", help=argparse.SUPPRESS)
     cold = sub.add_parser("cold-migrate", help="copy the store to a new empty root and verify it there")
     cold.add_argument("--root", required=True)
     cold.add_argument("--to", required=True)
+    cold.add_argument("--volume")
+    cold.add_argument("--parent")
+    cold.add_argument("--unbound-ok", action="store_true", help=argparse.SUPPRESS)
     for name, text in (
         ("init", "server: create the archive schema"),
         ("state", "server: watermark and open holes"),

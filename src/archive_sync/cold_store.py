@@ -19,10 +19,13 @@ Not activated anywhere; nothing here runs on a schedule.
 """
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
 import shutil
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -40,6 +43,18 @@ STORE_FORMAT = "tim-cold-store/1"
 DEFAULT_LIMIT_BYTES = 100 * 1024**3
 STORE_FILE = "STORE.json"
 LEDGER_FILE = "LEDGER.jsonl"
+LOCK_FILE = ".lock"
+VOLUME_MARKER = ".tim-archive-volume"
+PARENT_MIN_FREE_RATIO = 0.15
+MountCheck = Callable[[str], bool]
+
+
+def _no_symlinks(path: Path) -> None:
+    """Refuse a path if it or any of its parent directories is a symbolic link."""
+    current = Path(os.path.abspath(path))
+    for part in [current, *current.parents]:
+        if os.path.islink(part):
+            raise ArchiveSyncError(f"symbolic link in store path refused: {part}")
 
 
 def _now() -> str:
@@ -76,6 +91,7 @@ def _copy_verified(source: Path, target: Path, expected_sha256: str) -> None:
         raise ArchiveSyncError(f"{target.name} appeared while copying; refusing to overwrite")
     os.link(part, target)  # fails if target exists: no silent overwrite even under a race
     part.unlink()
+    os.chmod(target, 0o444)  # stored files and manifests are read-only from here on
     _fsync_dir(target.parent)
 
 
@@ -120,49 +136,154 @@ def _check_batch(manifest_path: Path) -> tuple[dict[str, Any] | None, str | None
 
 
 class ColdStore:
-    """Append-only store under ``root``. ``limit_bytes`` is the hard budget for stored files."""
+    """Append-only store under ``root``. ``limit_bytes`` is the hard budget for stored files.
 
-    def __init__(self, root: str | Path, *, usage: Callable[[str], Any] = shutil.disk_usage) -> None:
-        self.root = Path(root)
+    A store created with ``volume_mount`` is bound to that mounted file system: before every write
+    the mount must be present, carry the volume marker written at init, and contain the store.
+    Otherwise the write is refused (fail closed), so an absent mount never fills the parent disk.
+    """
+
+    def __init__(self, root: str | Path, *, usage: Callable[[str], Any] = shutil.disk_usage,
+                 is_mount: MountCheck = os.path.ismount) -> None:
+        self.root = Path(os.path.abspath(root))
         self._usage = usage
+        self._is_mount = is_mount
+        _no_symlinks(self.root)
         info = self.root / STORE_FILE
         if not info.is_file():
-            raise ArchiveSyncError(f"{self.root} is not an initialised cold store")
+            raise ArchiveSyncError(f"{self.root} is not an initialised cold store (volume not mounted?)")
         self.info = json.loads(info.read_text(encoding="utf-8"))
         if self.info.get("format") != STORE_FORMAT:
             raise ArchiveSyncError("unknown cold store format")
         self.limit_bytes = int(self.info["limit_bytes"])
+        self.volume: dict[str, Any] | None = self.info.get("volume")
+        self.check_volume()
+
+    def check_volume(self) -> dict[str, Any]:
+        """Fail-closed identity check of the bound volume; called before every write."""
+        if self.volume is None:
+            return {"bound": False}
+        mount = Path(self.volume["mount"])
+        if not self._is_mount(str(mount)):
+            raise ArchiveSyncError(f"archive volume {mount} is not mounted; nothing written")
+        marker = mount / VOLUME_MARKER
+        try:
+            found = marker.read_text(encoding="utf-8").strip()
+        except OSError:
+            found = ""
+        if found != self.volume["volume_id"]:
+            raise ArchiveSyncError(f"wrong volume mounted at {mount}; nothing written")
+        try:
+            self.root.relative_to(mount)
+        except ValueError:
+            raise ArchiveSyncError("store root lies outside its volume") from None
+        if os.stat(self.root).st_dev != os.stat(mount).st_dev:
+            raise ArchiveSyncError("store root is not on the bound volume; nothing written")
+        parent = self.volume.get("parent")
+        if parent:
+            gate = disk_gate(parent, 0, min_free_ratio=PARENT_MIN_FREE_RATIO, usage=self._usage)
+            if not gate.passed:
+                raise ArchiveSyncError(f"parent file system {parent} below {PARENT_MIN_FREE_RATIO:.0%} free; nothing written")
+        return {"bound": True, "mount": str(mount), "volume_id": self.volume["volume_id"]}
+
+    @contextlib.contextmanager
+    def _locked(self):
+        """Exclusive writer lock; a second writer fails at once instead of interleaving."""
+        handle = (self.root / LOCK_FILE).open("a+")
+        try:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise ArchiveSyncError("another writer holds the store lock; nothing written") from None
+            yield
+        finally:
+            handle.close()
 
     @classmethod
-    def init(cls, root: str | Path, *, limit_bytes: int = DEFAULT_LIMIT_BYTES, **kwargs: Any) -> "ColdStore":
-        root = Path(root)
+    def init(cls, root: str | Path, *, limit_bytes: int = DEFAULT_LIMIT_BYTES, volume_mount: str | Path | None = None,
+             parent: str | Path | None = None, is_mount: MountCheck = os.path.ismount, **kwargs: Any) -> "ColdStore":
+        root = Path(os.path.abspath(root))
         if limit_bytes <= 0:
             raise ArchiveSyncError("limit must be positive")
+        _no_symlinks(root.parent if not root.exists() else root)
         info = root / STORE_FILE
         if info.exists():
             existing = json.loads(info.read_text(encoding="utf-8"))
             if int(existing.get("limit_bytes", -1)) != int(limit_bytes):
                 raise ArchiveSyncError("store exists with another limit; change it explicitly, not by init")
-            return cls(root, **kwargs)
+            return cls(root, is_mount=is_mount, **kwargs)
+        volume = None
+        if volume_mount is not None:
+            mount = Path(os.path.abspath(volume_mount))
+            if not is_mount(str(mount)):
+                raise ArchiveSyncError(f"{mount} is not a mounted file system; refusing to create a store")
+            try:
+                root.relative_to(mount)
+            except ValueError:
+                raise ArchiveSyncError("store root must lie inside the volume") from None
+            if root == mount:
+                raise ArchiveSyncError("store root must be a sub-directory of the volume")
+            marker = mount / VOLUME_MARKER
+            if marker.exists():
+                volume_id = marker.read_text(encoding="utf-8").strip()
+            else:
+                volume_id = str(uuid.uuid4())
+                with marker.open("x", encoding="utf-8") as handle:
+                    handle.write(volume_id + "\n")
+                os.chmod(marker, 0o444)
+            volume = {"mount": str(mount), "volume_id": volume_id,
+                      "parent": str(os.path.abspath(parent)) if parent else None}
         root.mkdir(parents=True, exist_ok=True)
         if any(p.name not in (STORE_FILE,) for p in root.iterdir()):
             raise ArchiveSyncError(f"{root} is not empty; a cold store needs its own directory")
         (root / "batches").mkdir()
-        payload = {"format": STORE_FORMAT, "limit_bytes": int(limit_bytes), "created_at": _now()}
+        payload = {"format": STORE_FORMAT, "limit_bytes": int(limit_bytes), "created_at": _now(), "volume": volume}
         tmp = root / (STORE_FILE + ".part")
         tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         tmp.replace(info)
+        os.chmod(info, 0o444)
         (root / LEDGER_FILE).touch()
+        (root / LOCK_FILE).touch()
         _fsync_dir(root)
-        return cls(root, **kwargs)
+        return cls(root, is_mount=is_mount, **kwargs)
 
     # ------------------------------------------------------------------ ledger
     def ledger(self) -> list[dict[str, Any]]:
-        lines = (self.root / LEDGER_FILE).read_text(encoding="utf-8").splitlines()
-        return [json.loads(line) for line in lines if line.strip()]
+        """Ledger entries. A torn last line (crash during append, no newline) is ignored; the next
+        ingest re-records that file. Any other unreadable line stops everything."""
+        text = (self.root / LEDGER_FILE).read_text(encoding="utf-8")
+        lines = text.split("\n")
+        torn = lines.pop() if lines else ""  # text after the last newline: empty or a torn entry
+        entries = []
+        for number, line in enumerate(lines, 1):
+            if not line.strip():
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                raise ArchiveSyncError(f"ledger line {number} is unreadable; refusing to continue") from None
+            if "event" not in entry:
+                entries.append(entry)
+        del torn
+        return entries
 
     def _append(self, entry: dict[str, Any]) -> None:
-        with (self.root / LEDGER_FILE).open("a", encoding="utf-8") as handle:
+        self.check_volume()
+        path = self.root / LEDGER_FILE
+        torn_tail = b""
+        with path.open("rb") as existing:
+            data = existing.read()
+        if data and not data.endswith(b"\n"):
+            torn_tail = data[data.rfind(b"\n") + 1:]
+            # A torn tail is a half-written entry of a write that never completed; its file is
+            # re-recorded by this ingest. Cut it back to the last full line and log that we did.
+            with path.open("r+b") as handle:
+                handle.truncate(len(data) - len(torn_tail))
+        with path.open("a", encoding="utf-8") as handle:
+            if torn_tail:
+                handle.write(json.dumps({"event": "torn_tail_discarded", "at": _now(), "bytes": len(torn_tail),
+                                         "sha256": hashlib.sha256(torn_tail).hexdigest()},
+                                        sort_keys=True, separators=(",", ":")) + "\n")
             handle.write(json.dumps(entry, sort_keys=True, separators=(",", ":")) + "\n")
             handle.flush()
             os.fsync(handle.fileno())
@@ -178,11 +299,18 @@ class ColdStore:
             raise ArchiveSyncError(f"unsafe symbol {symbol!r}")
         path = self.root / "batches" / symbol
         path.mkdir(parents=True, exist_ok=True)
+        _no_symlinks(path)
         return path
 
     # ------------------------------------------------------------------ ingest
     def ingest_directory(self, inbox: str | Path, *, symbol: str, min_free_ratio: float = MIN_FREE_RATIO) -> dict[str, Any]:
-        inbox = Path(inbox)
+        with self._locked():
+            return self._ingest(Path(inbox), symbol=symbol, min_free_ratio=min_free_ratio)
+
+    def _ingest(self, inbox: Path, *, symbol: str, min_free_ratio: float) -> dict[str, Any]:
+        if not symbol.isalnum():
+            raise ArchiveSyncError(f"unsafe symbol {symbol!r}")
+        self.check_volume()
         results: list[dict[str, Any]] = []
         halted: str | None = None
         for manifest_path in sorted(inbox.glob(f"{symbol}-*.manifest.json")):
@@ -190,7 +318,12 @@ class ColdStore:
             if halted:
                 results.append({"manifest": name, "status": "NOT_TRIED"})
                 continue
-            manifest, problem = _check_batch(manifest_path)
+            if manifest_path.is_symlink():
+                manifest, problem = None, "symbolic link refused"
+            else:
+                manifest, problem = _check_batch(manifest_path)
+                if manifest is not None and problem is None and (manifest_path.parent / manifest["file"]).is_symlink():
+                    problem = "symbolic link refused"
             if problem or manifest is None:
                 results.append({"manifest": name, "status": "FILE_INVALID", "reason": problem})
                 halted = "FILE_INVALID"
@@ -227,6 +360,7 @@ class ColdStore:
                 if dst.exists() and (src, dst) not in unrecorded:
                     continue
                 if not dst.exists():
+                    self.check_volume()
                     _copy_verified(src, dst, shas[src])
                 self._append({
                     "stored_at": _now(), "symbol": symbol, "path": str(dst.relative_to(self.root)),
@@ -254,30 +388,44 @@ class ColdStore:
             known.add(path)
             if not path.is_file():
                 problems.append(f"missing: {entry['path']}")
+            elif path.is_symlink():
+                problems.append(f"symbolic link: {entry['path']}")
             elif path.stat().st_size != int(entry["bytes"]) or sha256_file(path) != entry["sha256"]:
                 problems.append(f"changed: {entry['path']}")
+            elif path.stat().st_mode & 0o222:
+                problems.append(f"writable (should be read-only): {entry['path']}")
         unknown = [str(p.relative_to(self.root)) for p in (self.root / "batches").rglob("*")
                    if p.is_file() and p not in known]
         problems += [f"not in ledger: {name}" for name in unknown]
-        return {"mode": "COLD_VERIFY", "status": "FAIL" if problems else "OK", "files": len(entries),
+        volume = self.check_volume()
+        return {"mode": "COLD_VERIFY", "status": "FAIL" if problems else "OK", "files": len(entries), "volume": volume,
                 "used_bytes": self.used_bytes(), "limit_bytes": self.limit_bytes, "problems": problems}
 
 
-def migrate_store(source: str | Path, target: str | Path) -> dict[str, Any]:
+def migrate_store(source: str | Path, target: str | Path, *, volume_mount: str | Path | None = None,
+                  parent: str | Path | None = None, is_mount: MountCheck = os.path.ismount,
+                  source_is_mount: MountCheck = os.path.ismount) -> dict[str, Any]:
     """Copy a cold store to a new root (e.g. new disks), verify it there, keep the source as it is."""
-    old = ColdStore(source)
+    old = ColdStore(source, is_mount=source_is_mount)
+    with old._locked():
+        return _migrate(old, Path(target), volume_mount=volume_mount, parent=parent, is_mount=is_mount)
+
+
+def _migrate(old: "ColdStore", target: Path, *, volume_mount: str | Path | None, parent: str | Path | None,
+             is_mount: MountCheck) -> dict[str, Any]:
     before = old.verify()
     if before["status"] != "OK":
         raise ArchiveSyncError("source store does not verify; fix that before migrating")
     target = Path(target)
     if target.exists() and any(target.iterdir()):
         raise ArchiveSyncError(f"{target} is not empty; migrate only into an empty directory")
-    new = ColdStore.init(target, limit_bytes=old.limit_bytes)
+    new = ColdStore.init(target, limit_bytes=old.limit_bytes, volume_mount=volume_mount, parent=parent, is_mount=is_mount)
     copied = 0
     for entry in old.ledger():
         src = old.root / entry["path"]
         dst = new.root / entry["path"]
         dst.parent.mkdir(parents=True, exist_ok=True)
+        new.check_volume()
         _copy_verified(src, dst, entry["sha256"])
         new._append({**entry, "migrated_at": _now(), "migrated_from": str(old.root)})
         copied += 1
