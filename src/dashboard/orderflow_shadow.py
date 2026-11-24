@@ -65,28 +65,61 @@ def _number(value: Any) -> Fraction | None:
     return Fraction(value)
 
 
+_ABSENT = object()
+
+
+def _field(window: Mapping[str, Any], name: str) -> tuple[str, Fraction | None]:
+    """(state, value) of one window field. ABSENT (no key), NULL (key with ``None``) and INVALID (anything that is
+    not a finite, non-negative number) carry no value; only a number that is really there does, 0 included."""
+    raw = window.get(name, _ABSENT)
+    if raw is _ABSENT:
+        return "ABSENT", None
+    if raw is None:
+        return "NULL", None
+    value = _number(raw)
+    return ("INVALID", None) if value is None else ("VALUE", value)
+
+
 def known_side(lage: Mapping[str, Any] | None) -> dict[str, Any]:
     """Known-side check over the Lage's windows, exact (Mission 07: no rounding before the policy).
 
-    ``ok`` is True when every window with volume has known volume >= ``MIN_KNOWN_SHARE`` x volume, compared as exact
-    fractions; False when one is below, a window's numbers are invalid (``status`` INVALID) or no window has volume
-    (``status`` EMPTY: no evidence is never confirmation, Codex #372 Mission 07).
+    Fail closed (Codex #372, Mission 07-FINAL): only a number that is written in the Lage is evidence. ``ok`` is True
+    only when every window carries ``volume`` and ``unknown_volume`` as valid numbers (an explicit 0 is a value) and
+    every window with volume has known volume >= ``MIN_KNOWN_SHARE`` x volume, compared as exact fractions.
+    Otherwise False with ``status`` MISSING (``windows`` or a field is absent or null, e.g. a Lage written before
+    ``orderflow-lage/2``), INVALID (a field is there but no usable number, or more unknown
+    than volume), EMPTY (no window has volume) or BELOW. A default never stands in for a missing field.
     ``share`` is the lowest raw share for display only, never for the decision."""
     lowest: Fraction | None = None
-    invalid = False
-    for window in ((lage or {}).get("windows") or {}).values():
+    invalid = missing = False
+    windows = (lage or {}).get("windows")
+    if windows is None:
+        return {"ok": False, "status": "MISSING", "share": None}
+    if not isinstance(windows, Mapping):
+        return {"ok": False, "status": "INVALID", "share": None}
+    for window in windows.values():
         if not isinstance(window, Mapping):
             invalid = True
             continue
-        volume, unknown = _number(window.get("volume", 0)), _number(window.get("unknown_volume", 0))
-        if volume is None or unknown is None or unknown > (volume or 0):
+        (volume_state, volume), (unknown_state, unknown) = _field(window, "volume"), _field(window, "unknown_volume")
+        states = {volume_state, unknown_state}
+        if states & {"ABSENT", "NULL"}:
+            missing = True
+        if "INVALID" in states:
+            invalid = True
+        if volume is None or unknown is None:
+            continue
+        if unknown > volume:
             invalid = True
             continue
         if volume > 0:
             share = (volume - unknown) / volume
             lowest = share if lowest is None else min(lowest, share)
+    display = float(lowest) if lowest is not None else None
     if invalid:
-        return {"ok": False, "status": "INVALID", "share": float(lowest) if lowest is not None else None}
+        return {"ok": False, "status": "INVALID", "share": display}
+    if missing:
+        return {"ok": False, "status": "MISSING", "share": display}
     if lowest is None:
         return {"ok": False, "status": "EMPTY", "share": None}
     ok = lowest >= MIN_KNOWN
@@ -106,9 +139,11 @@ def lage_view(lage: Mapping[str, Any] | None) -> dict[str, Any] | None:
     near = [{"name": l["name"], "distance_pct": l["distance_pct"], "absorption": l.get("absorption"),
              "imbalance": l.get("imbalance")} for l in (lage.get("levels") or [])[:3]]
     perp = lage.get("perp") or {}
+    windows = lage.get("windows")
+    five = windows.get("5m") if isinstance(windows, Mapping) else None
     return {"as_of": lage.get("as_of"), "price": lage.get("price"), "direction": wave.get("direction"),
             "strength": wave.get("strength"), "phase": wave.get("phase"), "exhaustion": bool(wave.get("exhaustion")),
-            "tempo": lage.get("tempo"), "delta_5m": (lage.get("windows") or {}).get("5m", {}).get("delta"),
+            "tempo": lage.get("tempo"), "delta_5m": five.get("delta") if isinstance(five, Mapping) else None,
             "perp_delta_5m": perp.get("delta_5m"), "levels": near, **_side_fields(lage)}
 
 

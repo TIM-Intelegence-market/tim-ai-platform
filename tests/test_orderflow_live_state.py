@@ -258,5 +258,69 @@ def test_empty_volume_is_no_evidence_and_old_views_still_work():
     empty = shadow.lage_view({"price": 100.0, "wave": {"direction": "auf", "strength": 2}, "windows": {"5m": {"volume": 0.0, "unknown_volume": 0.0}}})
     assert empty["side_ok"] is False and empty["side_status"] == "EMPTY" and shadow.gate("LONG", empty) == shadow.UNBEKANNT
     no_windows = shadow.lage_view({"price": 100.0, "wave": {"direction": "auf", "strength": 2}})
-    assert shadow.gate("LONG", no_windows) == shadow.UNBEKANNT
+    assert shadow.gate("LONG", no_windows) == shadow.UNBEKANNT and no_windows["side_status"] == "MISSING"
     assert shadow.side_unknown({"known_share": 0.9}) and not shadow.side_unknown({"known_share": 0.95})  # pre-07 views
+
+
+_WAVE = {"price": 100.0, "wave": {"direction": "auf", "strength": 3}}
+_FULL = {"volume": 100.0, "unknown_volume": 0.0}
+
+
+def _without(name):
+    return {k: v for k, v in _FULL.items() if k != name}
+
+
+@pytest.mark.parametrize("window, status", [
+    (_without("unknown_volume"), "MISSING"),            # Codex Mission 07-FINAL: absent is not a proven 0
+    (_without("volume"), "MISSING"),
+    ({}, "MISSING"),                                    # a window with neither field
+    ({**_FULL, "unknown_volume": None}, "MISSING"),     # null is no number either
+    ({**_FULL, "volume": None}, "MISSING"),
+    ({**_FULL, "unknown_volume": "0"}, "INVALID"),
+    ({**_FULL, "unknown_volume": False}, "INVALID"),    # False is not 0
+    ({"volume": "x"}, "INVALID"),                       # invalid wins over missing
+])
+def test_missing_null_and_invalid_fields_are_never_a_known_side(window, status):
+    from src.dashboard import orderflow_shadow as shadow
+
+    for windows in ({"1m": window}, {"1m": dict(_FULL), "5m": window}, {"5m": window, "15m": dict(_FULL)}):
+        v = shadow.lage_view({**_WAVE, "windows": windows})
+        assert (v["side_ok"], v["side_status"]) == (False, status)
+        for direction in ("LONG", "SHORT"):
+            assert shadow.gate(direction, v) == shadow.UNBEKANNT and shadow.should_exit(direction, v) is None
+
+
+def test_explicit_zero_is_a_value_and_the_only_way_to_a_known_side():
+    from src.dashboard import orderflow_shadow as shadow
+
+    for zero in (0, 0.0):
+        v = shadow.lage_view({**_WAVE, "windows": {"1m": {"volume": 100.0, "unknown_volume": zero}}})
+        assert (v["side_ok"], v["side_status"], v["known_share"]) == (True, "OK", 1.0)
+        assert shadow.gate("LONG", v) == shadow.BESTAETIGT and shadow.gate("SHORT", v) == shadow.GEGEN
+    for windows, status in ((None, "MISSING"), ({}, "EMPTY"), ([], "INVALID"), ("1m", "INVALID"), ({"1m": None}, "INVALID")):
+        v = shadow.lage_view({**_WAVE, "windows": windows})
+        assert (v["side_ok"], v["side_status"]) == (False, status) and shadow.gate("LONG", v) == shadow.UNBEKANNT
+
+
+def test_a_lage_written_before_the_side_fields_existed_is_unknown_not_confirmed():
+    """Upgrade path: an ``orderflow-lage/1`` file (volume, no unknown_volume) read by the new code."""
+    from src.dashboard import orderflow_shadow as shadow
+
+    legacy = {"schema": "orderflow-lage/1", **_WAVE,
+              "windows": {name: {"trades": 5, "volume": 12.0, "delta": 3.0} for name in ("1m", "5m", "15m")}}
+    v = shadow.lage_view(legacy)
+    assert v["side_status"] == "MISSING" and v["known_share"] is None and shadow.gate("LONG", v) == shadow.UNBEKANNT
+
+
+def test_the_tracker_always_writes_both_fields_also_for_empty_windows():
+    """Producer side of the contract: every window of a real snapshot carries both numbers explicitly."""
+    from src.dashboard import orderflow_shadow as shadow
+
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    for state in (tracker.snapshot(T0),):
+        for window in state["windows"].values():
+            assert isinstance(window["volume"], float) and isinstance(window["unknown_volume"], float)
+    quiet_baseline(tracker)
+    state = tracker.snapshot(T0 + timedelta(seconds=20 * 60))
+    assert all(type(w["unknown_volume"]) is float and type(w["volume"]) is float for w in state["windows"].values())
+    assert shadow.known_side(state)["status"] == "OK"
