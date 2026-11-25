@@ -86,6 +86,7 @@ def test_local_task_runs_with_required_test_sandbox(tmp_path: Path, monkeypatch,
 
 def test_timeout_stops_the_whole_process_group(tmp_path: Path):
     import os
+    import subprocess
     import sys
     import time
 
@@ -102,9 +103,16 @@ def test_timeout_stops_the_whole_process_group(tmp_path: Path):
         run_mac_qwen_issue._run_task_group([sys.executable, "-c", script], tmp_path, dict(os.environ), timeout=2)
     grandchild = int(marker.read_text())
     for _ in range(50):
-        try:
-            os.kill(grandchild, 0)
-        except ProcessLookupError:
+        # Linux and macOS retain a PID for an exited process until it is reaped.
+        state = subprocess.run(
+            ["ps", "-p", str(grandchild), "-o", "stat="],
+            capture_output=True, text=True, check=False, timeout=2,
+        )
+        status = state.stdout.strip()
+        if state.returncode == 1 and not status and not state.stderr:
+            break  # ps found no such process
+        assert state.returncode == 0 and status, state.stderr
+        if status.startswith("Z"):
             break
         time.sleep(0.1)
     else:

@@ -572,8 +572,16 @@ def test_resolver_file_provider_requires_a_private_file(tmp_path) -> None:
     assert FredSecretResolver({PROVIDER_ENV: "file", FILE_ENV: str(path)}).api_key().reveal() == KEY
 
 
-def test_store_key_script_writes_a_private_file_and_prints_only_the_last_four(tmp_path, capsys) -> None:
+def test_store_key_script_writes_a_private_file_and_prints_only_the_last_four(tmp_path, capsys, monkeypatch) -> None:
     from scripts.fred_store_key import main
+
+    # Codex masks /tmp/.git with an empty directory. Model an external
+    # destination for this synthetic key while retaining real Git markers.
+    marker = Path("/tmp/.git")
+    if marker in [parent / ".git" for parent in tmp_path.resolve().parents]:
+        if marker.is_dir() and not marker.is_symlink() and not any(marker.iterdir()):
+            exists = Path.exists
+            monkeypatch.setattr(Path, "exists", lambda path: path != marker and exists(path))
 
     target = tmp_path / "TIM" / "fred-api-key"
     assert main(["--file", str(target)], prompt=lambda _text: KEY) == 0

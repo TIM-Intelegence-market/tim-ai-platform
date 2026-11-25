@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.request import urlopen
 
 import pytest
+
+from tests.playwright_fixture import chromium_env
 
 from src.dashboard import session_map
 from src.dashboard.analysis_card import (
@@ -227,21 +228,14 @@ def test_page_api_and_journal_show_the_same_plan(monkeypatch, tmp_path) -> None:
 SCREENSHOT_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "chart_card_screenshots.mjs"
 
 
-def _node_playwright() -> bool:
-    if not shutil.which("node"):
-        return False
-    return subprocess.run(["node", "-e", "require('playwright')"], capture_output=True, timeout=30, check=False).returncode == 0
-
-
-@pytest.mark.skipif(not _node_playwright(), reason="node with playwright not installed (cloud sandbox has it, the Mac runner not)")
-def test_browser_renders_the_card_on_every_timeframe(monkeypatch, tmp_path) -> None:
+def test_browser_renders_the_card_on_every_timeframe(monkeypatch, tmp_path, chromium_env) -> None:
     _without_cost_filter(monkeypatch)
     monkeypatch.setattr(session_map, "build_session_map", _with_levels)
     state, server, port = _server(tmp_path, _live_series())
     try:
         update(state.plan_journal_level_path, state.chart_series(), rule=RULE_LEVEL)
         result = subprocess.run(["node", str(SCREENSHOT_SCRIPT), f"http://127.0.0.1:{port}", str(tmp_path)],
-                                capture_output=True, text=True, timeout=180, check=False)
+                                capture_output=True, text=True, timeout=180, check=False, env=chromium_env)
     finally:
         server.stop()
     assert result.returncode == 0, result.stdout + result.stderr
