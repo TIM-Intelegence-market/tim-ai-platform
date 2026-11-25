@@ -74,7 +74,7 @@ def test_count_is_results_blind():
 
 def test_evaluate_locked_and_runs_when_frozen():
     with pytest.raises(PermissionError):
-        s42.evaluate({})
+        s42.evaluate({}, version="0.1")
     win, loss = Outcome("target", 50.0, 20.0), Outcome("stop", -20.0, 20.0)
     res = {d: [(Event("d", 3600, 1, 3.0, 1, 2, 120.0), win)] * 20 + [(Event("d", 3600, 1, 0.3, 1, 2, 120.0), loss)] * 20
            for d in (date(2020, 6, 1), date(2020, 7, 1), date(2023, 6, 1), date(2023, 7, 1))}
@@ -100,9 +100,9 @@ CHAIN = s32.CONFIG  # entry delay 1 s, horizon 300 s, stop 5 bp
 def test_maker_needs_trade_through_and_cancels():
     secs = _flat(101.0, 700)
     trades = [None] * 700
-    trades[5] = TradeSec(101.0, 101.0)  # touches the limit, does not trade through
+    trades[5] = TradeSec(100.9, 101.0)  # touches the limit (100.9, the bid of a one-tick spread), not through
     assert s43.maker_outcome(secs, trades, _ev(), CHAIN, 30).exit == "unfilled"
-    trades[40] = TradeSec(100.9, 101.0)  # through, but after 30 s
+    trades[40] = TradeSec(100.8, 101.0)  # through, but after 30 s
     assert s43.maker_outcome(secs, trades, _ev(), CHAIN, 30).exit == "unfilled"
     o = s43.maker_outcome(secs, trades, _ev(), CHAIN, 60)
     assert o.exit == "time" and o.fill_s == 39
@@ -111,14 +111,14 @@ def test_maker_needs_trade_through_and_cancels():
 def test_maker_target_needs_trade_through_and_stop_comes_first():
     secs = _flat(101.0, 700)
     trades = [None] * 700
-    trades[3] = TradeSec(100.9, 101.0)  # fill
+    trades[3] = TradeSec(100.8, 101.0)  # fill
     for j in range(4, 600):
         secs[j] = _sec(105.0)  # mid at the target, but no trade through it
     o = s43.maker_outcome(secs, trades, _ev(), CHAIN, 30)
     assert o.exit == "time"
     trades[10] = TradeSec(105.0, 105.1)
     o = s43.maker_outcome(secs, trades, _ev(), CHAIN, 30)
-    assert o.exit == "target" and o.gross_bp == pytest.approx((105 - 101) / 101 * 10_000)
+    assert o.exit == "target" and o.gross_bp == pytest.approx((105 - 100.9) / 100.9 * 10_000)
     secs[10] = _sec(99.9)  # stop in the same second wins
     assert s43.maker_outcome(secs, trades, _ev(), CHAIN, 30).exit == "stop"
 
@@ -126,7 +126,7 @@ def test_maker_target_needs_trade_through_and_stop_comes_first():
 def test_maker_short_mirrors():
     secs = _flat(109.0, 700)
     trades = [None] * 700
-    trades[3] = TradeSec(109.0, 109.1)
+    trades[3] = TradeSec(109.0, 109.2)  # sell limit at 109.1, a trade at 109.2 goes through
     trades[8] = TradeSec(104.9, 105.0)
     o = s43.maker_outcome(secs, trades, _ev(-1), CHAIN, 30)
     assert o.exit == "target" and o.gross_bp > 0
@@ -135,7 +135,7 @@ def test_maker_short_mirrors():
 def test_maker_costs():
     risk = 10.0
     assert s43.net_r(Outcome("target", 30.0, risk)) == pytest.approx((30 - 2 * MAKER_FEE * 1e4) / risk)
-    assert s43.net_r(Outcome("stop", -10.0, risk)) == pytest.approx((-10 - (2 + 5 + 5)) / risk)
+    assert s43.net_r(Outcome("stop", -10.0, risk)) == pytest.approx((-10 - (2 + 5 + 3 + 5)) / risk)
     assert s43.net_r(Outcome("time", 0.0, risk)) == pytest.approx(-(2 + 5 + 3) / risk)
     assert s43.net_r_stress(Outcome("time", 0.0, risk)) == pytest.approx(-(4 + 10 + 6) / risk)
 
@@ -163,6 +163,26 @@ def test_fill_report_compares_with_market_outcome():
     assert f["training"]["all"]["markt_netto_r_gefuellt"] > f["training"]["all"]["markt_netto_r_nicht_gefuellt"]
 
 
-def test_drafts_locked():
-    assert s42.VERSION.startswith("0.") and s43.VERSION.startswith("0.")
+def test_frozen_versions():
+    assert s42.VERSION == "1.0" and s43.VERSION == "1.0"
     assert set(s43.WINDOWS) == {"15m", "1h", "2h", "4h"} and s43.CANCEL_S == (30, 60, 300)
+
+
+def test_passive_price_on_grid():
+    assert s43.passive_price(101.0, 1) == pytest.approx(100.9)
+    assert s43.passive_price(101.05, 1) == pytest.approx(101.0)
+    assert s43.passive_price(109.0, -1) == pytest.approx(109.1)
+    assert s43.passive_price(105.03, -1, exact=True) == pytest.approx(105.1)
+    assert s43.passive_price(105.03, 1, exact=True) == pytest.approx(105.0)
+
+
+def test_missing_does_not_depend_on_cancel_time():
+    n = 500  # room for 30 s or 60 s plus the 300 s horizon, not for 300 s plus horizon
+    secs = _flat(101.0, n)
+    trades = [None] * n
+    trades[3] = TradeSec(100.8, 101.0)
+    assert {s43.maker_outcome(secs, trades, _ev(), CHAIN, c).exit for c in s43.CANCEL_S} == {"missing"}
+
+
+def test_h2_field_total():
+    assert s42.H2_FIELDS_TOTAL == 20 * 2 * 7 + 3 * 20 * 2 * 7 + 4 * 3 * 20 * 2 * 7

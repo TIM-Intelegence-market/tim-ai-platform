@@ -1,6 +1,6 @@
 """S42: the S32 setup on larger ranges (1 h, 2 h, 4 h windows). Follow-up to S32, own question, own data run.
 
-Rules: docs/research_lab/studien/S42_S43_ORDERBUCH_GROSSE_RANGES_MAKER_PRAEREGISTRIERUNG_ENTWURF.md (draft 0.1).
+Rules: docs/research_lab/studien/S42_S43_ORDERBUCH_GROSSE_RANGES_MAKER_PRAEREGISTRIERUNG_ENTWURF.md (1.0, frozen 25.11.2026).
 
 S32 found no edge on 15-minute ranges; costs (13-18 bp) were larger than the whole stop on narrow ranges. The setup
 in the video comes from a market where costs are tiny against the stop, so S42 asks the same chain on ranges that are
@@ -31,10 +31,11 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from src.research_lab.protocol import BASE_COSTS, STRESS_COSTS
+from src.research_lab.stats.deflated import deflated_sharpe
 from src.research_lab.studies import s32
 from src.research_lab.studies.s32 import Event, Outcome, Second
 
-VERSION = "0.1"
+VERSION = "1.0"
 SEED = 42
 MIN_CASES = s32.MIN_CASES
 BOOT_DRAWS = s32.BOOT_DRAWS
@@ -45,6 +46,11 @@ WINDOWS = {"1h": 3600, "2h": 7200, "4h": 14400}
 WIDTH_GROUPS = ((60.0, 100.0), (100.0, 150.0), (150.0, 250.0), (250.0, 400.0))
 WIDTH_LABELS = tuple(f"{lo:g}-{hi:g}" for lo, hi in WIDTH_GROUPS)
 GROUPS = WIDTH_LABELS + tuple(f"{w}|{name}" for w in WIDTH_LABELS for name, _ in s32.SESSIONS)
+# Multiple testing (pre-registration section 5): every H2 field of S32 1.0, S42 and S43, the trial count for the
+# deflated Sharpe that is reported (descriptive, not a pass condition) for every passed H2 field.
+H2_FIELDS_TOTAL = (len(s32.GROUPS) * 2 * s32.H2_BINS  # S32: groups x 2 targets x bins
+                   + len(WINDOWS) * len(GROUPS) * 2 * s32.H2_BINS  # S42
+                   + (len(WINDOWS) + 1) * 3 * len(GROUPS) * 2 * s32.H2_BINS)  # S43: 4 windows x 3 cancel times
 
 
 @dataclass(frozen=True)
@@ -159,6 +165,13 @@ def _boot_lower(days, stat, draws: int, rng: random.Random, alpha: float) -> flo
     return vals[int(alpha * len(vals))] if vals else float("nan")
 
 
+def _dsr(xs: Sequence[float]) -> float | None:
+    try:
+        return deflated_sharpe(xs, H2_FIELDS_TOTAL).dsr
+    except (ValueError, ZeroDivisionError):
+        return None
+
+
 def evaluate(results: dict[date, list[tuple[Event, Outcome]]], *, groups: Sequence[str] = GROUPS,
              member: Callable[[Event, str], bool] = in_group, net=None, net_stress=None,
              valid_exits: tuple[str, ...] = ("target", "stop", "time"), version: str = VERSION,
@@ -207,7 +220,11 @@ def evaluate(results: dict[date, list[tuple[Event, Outcome]]], *, groups: Sequen
             "h1_pruefbar": bool(t["pruefbar"] and v["pruefbar"]),
             "h1_bestanden": bool(t["pruefbar"] and v["pruefbar"]
                                  and t["h1_untere_grenze"] > 0 and v["h1_untere_grenze"] > 0),
-            "h2_bestandene_stufen": passed, "h2_bestanden": bool(passed)}
+            "h2_bestandene_stufen": passed, "h2_bestanden": bool(passed),
+            "h2_deflated_sharpe": {lb: _dsr([net(o) for d, rows in results.items() for e, o in rows
+                                             if member(e, grp) and o.exit in valid_exits
+                                             and s32.bin_label(e.ratio) == lb]) for lb in passed},
+            "h2_felder_gesamt": H2_FIELDS_TOTAL}
     return out
 
 

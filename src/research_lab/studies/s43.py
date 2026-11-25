@@ -1,18 +1,24 @@
 """S43: the S32 / S42 setup with a limit (maker) entry instead of a market entry. Follow-up to S32, own question.
 
-Rules: docs/research_lab/studien/S42_S43_ORDERBUCH_GROSSE_RANGES_MAKER_PRAEREGISTRIERUNG_ENTWURF.md (draft 0.1).
+Rules: docs/research_lab/studien/S42_S43_ORDERBUCH_GROSSE_RANGES_MAKER_PRAEREGISTRIERUNG_ENTWURF.md (1.0, frozen 25.11.2026).
 
 Same events as S32 (15-minute window, S32 widths) and S42 (1 h, 2 h, 4 h windows, S42 widths). Instead of buying at
 the mid one second after the event, a limit order rests at that mid:
 
 - placed 1 s after the event (latency); only trades in later seconds count;
+- price on the 0.1 grid on the passive side of the mid: a buy limit at the highest multiple of 0.1 at or below
+  mid - 0.05, a sell limit at the lowest multiple of 0.1 at or above mid + 0.05 (the bid / ask with a one-tick spread;
+  0.1 is the 2021-2024 tick, in 2020 the tick was 0.01, so there the limit sits deeper than the bid: conservative);
 - filled only when a trade prints **through** the limit (buy limit: a trade strictly below it; protocol 1.3, 4.4);
 - not filled within ``cancel_s`` (30 s, 60 s, 300 s, each its own question): cancelled, no trade (counted, not a loss);
+- an event is "missing" if 300 s plus the horizon after placing reaches the end of the day, the same for every cancel
+  time, so all three families see the same events;
 - after the fill: target and stop as in S32, measured from the fill second; the target exit is a resting limit as
-  well and needs a trade strictly through the target; the stop is a market exit (mid based, as in S32) and is checked
-  first within a second; at the horizon a market exit at the mid;
-- costs: maker 2 bp for each limit fill, taker 5 bp plus 3 bp slippage for a time exit, plus 5 bp more for a stop
-  (protocol 1.3); stress doubles all of it.
+  well, on the 0.1 grid on its far side (sell: rounded up, buy: rounded down), and needs a trade strictly through it;
+  the stop is a market exit (mid based, as in S32) and is checked first within a second; at the horizon a market exit
+  at the mid;
+- costs: maker 2 bp for each limit fill, taker 5 bp plus 3 bp slippage for a time exit, plus 5 bp stop slippage for a
+  stop (2 + 5 + 3 + 5 bp, as S32 adds the stop slippage on top of the slippage; protocol 1.3); stress doubles all of it.
 
 Reported besides H1/H2: the fill rate and whether the filled events are the worse ones (S32 market outcome of filled
 against unfilled events, descriptive).
@@ -24,6 +30,7 @@ import csv
 import gzip
 import hashlib
 import json
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -34,9 +41,10 @@ from src.research_lab.protocol import BASE_COSTS, MAKER_FEE, STRESS_COSTS, CostM
 from src.research_lab.studies import s32, s42
 from src.research_lab.studies.s32 import Event, Outcome, Second
 
-VERSION = "0.1"
+VERSION = "1.0"
 SEED = 43
 CANCEL_S = (30, 60, 300)
+TICK = 0.1  # price grid for limit orders (see module docstring)
 WINDOWS = {"15m": 900, **s42.WINDOWS}
 
 
@@ -79,6 +87,17 @@ class MakerOutcome(Outcome):
     fill_s: int = -1  # seconds from placing to the fill, -1 if not filled
 
 
+def passive_price(price: float, side: int, *, exact: bool = False) -> float:
+    """Limit price on the TICK grid on the passive side: a buy (side > 0) below, a sell above.
+
+    With ``exact=False`` (entry at the mid) the limit sits at least half a tick away from the mid, i.e. at the bid / ask
+    of a one-tick spread; with ``exact=True`` (target) only the rounding to the grid applies."""
+    shift = 0.0 if exact else TICK / 2
+    steps = (price - shift) / TICK if side > 0 else (price + shift) / TICK
+    n = math.floor(steps + 1e-9) if side > 0 else math.ceil(steps - 1e-9)
+    return round(n * TICK, 10)
+
+
 def maker_outcome(secs: Sequence[Second | None], trades: Sequence[TradeSec | None], ev: Event, chain: s32.Config,
                   cancel_s: int, target_kind: str = "mitte") -> MakerOutcome:
     j0 = ev.i + chain.entry_delay_s
@@ -86,12 +105,14 @@ def maker_outcome(secs: Sequence[Second | None], trades: Sequence[TradeSec | Non
         return MakerOutcome("missing", 0.0, 0.0)
     if target_kind not in s32.TARGETS:
         raise ValueError(target_kind)
-    limit = secs[j0].mid
-    target = (ev.lo + ev.hi) / 2 if target_kind == "mitte" else (ev.hi if ev.side > 0 else ev.lo)
+    mid = secs[j0].mid
+    limit = passive_price(mid, ev.side)
+    raw_target = (ev.lo + ev.hi) / 2 if target_kind == "mitte" else (ev.hi if ev.side > 0 else ev.lo)
+    target = passive_price(raw_target, -ev.side, exact=True)
     stop = ev.lo * (1 - chain.stop_bp / 10_000) if ev.side > 0 else ev.hi * (1 + chain.stop_bp / 10_000)
     if (target - limit) * ev.side <= 0 or (limit - stop) * ev.side <= 0:
         return MakerOutcome("no_room", 0.0, 0.0)
-    if j0 + cancel_s + chain.horizon_s >= len(secs):
+    if j0 + max(CANCEL_S) + chain.horizon_s >= len(secs):
         return MakerOutcome("missing", 0.0, 0.0)  # cut by the end of the day file
     fill = None
     for j in range(j0 + 1, j0 + cancel_s + 1):
@@ -120,7 +141,7 @@ def net_r(o: Outcome, costs: CostModel = BASE_COSTS, maker_fee: float = MAKER_FE
     if o.exit == "target":
         cost = 2 * maker_fee
     elif o.exit == "stop":
-        cost = maker_fee + costs.fee + costs.stop_slippage
+        cost = maker_fee + costs.fee + costs.slippage + costs.stop_slippage
     else:
         cost = maker_fee + costs.fee + costs.slippage
     return (o.gross_bp - cost * 10_000) / o.risk_bp
@@ -163,7 +184,7 @@ def fills(results: dict[date, list[tuple[Event, Outcome]]], market: dict[date, l
 
 
 def digest() -> str:
-    base = {"cancel_s": CANCEL_S, "maker_fee": MAKER_FEE, "s42": s42.CONFIG.digest(), "s32": s32.CONFIG.digest()}
+    base = {"cancel_s": CANCEL_S, "tick": TICK, "maker_fee": MAKER_FEE, "s42": s42.CONFIG.digest(), "s32": s32.CONFIG.digest()}
     return hashlib.sha256(json.dumps(base, sort_keys=True).encode()).hexdigest()
 
 
