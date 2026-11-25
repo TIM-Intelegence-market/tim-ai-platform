@@ -10,7 +10,7 @@ const { chromium } = require("playwright");
 const [base, outDir] = process.argv.slice(2);
 
 // Pixels close to the footprint POC frame colour (#f5c542) on the chart canvases.
-const yellowPixels = () => {
+const yellowPixels = (minimum) => {
   let count = 0;
   for (const canvas of document.querySelectorAll("#tc-live-chart canvas")) {
     const ctx = canvas.getContext("2d");
@@ -20,7 +20,7 @@ const yellowPixels = () => {
       if (Math.abs(data[i] - 245) < 12 && Math.abs(data[i + 1] - 197) < 12 && Math.abs(data[i + 2] - 66) < 12 && data[i + 3] > 200) count++;
     }
   }
-  return count;
+  return minimum === undefined ? count : count > minimum;
 };
 
 const browser = await chromium.launch();
@@ -36,10 +36,11 @@ try {
     localStorage.setItem("tim-chart-layers-known-v1", JSON.stringify(["day", "week", "month", "naked", "structure", "trend", "tpo", "vp", "fp"]));
   });
   await page.goto(`${base}/chart?tf=5m`, { waitUntil: "networkidle" });
-  await page.waitForTimeout(1200);
+  await page.waitForFunction(() =>
+    document.querySelector("#tc-live-status")?.textContent.includes(" · Level: "));
   result.yellowZoomedOut = await page.evaluate(yellowPixels);
   await page.click("button[data-action='footprint']");
-  await page.waitForTimeout(800);
+  await page.waitForFunction(yellowPixels, 100);
   result.yellowFootprint = await page.evaluate(yellowPixels);
   await page.screenshot({ path: path.join(outDir, "footprint-5m.png") });
 
@@ -48,7 +49,7 @@ try {
   legacy.on("pageerror", error => result.errors.push(error.message));
   await legacy.addInitScript(() => localStorage.setItem("tim-chart-layers-v1", JSON.stringify(["day", "tpo"])));
   await legacy.goto(`${base}/chart?tf=5m`, { waitUntil: "networkidle" });
-  await legacy.waitForTimeout(1000);
+  await legacy.locator("#tc-live-layers input[value='fp']").waitFor({ state: "attached" });
   result.legacyChecked = await legacy.$$eval("#tc-live-layers input", nodes => nodes.filter(n => n.checked).map(n => n.value));
 } finally {
   await browser.close();
