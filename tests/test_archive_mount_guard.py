@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 
@@ -352,11 +353,11 @@ def _first(lines, needle):
 
 def test_section_11_order_guards_before_side_effects():
     lines = _section_11()
-    first_effect = min(_first(lines, x) for x in ("adduser", "install -d -m 0711", "fallocate", "mkfs.ext4", ">> /etc/fstab"))
+    first_effect = min(_first(lines, x) for x in ("adduser --system", "install -d -m 0711", "fallocate -l", "mkfs.ext4 -q", ">> /etc/fstab"))
     assert _first(lines, "$GUARD parent") < first_effect
     assert _first(lines, "$GUARD reserve --parent /var/lib/warpgate") < first_effect
     assert _first(lines, "test ! -e \"$IMG_DIR\"") < first_effect
-    mkfs = _first(lines, "mkfs.ext4")
+    mkfs = _first(lines, "mkfs.ext4 -q")
     mount = _first(lines, 'mount "$MNT"')
     assert mkfs < _first(lines, "$GUARD image") < mount
     after_mount = [i for i, line in enumerate(lines) if "$GUARD archive" in line]
@@ -384,17 +385,12 @@ def test_section_11_no_old_identity_check_and_no_uuid_in_doc():
 
 # --- §11 ownership line for /opt/tim, run for real on a fresh venv ---------------------------
 
-def _ownership_line():
-    for line in _section_11():
-        if "find /opt/tim" in line:
-            return line
-    raise AssertionError("ownership check missing in §11")
-
-
 def _run_ownership(root):
-    import subprocess as sp
-    line = _ownership_line().replace("/opt/tim", str(root))
-    return sp.run(["bash", "-c", "set -euo pipefail; " + line], capture_output=True).returncode
+    lines = _section_11()
+    start = _first(lines, "test -d /opt/tim")
+    end = _first(lines, 'test -z "$unsafe_entry"')
+    script = "\n".join(lines[start:end + 1]).replace("/opt/tim", str(root))
+    return subprocess.run(["bash", "-c", "set -euo pipefail\n" + script], capture_output=True).returncode
 
 
 @pytest.mark.skipif(os.geteuid() != 0, reason="needs root to own the tree like /opt/tim")
@@ -431,3 +427,181 @@ def test_test_env_never_relaxes_for_root(tmp_path, monkeypatch, capsys):
     code = g.main(["parent", "--target", str(tmp_path), "--expected-uuid-file", str(path)])
     assert code == 1
     assert "not owned by root" in capsys.readouterr().out
+
+
+# The documented plan is executable test input. All its paths are rebased into
+# tmp_path and every external command is replaced before running Bash.
+_SETUP_STEPS = (
+    "find", "guard:parent", "guard:reserve", "df", "tail", "adduser",
+    "install", "fallocate", "chmod", "stat:%b", "stat:%B", "stat:%s",
+    "guard:parent", "cat:kernel", "chmod", "cat:archive", "mkfs.ext4",
+    "guard:image", "install", "chattr", "systemctl", "guard:parent", "mount",
+    "guard:archive", "guard:parent", "guard:reserve", "chown", "chmod",
+    "install", "sudo", "cat:script", "chmod",
+)
+_RUNTIME_STEPS = ("find", "guard:parent", "guard:image", "guard:archive", "guard:reserve")
+_PLAN_STEPS = _SETUP_STEPS + _RUNTIME_STEPS
+_POST_MOUNT_CHECKS = range(24, 27)
+_STUBS = r"""
+record() {
+    printf '%s\n' "$1" >> "$TRACE"
+    local count=0
+    while IFS= read -r line; do ((count += 1)); done < "$TRACE"
+    test "$count" -ne "$FAIL_STEP" || return 73
+    test "$1" != umount || test "$FAIL_UNMOUNT" != 1 || return 74
+}
+find() {
+    record find || return
+    if [[ $FIND_RESULT == unsafe ]]; then printf '%s\n' 'unsafe entry'; fi
+}
+df() {
+    # A partial result can contain a usable-looking number even on error.
+    printf 'Avail\n%s\n' "$AVAILABLE_BYTES"
+    record df
+}
+tail() {
+    local line last=''
+    while IFS= read -r line; do last=$line; done
+    printf '%s\n' "$last"
+    record tail
+}
+stat() {
+    case "$2" in
+        %b) printf '%s\n' "$ALLOCATED_BLOCKS" ;;
+        %B) printf '512\n' ;;
+        %s) printf '34359738368\n' ;;
+        *) return 75 ;;
+    esac
+    record "stat:$2"
+}
+cat() {
+    case "${1-}" in
+        */proc/sys/kernel/random/uuid) printf '%s\n' "$TEST_UUID"; record cat:kernel ;;
+        */archive-volume.uuid) printf '%s\n' "$TEST_UUID"; record cat:archive ;;
+        '')
+            record cat:script || return
+            local line
+            while IFS= read -r line; do printf '%s\n' "$line"; done
+            ;;
+        *) return 75 ;;
+    esac
+}
+findmnt() { return 75; }
+blkid() { return 75; }
+adduser() { record adduser; }
+install() { record install; }
+fallocate() { record fallocate; }
+chmod() { record chmod; }
+mkfs.ext4() { record mkfs.ext4; }
+chattr() { record chattr; }
+systemctl() { record systemctl; }
+mount() { record mount; }
+umount() { record umount; }
+chown() { record chown; }
+sudo() { record sudo; }
+"""
+
+
+def _run_section_11(tmp_path, *, fail_step=0, fail_unmount=False, before_run=None, **overrides):
+    bash = shutil.which("bash")
+    assert bash is not None
+    for directory in ("opt/tim/.venv/bin", "etc/tim", "usr/local/sbin"):
+        (tmp_path / directory).mkdir(parents=True)
+    trace = tmp_path / "trace"
+    trace.touch()
+    stubs = tmp_path / "stubs"
+    stubs.write_text(_STUBS)
+    python = tmp_path / "opt/tim/.venv/bin/python"
+    python.write_text(f'#!{bash}\nsource "$STUBS"\nrecord "guard:$3"\n')
+    python.chmod(0o700)
+
+    lines = _section_11()
+    replacements = ("/opt/tim", "/var/lib/warpgate", "/srv/tim-archive-tmp", "/etc/",
+                    "/proc/sys/kernel/random/uuid", "/usr/local/sbin/tim-archive-guard")
+    # Rebase the fixed paths before executing any of the documented steps.
+    paths = re.compile("|".join(re.escape(path) for path in replacements))
+    script = paths.sub(lambda match: f"{tmp_path}{match[0]}", "\n".join(lines))
+    guard = tmp_path / "usr/local/sbin/tim-archive-guard"
+    script = script.replace(f"\n{guard}", f'\n"{bash}" "{guard}"')
+    env = {
+        "PATH": str(tmp_path / "empty-path"),
+        "BASH_ENV": str(stubs),
+        "STUBS": str(stubs),
+        "TRACE": str(trace),
+        "FAIL_STEP": str(fail_step),
+        "FAIL_UNMOUNT": str(int(fail_unmount)),
+        "FIND_RESULT": "safe",
+        "AVAILABLE_BYTES": "325000000000",
+        "ALLOCATED_BLOCKS": "67108864",
+        "TEST_UUID": GOOD,
+        **overrides,
+    }
+    if before_run is not None:
+        before_run(tmp_path)
+    result = subprocess.run([bash, "-c", script], cwd=tmp_path, env=env, capture_output=True, timeout=10)
+    return result, trace.read_text().splitlines()
+
+
+def test_section_11_accepts_successful_setup_and_runtime_checks(tmp_path):
+    result, steps = _run_section_11(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert steps == list(_PLAN_STEPS)
+
+
+@pytest.mark.parametrize("step", range(1, len(_PLAN_STEPS) + 1),
+                         ids=[f"{index}-{name}" for index, name in enumerate(_PLAN_STEPS, 1)])
+def test_section_11_stops_after_a_failed_command(tmp_path, step):
+    result, steps = _run_section_11(tmp_path, fail_step=step)
+    expected = list(_PLAN_STEPS[:step])
+    if step in _POST_MOUNT_CHECKS:
+        expected.append("umount")
+    assert result.returncode != 0
+    # Both pipeline stages start even when one exits nonzero.
+    if step == 4:
+        expected.append("tail")
+    assert steps == expected
+
+
+def test_section_11_stops_even_if_post_mount_cleanup_fails(tmp_path):
+    result, steps = _run_section_11(tmp_path, fail_step=24, fail_unmount=True)
+    assert result.returncode != 0
+    assert steps == [*_PLAN_STEPS[:24], "umount"]
+
+
+@pytest.mark.parametrize(("overrides", "last_step"), [
+    ({"FIND_RESULT": "unsafe"}, 1),
+    ({"AVAILABLE_BYTES": "299999999999"}, 5),
+    ({"ALLOCATED_BLOCKS": "67108863"}, 12),
+    ({"TEST_UUID": "invalid"}, 16),
+])
+def test_section_11_rejects_unsuitable_inputs(tmp_path, overrides, last_step):
+    result, steps = _run_section_11(tmp_path, **overrides)
+    assert result.returncode != 0
+    assert steps == list(_PLAN_STEPS[:last_step])
+
+
+@pytest.mark.parametrize(("path", "last_step"), [
+    ("var/lib/warpgate/tim-archive-img", 5),
+    ("srv/tim-archive-tmp", 5),
+    ("etc/tim/archive-volume.uuid", 5),
+    ("etc/fstab", 20),  # Directory in place of the append target.
+    ("usr/local/sbin/tim-archive-guard", 30),  # Guard redirection fails.
+])
+def test_section_11_rejects_blocked_paths(tmp_path, path, last_step):
+    def block_path(root):
+        (root / path).mkdir(parents=True)
+
+    result, steps = _run_section_11(tmp_path, before_run=block_path)
+    assert result.returncode != 0
+    assert steps == list(_PLAN_STEPS[:last_step])
+
+
+def test_section_11_rejects_missing_required_command(tmp_path):
+    def remove_command(root):
+        stubs = root / "stubs"
+        with stubs.open("a") as script:
+            script.write("\nunset -f blkid\n")
+
+    result, steps = _run_section_11(tmp_path, before_run=remove_command)
+    assert result.returncode != 0
+    assert steps == ["find"]

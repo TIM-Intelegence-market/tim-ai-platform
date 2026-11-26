@@ -257,8 +257,12 @@ IMG_DIR=/var/lib/warpgate/tim-archive-img; IMG=$IMG_DIR/archive.img; MNT=/srv/ti
 # anderen beschreibbar sein, sonst liefe fremder Code als root. Symbolische Links (venv: python ->
 # /usr/bin/python3) haben immer 0777 und werden nur auf den Eigentümer geprüft; ihre Ziele außerhalb
 # von /opt/tim (System-Python) prüft diese Zeile nicht:
-test -d /opt/tim -a ! -L /opt/tim; test -z "$(find /opt/tim \( ! -user root -o \( ! -type l -perm /022 \) \) -print -quit)"
-command -v findmnt blkid >/dev/null
+test -d /opt/tim -a ! -L /opt/tim
+unsafe_entry=$(find /opt/tim \( ! -user root -o \( ! -type l -perm /022 \) \) -print -quit)
+test -z "$unsafe_entry"
+for required in findmnt blkid df tail adduser install fallocate chmod stat cat mkfs.ext4 chattr systemctl mount umount chown sudo; do
+    command -v "$required" >/dev/null
+done
 cd /opt/tim; GUARD="/opt/tim/.venv/bin/python -m src.archive_sync.mount_guard"   # nur lesend
 WG_UUID_FILE=/etc/tim/warpgate-fs.uuid; ARCH_UUID_FILE=/etc/tim/archive-volume.uuid
 
@@ -273,7 +277,8 @@ WG_UUID_FILE=/etc/tim/warpgate-fs.uuid; ARCH_UUID_FILE=/etc/tim/archive-volume.u
 #    Reserve (15 % frei nach 32 GiB und während des Restore-Tests), Ziele noch nicht vorhanden.
 $GUARD parent --target /var/lib/warpgate --expected-uuid-file "$WG_UUID_FILE" --fstype ext4
 $GUARD reserve --parent /var/lib/warpgate
-test "$(df -B1 --output=avail /var/lib/warpgate | tail -1)" -ge 300000000000
+available_bytes=$(df -B1 --output=avail /var/lib/warpgate | tail -1)
+test "$available_bytes" -ge 300000000000
 test ! -e "$IMG_DIR" -a ! -L "$IMG_DIR"
 test ! -e "$MNT" -a ! -L "$MNT"
 test ! -e "$ARCH_UUID_FILE" -a ! -L "$ARCH_UUID_FILE"
@@ -284,14 +289,22 @@ adduser --system --group --no-create-home --shell /usr/sbin/nologin tim-archive
 # 2  Image fest belegt (nicht dünn), danach Belegung nachprüfen
 install -d -m 0711 -o root -g root "$IMG_DIR"
 fallocate -l 32GiB "$IMG"; chmod 0600 "$IMG"
-test "$(( $(stat -c %b "$IMG") * $(stat -c %B "$IMG") ))" -ge "$(stat -c %s "$IMG")"
+allocated_blocks=$(stat -c %b "$IMG")
+block_bytes=$(stat -c %B "$IMG")
+image_bytes=$(stat -c %s "$IMG")
+[[ $allocated_blocks =~ ^(0|[1-9][0-9]*)$ && $block_bytes =~ ^[1-9][0-9]*$ ]]
+test "$image_bytes" -eq 34359738368
+test "$(( allocated_blocks * block_bytes ))" -ge "$image_bytes"
 
 # 3  Eigenes ext4 nur in der Image-Datei, ohne Discard und ohne Reserve.
 #    Die Kennung wird VORHER festgelegt und geschützt abgelegt, dann mit -U gesetzt und geprüft;
 #    so wird nichts aus dem Ergebnis selbst abgeschrieben.
 $GUARD parent --target /var/lib/warpgate --expected-uuid-file "$WG_UUID_FILE" --fstype ext4
 cat /proc/sys/kernel/random/uuid > "$ARCH_UUID_FILE"; chmod 0600 "$ARCH_UUID_FILE"
-mkfs.ext4 -q -L tim-archive -m 0 -E nodiscard -U "$(cat "$ARCH_UUID_FILE")" "$IMG"
+archive_uuid=$(cat "$ARCH_UUID_FILE")
+[[ $archive_uuid =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]]
+mkfs.ext4 -q -L tim-archive -m 0 -E nodiscard -U "$archive_uuid" "$IMG"
+unset archive_uuid
 $GUARD image --image "$IMG" --expected-uuid-file "$ARCH_UUID_FILE"   # Größe, volle Belegung, UUID
 
 # 4  Einhängepunkt, der ohne Einhängung nicht beschreibbar ist (leer, 0000, unveränderlich)
@@ -323,7 +336,9 @@ sudo -u tim-archive /opt/tim/.venv/bin/python -m src.archive_sync cold-init \
 cat > /usr/local/sbin/tim-archive-guard <<'GUARD'
 #!/bin/bash
 set -euo pipefail
-test -d /opt/tim -a ! -L /opt/tim; test -z "$(find /opt/tim \( ! -user root -o \( ! -type l -perm /022 \) \) -print -quit)"
+test -d /opt/tim -a ! -L /opt/tim
+unsafe_entry=$(find /opt/tim \( ! -user root -o \( ! -type l -perm /022 \) \) -print -quit)
+test -z "$unsafe_entry"
 cd /opt/tim
 G="/opt/tim/.venv/bin/python -m src.archive_sync.mount_guard"
 IMG=/var/lib/warpgate/tim-archive-img/archive.img; MNT=/srv/tim-archive-tmp
