@@ -48,7 +48,7 @@ Organisatorisch (nur der Owner oder Chris):
 
 1. Owner-only der Codex-Cloud-Umgebung unabhängig nachweisen (Nicht-Owner-Testrolle). Blockiert nur das
    Gesamturteil INFRA-10, **nicht** die Archiv-Abnahme selbst.
-2. INFRA-09: Uzis bedingtes GO vom 24.11. gilt weiter; Bedingung "Codex-PASS" fehlt.
+2. INFRA-09: Einrichtung laut Auftrag 26.11. auf HOLD; braucht nach Codex-PASS ein neues GO von Uzi.
 3. Fragen an Chris (Archiv-Doku §15): Redundanz der Warpgate-Platte, Fernwartungskonsole.
 
 ## P1 Archiv-Einrichtung vorbereiten (nichts eingerichtet)
@@ -92,11 +92,16 @@ nicht (er nutzt die Warpgate-Platte), kann aber Dienste mit Logs unter `/var` st
 
 ### Ablauf, sobald Codex PASS meldet (Reihenfolge, je Schritt Stopp bei Fehler)
 
-1. Vorab-Prüfer am Server ausführen (lesend). Nur bei PASS weiter.
-2. Einrichtung nach §11 (deckt Uzis bedingtes GO vom 24.11. ab, ohne weitere Rückfrage).
-3. Nachprüfung lesend (§11 Ende): Einhängung, volle Belegung, `cold-verify` OK, Warpgate-Startzeit
+Der Owner-Auftrag vom 26.11. setzt **INFRA-09 Einrichtung: HOLD** und verlangt "keine tatsächliche Einrichtung
+vor unabhängiger Freigabe". Das bedingte GO vom 24.11. wird dadurch ausgesetzt. Ein Codex-PASS löst also
+**keine** Einrichtung aus.
+
+1. Codex-PASS an Uzi melden, Vorab-Prüfer am Server ausführen (lesend), Ergebnis melden.
+2. **Warten auf Uzis neues, ausdrückliches GO.**
+3. Erst dann Einrichtung nach §11.
+4. Nachprüfung lesend (§11 Ende): Einhängung, volle Belegung, `cold-verify` OK, Warpgate-Startzeit
    unverändert, Anmeldung klappt, rund 290 GB frei.
-4. **Stopp.** Erster Archivlauf und Zeitplan brauchen je ein eigenes GO.
+5. **Stopp.** Erster Archivlauf und Zeitplan brauchen je ein eigenes GO.
 
 ### Erster manueller Archivlauf (vorbereitet, eigenes GO nötig)
 
@@ -148,6 +153,6 @@ genannten HEAD-SHA.
 
 1. Codex prüft die Archivkette (technischer Blocker, kein Owner-Handgriff nötig).
 2. Owner: Owner-only-Nachweis für die Codex-Cloud (organisatorisch).
-3. Bei Archiv-PASS: Vorab-Prüfer, dann Einrichtung nach §11, dann Stopp.
+3. Bei Archiv-PASS: Vorab-Prüfer (lesend), Meldung an Uzi, Einrichtung erst nach seinem neuen GO.
 4. Codex prüft TIM-2.0-Pakete B → A → C; danach Forschungsaufgaben A2–A4 aus P3.
 5. Chris: `/var` auf dem Server zu 91 % belegt.
