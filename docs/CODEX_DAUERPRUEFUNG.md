@@ -1,6 +1,6 @@
 # INFRA-10: Dauerhafte unabhängige Codex-Abnahme
 
-Stand: 25.11.2026, Version 0.1 (Entwurf). Status: **nur Plan. Nichts davon ist aktiviert.**
+Stand: 26.11.2026, Version 0.2 (Entwurf; 0.1 vom 25.11., Ergänzung INFRA-11 in §9). Status: **nur Plan. Nichts davon ist aktiviert.**
 Auftrag: Mission INFRA-10 des Owners vom 25.11.2026. `TRADING_AUTHORIZED=NO`.
 
 ## 0. Grenzen dieses Plans
@@ -253,3 +253,65 @@ Owner-Freigabe vom 24.11. Bis dahin: keine Einrichtung, kein Archivlauf.
 | Status von Hand gesetzt | Ruleset bindet Status an App |
 | Workflow führt PR-Code mit Schreibrecht aus | Base-seitiger Sammler, PR-Code nur im lesenden Job |
 | Codex nicht verfügbar | Urteil INCONCLUSIVE, Merge blockiert, kein stilles Durchwinken |
+
+## 9. Ergänzung INFRA-11 (26.11.2026)
+
+Weiterhin **nichts aktiviert**: kein Workflow, keine Ruleset-Änderung, kein Pflicht-Status. Neu ist nur Code unter
+`src/review_pipeline/` mit Tests, den ein späterer Owner-PR (Phase 2/3) aufrufen kann.
+
+### 9.1 Neuer Bestand seit 0.1
+
+- Die Codex-Cloud-Umgebung ist veröffentlicht und funktioniert: Gates 1–3 und die Netzwerk-Durchsetzung für #397 und
+  Private #464 PASS, Owner-only INCONCLUSIVE (#372 Kommentar 7172531879). Damit ist Phase 1 technisch weitgehend
+  erledigt; offen ist der unabhängige Owner-only-Nachweis. Ob "Automatic review" für dieses Repo an ist, ist
+  **UNGEPRÜFT** (die letzte Bot-Antwort "create an environment" stammt von vor der Veröffentlichung).
+- Prüfstand Variante B (Codex-Umgebung) ist damit belegt lauffähig, PG16 und PG18 (Docker) inklusive.
+
+### 9.2 Befund: Selbstfreigabe ist heute technisch möglich
+
+Alle Agenten schreiben auf GitHub unter demselben Konto des Owners. Der Kopf `[AGENT: CODEX] [STATE: PASS]` ist reiner
+Text und kann von jedem Agenten mit Schreibrecht erzeugt werden. **Ein Kommentar kann deshalb nie als Abnahme
+zählen**, egal welcher Kopf darin steht.
+
+Gegenmaßnahme `src/review_pipeline/verdict.py` (fail-closed):
+
+| Quelle | Zählt? | Bedingung |
+|---|---|---|
+| Kommentar eines Nutzerkontos, auch mit `[AGENT: CODEX]` | **nie** (nur `INFO_ONLY`) | – |
+| PR-Review des Codex-Connectors | ja | `user.type == "Bot"`, Login exakt der Connector-Bot, `commit_id` == aktueller HEAD |
+| Check-Run `codex-abnahme` | ja | erwartete App-ID ist konfiguriert und stimmt; ohne App-ID nie gültig |
+| Testlauf | ja | auf exakt HEAD, `failed == errors == 0`, `passed > 0` |
+
+PASS nur bei grünem Testlauf **und** gültigem Bot-Review ohne offenen Befund hoch/kritisch auf demselben SHA. Ein
+vertrauenswürdiges Review ohne lesbare Befundliste verhindert PASS. Alles andere ist INCONCLUSIVE; roter Test oder
+hoher Befund FAIL.
+
+Grenze: Wer Owner-Rechte hat, kann App-ID und Ruleset ändern. Der Schutz wirkt gegen Agenten, nicht gegen den Owner.
+Darum gehören Prüfregeln und App-ID in gesperrte Pfade (`config/`, `.github/`), Änderung nur per Owner-PR.
+
+### 9.3 Automatische Übergabe bei neuem Commit-SHA
+
+`src/review_pipeline/handoff.py`: `should_trigger` startet höchstens einen Lauf je HEAD-SHA, nur für
+`ready_for_review`/`synchronize` auf Nicht-Entwürfen oder bei Label `abnahme:anfordern`, nie für Fork-PRs.
+`build_handoff_comment` schreibt den Kopf nach `TIM_AGENT_HANDOFF.md` §4 mit BASE_SHA, HEAD_SHA, Dateien und
+Prüfbefehl. Offen für Phase 3: Tageshöchstzahl, Adapter, der Codex-Befunde aus dem Review-Text in die Befundliste
+überführt (bis dahin bleibt jedes Review INCONCLUSIVE, also fail-closed).
+
+### 9.4 Einheitlicher Prüfbericht
+
+`src/review_pipeline/report.py` prüft `tim-pruefbericht/1` (Pflichtfelder, SHA-Format, Zähler, PASS mit Fehlern
+ungültig) und sucht nach Geheimnis- und Adressmustern; ein Treffer macht den Bericht ungültig.
+`python -m src.review_pipeline.report DATEI.json` → Exit 0 gültig, 1 ungültig.
+
+### 9.5 Isolierte Linux-Prüfumgebung: Bewertung
+
+| Kandidat | Isolation | Reproduzierbar | Aufwand | Urteil |
+|---|---|---|---|---|
+| Codex-Cloud-Umgebung | stark (fremde Infrastruktur, eingeschränkter Egress) | ja (belegt 25.11.) | gering, steht | **nutzen** als Codex-Prüfstand |
+| GitHub Actions `ubuntu-latest` + PG18-Service | stark, frisch je Lauf | ja | Owner-PR unter `.github/` | **empfohlen** für den Status `codex-abnahme` |
+| Linux-VM am Mac (z. B. Lima/UTM, eigener Benutzer) | mittel (gleiches Gerät, gleicher Owner) | ja | mittel | nur Rückfall |
+| Mac `review-env/` | schwach (gleiches Konto) | teils (11 Mac-Fehler) | steht | nur Rückfall |
+| PS4/PS5 | schwach, geteilt mit Forschung, kein sudo | nein | – | **nicht geeignet** |
+| Server tim-core-01 | Produktion | – | – | **ausgeschlossen** |
+
+Tests: `python -m pytest tests/test_review_pipeline.py -q` (38 Tests).
