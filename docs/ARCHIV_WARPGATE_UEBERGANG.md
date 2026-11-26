@@ -254,8 +254,10 @@ set -euo pipefail
 umask 077
 IMG_DIR=/var/lib/warpgate/tim-archive-img; IMG=$IMG_DIR/archive.img; MNT=/srv/tim-archive-tmp
 # Der Wächter läuft als root aus /opt/tim. Darum muss dort alles root gehören und darf für niemand
-# anderen beschreibbar sein, sonst liefe fremder Code als root:
-test -z "$(find /opt/tim \( ! -user root -o -perm /022 \) -print -quit)"
+# anderen beschreibbar sein, sonst liefe fremder Code als root. Symbolische Links (venv: python ->
+# /usr/bin/python3) haben immer 0777 und werden nur auf den Eigentümer geprüft; ihre Ziele außerhalb
+# von /opt/tim (System-Python) prüft diese Zeile nicht:
+test -d /opt/tim -a ! -L /opt/tim; test -z "$(find /opt/tim \( ! -user root -o \( ! -type l -perm /022 \) \) -print -quit)"
 command -v findmnt blkid >/dev/null
 cd /opt/tim; GUARD="/opt/tim/.venv/bin/python -m src.archive_sync.mount_guard"   # nur lesend
 WG_UUID_FILE=/etc/tim/warpgate-fs.uuid; ARCH_UUID_FILE=/etc/tim/archive-volume.uuid
@@ -321,7 +323,7 @@ sudo -u tim-archive /opt/tim/.venv/bin/python -m src.archive_sync cold-init \
 cat > /usr/local/sbin/tim-archive-guard <<'GUARD'
 #!/bin/bash
 set -euo pipefail
-test -z "$(find /opt/tim \( ! -user root -o -perm /022 \) -print -quit)"
+test -d /opt/tim -a ! -L /opt/tim; test -z "$(find /opt/tim \( ! -user root -o \( ! -type l -perm /022 \) \) -print -quit)"
 cd /opt/tim
 G="/opt/tim/.venv/bin/python -m src.archive_sync.mount_guard"
 IMG=/var/lib/warpgate/tim-archive-img/archive.img; MNT=/srv/tim-archive-tmp
@@ -356,10 +358,14 @@ Am 26.11. ergibt das 71,5 GB frei während des Restore-Tests (18,2 %, Vorgabe 15
 während des Restore-Tests selbst (sonntags ab 05:30), ist der Platz schon belegt und er meldet FAIL.
 Das ist gewollt (fail-closed): Archivläufe gehören nicht in dieses Fenster.
 
-Abbruch mitten in der Einrichtung: Nichts wird gelöscht. Ist das Archiv eingehängt, wird es
-ausgehängt; eine schon geschriebene fstab-Zeile wird auskommentiert. Image-Ordner und UUID-Datei
+Abbruch mitten in der Einrichtung: Nichts wird gelöscht. Nach dem Einhängen hängt der Plan bei
+jedem Fehler selbst aus. Eine schon geschriebene fstab-Zeile kommentiert ein Mensch danach von Hand
+aus (`sed -i 's|^/var/lib/warpgate/tim-archive-img/archive.img |# &|' /etc/fstab`, dann
+`systemctl daemon-reload`). Image-Ordner und UUID-Datei
 bleiben stehen, deshalb bricht ein zweiter Versuch an den `test ! -e`-Zeilen von Schritt 0 ab. Ein
-neuer Versuch braucht eine eigene Entscheidung von Uzi, was mit den Resten geschieht. Die Option `--image` des Stores ist für Aufbauten gedacht, in denen das Konto das Image
+neuer Versuch braucht eine eigene Entscheidung von Uzi, was mit den Resten geschieht.
+
+Die Option `--image` des Stores ist für Aufbauten gedacht, in denen das Konto das Image
 erreichen kann.
 
 Die Rechte in Schritt 6 gelten für das **eingehängte** Wurzelverzeichnis. Dort legt `cold-init`

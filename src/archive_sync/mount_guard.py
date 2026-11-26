@@ -221,8 +221,8 @@ def check_archive(target: str, image: str, expected_uuid: str, runner: Runner = 
         if missing:
             raise GuardError(f"{target}: missing mount options {sorted(missing)}")
         backing = _loop_backing_file(entry["source"], sys_block)
-        # Exact string match on purpose: the approved image path has no links (checked by the
-        # image check with O_NOFOLLOW); any other spelling is refused.
+        # Exact string match on purpose: the kernel reports the resolved backing path, so an image
+        # reached through a link anywhere in its path (or any other spelling) is refused.
         if backing is None or backing != image:
             raise GuardError(f"{target}: not backed by the approved image")
         found = _device_uuid(entry["source"], runner)
@@ -291,7 +291,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     r.add_argument("--image-allocated", action="store_true")
     # No switch weakens a check. Only the test suite may accept a UUID file not owned by root,
     # and only through this environment variable (never set in §11).
-    relax_owner = os.environ.get(TEST_ENV) == "1"
+    relax_owner = os.environ.get(TEST_ENV) == "1" and os.geteuid() != 0
     args = parser.parse_args(argv)
     try:
         if args.check == "reserve":

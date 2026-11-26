@@ -381,3 +381,54 @@ def test_section_11_no_old_identity_check_and_no_uuid_in_doc():
     assert not any("> /etc/tim/archive-volume.uuid" in line and "findmnt" in line for line in lines)
     assert not re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", text)
     assert "--restore-need-bytes" not in text and "--allow-non-root-uuid-file" not in text
+
+
+# --- §11 ownership line for /opt/tim, run for real on a fresh venv ---------------------------
+
+def _ownership_line():
+    for line in _section_11():
+        if "find /opt/tim" in line:
+            return line
+    raise AssertionError("ownership check missing in §11")
+
+
+def _run_ownership(root):
+    import subprocess as sp
+    line = _ownership_line().replace("/opt/tim", str(root))
+    return sp.run(["bash", "-c", "set -euo pipefail; " + line], capture_output=True).returncode
+
+
+@pytest.mark.skipif(os.geteuid() != 0, reason="needs root to own the tree like /opt/tim")
+def test_ownership_line_accepts_standard_venv_and_rejects_writable_or_foreign(tmp_path):
+    import subprocess as sp
+    import sys
+    root = tmp_path / "opt-tim"
+    (root / "src").mkdir(parents=True)
+    (root / "src" / "m.py").write_text("x = 1\n")
+    os.chmod(tmp_path, 0o755)
+    sp.run([sys.executable, "-m", "venv", "--without-pip", str(root / ".venv")], check=True)
+    for path in [root, *root.rglob("*")]:
+        if not path.is_symlink():
+            os.chmod(path, 0o755 if path.is_dir() else 0o644)
+    assert any(p.is_symlink() for p in (root / ".venv" / "bin").iterdir())
+    assert _run_ownership(root) == 0
+    os.chmod(root / "src" / "m.py", 0o664)
+    assert _run_ownership(root) != 0
+    os.chmod(root / "src" / "m.py", 0o644)
+    os.chown(root / "src" / "m.py", 65534, 65534)
+    assert _run_ownership(root) != 0
+    os.chown(root / "src" / "m.py", 0, 0)
+    assert _run_ownership(tmp_path / "missing") != 0
+    link = tmp_path / "linked"
+    link.symlink_to(root)
+    assert _run_ownership(link) != 0
+
+
+def test_test_env_never_relaxes_for_root(tmp_path, monkeypatch, capsys):
+    if os.geteuid() != 0:
+        pytest.skip("root only")
+    path = _uuid_file(tmp_path)
+    os.chown(path, 65534, 65534)
+    code = g.main(["parent", "--target", str(tmp_path), "--expected-uuid-file", str(path)])
+    assert code == 1
+    assert "not owned by root" in capsys.readouterr().out
