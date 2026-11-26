@@ -1685,7 +1685,7 @@
   // layout of its own, and the ticks under "edit layout" are sorted the same way.
   const CATEGORIES = [
     { name: L.orderflow, groups: ['fp', 'bubbles', 'bubbles_exo', 'absorb', 'vpoc', 'delta', 'cvd'] },
-    { name: L.profile, groups: ['vp', 'vp_range', 'tpo', 'naked', 'running'] },
+    { name: L.profile, groups: ['vp', 'vp_range', 'tpo', 'tpo_month', 'naked', 'running'] },
     { name: L.levels, groups: ['day', 'week', 'month', 'quarter', 'year', 'session', 'ib'] },
     { name: L.vwap, groups: ['vwap', 'vwap_bands'] },
     { name: L.structure, groups: ['structure', 'trend', 'fib'] },
@@ -1706,7 +1706,7 @@
     { id: 'tim:read', name: L.read, groups: READ },
     { id: 'tim:orderflow', name: L.orderflow, market: 'perp', groups: ['fp', 'bubbles', 'absorb', 'cvd', 'oi', 'liqev', 'vwap'] },
     { id: 'tim:footprint', name: L.footprint, market: 'perp', fp: 'delta', groups: ['fp', 'bubbles', 'delta', 'oi'] },
-    { id: 'tim:tpo', name: L.tpo, groups: ['tpo', 'running', 'session', 'ib'] },
+    { id: 'tim:tpo', name: L.tpo, groups: ['tpo', 'tpo_month', 'running', 'session', 'ib'] },
     { id: 'tim:vp', name: L.vp, groups: ['vp', 'running', 'vwap', 'vwap_bands'] },
     { id: 'tim:positioning', name: L.positioning, groups: ['oi', 'funding', 'premium', 'liq', 'liqev', 'gamma', 'gamma_ob'] },
     { id: 'tim:macro', name: L.macro, groups: ['dominance', 'macro', 'quarter', 'year'] },

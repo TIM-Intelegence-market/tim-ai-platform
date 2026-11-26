@@ -38,6 +38,7 @@ GROUPS_EN = {
     "absorb": "Summed bubbles (orders at one price added up, as a line)",
     "running": "running POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trend lines", "fib": "Fibonacci (last swing)", "tpo": "TPO (day profile)",
+    "tpo_month": "TPO month (time, 4h blocks, 50 $ rows)",
     "vp": "Volume Profile (day, real trades)", "fp": "Footprint (bid × ask)",
     "bubbles": "Volume bubbles (large market orders; perp: Binance + Bybit)",
     "bubbles_exo": "Market order bubbles, Exo style (medium ×3, large ×4.5)",
