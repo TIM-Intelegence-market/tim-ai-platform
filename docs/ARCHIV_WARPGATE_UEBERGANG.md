@@ -215,7 +215,7 @@ Einheiten: GB = 10^9 Byte, GiB = 1024^3 Byte. Alle Werte sind in Byte gemessen.
 | Restore-Bereich | `tim-restore-scratch` (postgres, 0700) ist jetzt leer. Der Restore-Test läuft sonntags um 05:30 als Tablespace für eine Voll-Wiederherstellung |
 | **Restore-Bedarf** | Letzter Lauf am 22.11.: PASS. Gebraucht wurden **208.662.998.398 B**, nämlich das Doppelte der 100,0 GB Datenbank plus 8 GiB Reserve |
 | Notzugang ohne Warpgate | `sshd` auf Port 22 (nur Schlüssel, kein root, 2 Konten mit Schlüsseln), Tailscale online, Fernwartungs-Controller des Servers vorhanden (`/dev/ipmi0`). Chris sollte bestätigen, dass er die Konsole erreicht |
-| Werkzeuge | `fallocate`, `mkfs.ext4` 1.47.2, `losetup` 2.41.5, `chattr`, `findmnt`, Loop-Modul. Ein Benutzer `tim-archive` existiert noch nicht |
+| Werkzeuge | `fallocate`, `mkfs.ext4` 1.47.2, `losetup` 2.41.5, `chattr`, `findmnt`, Loop-Modul (`blkid` am 24.11. nicht eigens geprüft, Schritt 0 bricht ohne ab). Ein Benutzer `tim-archive` existiert noch nicht |
 | **Trim** | `fstrim.timer` ist aktiv. Er würde ein Loop-Dateisystem trimmen und damit Löcher in die Image-Datei stanzen, sie also dünn machen. Gegenmittel: Option `X-fstrim.notrim` in fstab, `mkfs -E nodiscard`, und der Store prüft vor jedem Schreiben, ob das Image noch voll belegt ist |
 
 ### Kapazität und Restore-Budget
@@ -251,13 +251,30 @@ Grundsätze:
 
 ```
 set -euo pipefail
+umask 077
 IMG_DIR=/var/lib/warpgate/tim-archive-img; IMG=$IMG_DIR/archive.img; MNT=/srv/tim-archive-tmp
+# Der Wächter läuft als root aus /opt/tim. Darum muss dort alles root gehören und darf für niemand
+# anderen beschreibbar sein, sonst liefe fremder Code als root:
+test -z "$(find /opt/tim \( ! -user root -o -perm /022 \) -print -quit)"
+command -v findmnt blkid >/dev/null
+cd /opt/tim; GUARD="/opt/tim/.venv/bin/python -m src.archive_sync.mount_guard"   # nur lesend
+WG_UUID_FILE=/etc/tim/warpgate-fs.uuid; ARCH_UUID_FILE=/etc/tim/archive-volume.uuid
 
-# 0  Vorbedingungen: Warpgate-Platte eingehängt, genug frei, Ziele noch nicht vorhanden
-findmnt -no TARGET /var/lib/warpgate >/dev/null
+# -1 Erwartete Kennung der Warpgate-Platte (ext4-UUID) von Hand aus dem autorisierten, nur lesenden
+#    Inventar (Einrichtungsnotiz am Server) eintragen, NICHT aus findmnt/blkid dieses Laufs abschreiben:
+#    install -d -m 0700 -o root -g root /etc/tim
+#    install -m 0600 -o root -g root /dev/null "$WG_UUID_FILE"; editor "$WG_UUID_FILE"
+#    Die UUID wird nirgends ausgegeben und nicht auf GitHub geschrieben.
+
+# 0  Vorbedingungen, alle vor jedem Seiteneffekt, jede bricht ab (Exit ≠ 0):
+#    Identität der Warpgate-Platte (genau dieser Einhängepunkt, ext4, rw, erwartete UUID per blkid -p),
+#    Reserve (15 % frei nach 32 GiB und während des Restore-Tests), Ziele noch nicht vorhanden.
+$GUARD parent --target /var/lib/warpgate --expected-uuid-file "$WG_UUID_FILE" --fstype ext4
+$GUARD reserve --parent /var/lib/warpgate
 test "$(df -B1 --output=avail /var/lib/warpgate | tail -1)" -ge 300000000000
-test ! -e "$IMG_DIR"
-test ! -e "$MNT"
+test ! -e "$IMG_DIR" -a ! -L "$IMG_DIR"
+test ! -e "$MNT" -a ! -L "$MNT"
+test ! -e "$ARCH_UUID_FILE" -a ! -L "$ARCH_UUID_FILE"
 
 # 1  Dienstkonto ohne Login-Shell und ohne sudo (der Import-Login aus E4 wird ihm zugeordnet)
 adduser --system --group --no-create-home --shell /usr/sbin/nologin tim-archive
@@ -267,8 +284,13 @@ install -d -m 0711 -o root -g root "$IMG_DIR"
 fallocate -l 32GiB "$IMG"; chmod 0600 "$IMG"
 test "$(( $(stat -c %b "$IMG") * $(stat -c %B "$IMG") ))" -ge "$(stat -c %s "$IMG")"
 
-# 3  Eigenes ext4 nur in der Image-Datei, ohne Discard und ohne Reserve
-mkfs.ext4 -q -L tim-archive -m 0 -E nodiscard "$IMG"
+# 3  Eigenes ext4 nur in der Image-Datei, ohne Discard und ohne Reserve.
+#    Die Kennung wird VORHER festgelegt und geschützt abgelegt, dann mit -U gesetzt und geprüft;
+#    so wird nichts aus dem Ergebnis selbst abgeschrieben.
+$GUARD parent --target /var/lib/warpgate --expected-uuid-file "$WG_UUID_FILE" --fstype ext4
+cat /proc/sys/kernel/random/uuid > "$ARCH_UUID_FILE"; chmod 0600 "$ARCH_UUID_FILE"
+mkfs.ext4 -q -L tim-archive -m 0 -E nodiscard -U "$(cat "$ARCH_UUID_FILE")" "$IMG"
+$GUARD image --image "$IMG" --expected-uuid-file "$ARCH_UUID_FILE"   # Größe, volle Belegung, UUID
 
 # 4  Einhängepunkt, der ohne Einhängung nicht beschreibbar ist (leer, 0000, unveränderlich)
 install -d -m 0000 -o root -g root "$MNT"; chattr +i "$MNT"
@@ -276,8 +298,14 @@ install -d -m 0000 -o root -g root "$MNT"; chattr +i "$MNT"
 # 5  fstab: Loop, nicht trimmen, kein exec/dev/suid, abhängig von der Warpgate-Platte
 echo "$IMG $MNT ext4 loop,nofail,noatime,nodev,nosuid,noexec,X-fstrim.notrim,x-systemd.requires-mounts-for=/var/lib/warpgate 0 2" >> /etc/fstab
 systemctl daemon-reload
+$GUARD parent --target /var/lib/warpgate --expected-uuid-file "$WG_UUID_FILE" --fstype ext4
 mount "$MNT"
-findmnt -no SOURCE,FSTYPE,OPTIONS "$MNT"
+# Nach dem Einhängen: genau dieser Einhängepunkt, Loop auf genau diesem Image, ext4, rw,nodev,nosuid,
+# noexec, erwartete UUID. Schlägt das fehl: sofort aushängen (umount "$MNT"), nichts weiter.
+# Jede der drei Prüfungen, die fehlschlägt, hängt sofort wieder aus.
+if ! { $GUARD archive --target "$MNT" --image "$IMG" --expected-uuid-file "$ARCH_UUID_FILE" \
+       && $GUARD parent --target /var/lib/warpgate --expected-uuid-file "$WG_UUID_FILE" --fstype ext4 \
+       && $GUARD reserve --parent /var/lib/warpgate --image-allocated; }; then umount "$MNT"; exit 1; fi
 
 # 6  Bereiche und Rechte im eingehängten Dateisystem
 chown tim-archive:tim-archive "$MNT"; chmod 0750 "$MNT"   # Wurzel des eingehängten Archivs, nicht der Einhängepunkt darunter
@@ -287,24 +315,51 @@ install -d -m 0750 -o tim-archive -g tim-archive "$MNT/inbox" "$MNT/store-root"
 sudo -u tim-archive /opt/tim/.venv/bin/python -m src.archive_sync cold-init \
   --root "$MNT/store-root/store" --volume "$MNT" --parent /var/lib/warpgate --limit-gib 26
 
-# 8  Wächter vor jedem Lauf (als root, z. B. ExecStartPre=+ der späteren Import-Unit):
-#    Einhängung, Dateisystem-UUID und volle Belegung des Images; sonst läuft nichts
+# 8  Wächter vor jedem Lauf (als root, z. B. ExecStartPre=+ der späteren Import-Unit).
+#    Läuft nur, wenn beide Platten die erwartete Identität haben, das Image voll belegt ist und die
+#    Reserve hält; sonst läuft nichts. Die erwarteten UUIDs kommen aus den Dateien von Schritt -1 und 3.
 cat > /usr/local/sbin/tim-archive-guard <<'GUARD'
 #!/bin/bash
 set -euo pipefail
+test -z "$(find /opt/tim \( ! -user root -o -perm /022 \) -print -quit)"
+cd /opt/tim
+G="/opt/tim/.venv/bin/python -m src.archive_sync.mount_guard"
 IMG=/var/lib/warpgate/tim-archive-img/archive.img; MNT=/srv/tim-archive-tmp
-EXPECTED_UUID="$(cat /etc/tim/archive-volume.uuid)"
-test "$(findmnt -no UUID --mountpoint "$MNT")" = "$EXPECTED_UUID"
-test "$(( $(stat -c %b "$IMG") * $(stat -c %B "$IMG") ))" -ge "$(stat -c %s "$IMG")"
+$G parent  --target /var/lib/warpgate --expected-uuid-file /etc/tim/warpgate-fs.uuid --fstype ext4
+$G image   --image "$IMG" --expected-uuid-file /etc/tim/archive-volume.uuid
+$G archive --target "$MNT" --image "$IMG" --expected-uuid-file /etc/tim/archive-volume.uuid
+$G reserve --parent /var/lib/warpgate --image-allocated
 GUARD
 chmod 0755 /usr/local/sbin/tim-archive-guard
-findmnt -no UUID --mountpoint "$MNT" > /etc/tim/archive-volume.uuid   # einmal nach Schritt 5
+/usr/local/sbin/tim-archive-guard   # einmal sofort, muss Exit 0 liefern
 ```
 
 Das Konto `tim-archive` darf den Warpgate-Ordner (0700) nicht durchsuchen, und das bleibt so.
 Deshalb prüft der Store selbst Einhängung, Markierungsdatei, Gerät und die 15-%-Reserve des
-übergeordneten Dateisystems. Die Belegung des Images und die UUID prüft der root-Wächter in
-Schritt 8. Die Option `--image` des Stores ist für Aufbauten gedacht, in denen das Konto das Image
+übergeordneten Dateisystems. Die Identität beider Platten, die Belegung des Images und die Reserve
+prüft der root-Wächter (`src/archive_sync/mount_guard.py`) vor jedem Seiteneffekt, nach dem
+Einhängen und vor jedem Lauf.
+
+**Warum (Befund 26.11.):** Der frühere Schritt 0 (`findmnt -no TARGET /var/lib/warpgate`) bewies
+nur, dass dort irgendetwas eingehängt ist, nicht welche Platte. Der frühere Wächter verglich die
+Archiv-UUID mit einer Datei, die aus genau dieser Einhängung abgeschrieben wurde, also mit sich
+selbst. Jetzt gilt: Die Warpgate-Kennung kommt aus dem unabhängigen Inventar, die Archiv-Kennung
+wird vor `mkfs` festgelegt. Der Wächter liest die Kennung per `blkid -p` direkt vom Gerät (kein
+Cache), verlangt den Einhängepunkt exakt (`findmnt --mountpoint`, keine Übernahme eines
+übergeordneten Ordners), lehnt gestapelte Einhängungen, falsche Typen, fehlendes `rw` und fremde
+Loop-Images ab und gibt keine UUID aus. Jeder unklare Zustand ist FAIL (Exit ≠ 0). Kein Schalter
+schwächt eine Prüfung ab; nur die Testsuite darf per Umgebungsvariable eine UUID-Datei ohne root als
+Eigentümer verwenden.
+
+Reserve im Wächter: Er rechnet strenger als §10, mit 5 % Wachstum auf den Restore-Bedarf vom 22.11.
+Am 26.11. ergibt das 71,5 GB frei während des Restore-Tests (18,2 %, Vorgabe 15 %). Läuft der Wächter
+während des Restore-Tests selbst (sonntags ab 05:30), ist der Platz schon belegt und er meldet FAIL.
+Das ist gewollt (fail-closed): Archivläufe gehören nicht in dieses Fenster.
+
+Abbruch mitten in der Einrichtung: Nichts wird gelöscht. Ist das Archiv eingehängt, wird es
+ausgehängt; eine schon geschriebene fstab-Zeile wird auskommentiert. Image-Ordner und UUID-Datei
+bleiben stehen, deshalb bricht ein zweiter Versuch an den `test ! -e`-Zeilen von Schritt 0 ab. Ein
+neuer Versuch braucht eine eigene Entscheidung von Uzi, was mit den Resten geschieht. Die Option `--image` des Stores ist für Aufbauten gedacht, in denen das Konto das Image
 erreichen kann.
 
 Die Rechte in Schritt 6 gelten für das **eingehängte** Wurzelverzeichnis. Dort legt `cold-init`
@@ -312,7 +367,7 @@ die Markierungsdatei an. Der Einhängepunkt darunter bleibt leer, 0000 und unver
 
 Nachprüfung nach der Einrichtung, nur lesend:
 
-- `findmnt` zeigt Loop und ext4 mit den Optionen oben.
+- `/usr/local/sbin/tim-archive-guard` liefert Exit 0 (alle vier Prüfungen PASS).
 - Die Image-Datei ist voll belegt.
 - `cold-verify` meldet OK.
 - Warpgate ist weiter `active`, der Zeitstempel seines Starts ist unverändert, eine Anmeldung
