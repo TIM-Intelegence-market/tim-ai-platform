@@ -9,7 +9,6 @@ import json
 import os
 import shutil
 import subprocess
-import uuid
 
 import pytest
 
@@ -17,8 +16,8 @@ from src.archive_sync import mount_guard as g
 
 PARENT = "/var/lib/warpgate"
 MNT = "/srv/tim-archive-tmp"
-GOOD = str(uuid.uuid4())
-OTHER = str(uuid.uuid4())
+GOOD = "0f1e2d3c-4b5a-4697-8877-665544332211"  # fixed: xdist needs identical test ids
+OTHER = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
 
 
 def runner_for(mounts: dict, uuids: dict):
