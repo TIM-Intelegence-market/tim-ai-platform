@@ -780,3 +780,24 @@ def test_two_revisions_seen_at_the_same_moment_with_different_widths_are_inconsi
     tracker._perp(_store([CLOSED_300, OPEN_300], 60, NOON), NOON)
     out = tracker._perp(_store([CLOSED_300, OPEN_300], 300, NOON), NOON)
     assert out["status"] == "Bucket-Größe unbekannt" and out["bucket_seconds_status"] == "INCONSISTENT"
+
+
+def test_codex_7218699983_case_1_missing_width_at_120015_after_1300_is_unknown_at_120015():
+    """Exactly as Codex reproduced it on e51e4f25 (#377 issuecomment-7218699983, case 1)."""
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    first = tracker._perp(_store([CLOSED_300, OPEN_300], 300, NOON), NOON)
+    assert (first["delta_5m"], first["delta_15m"]) == (pytest.approx(0.0), pytest.approx(1.0))
+    control = tracker._perp(_store([CLOSED_300, OPEN_300], 60, NOON + timedelta(hours=1)), NOON)
+    assert control["bucket_seconds"] == 300 and control["delta_5m"] == pytest.approx(0.0)
+    decision = NOON + timedelta(seconds=15)
+    out = tracker._perp(_store([CLOSED_300, OPEN_300], ABSENT_WIDTH, decision), decision)
+    assert out["status"] == "Bucket-Größe unbekannt" and out["bucket_seconds_status"] == "MISSING"
+    assert "delta_5m" not in out and "delta_15m" not in out
+
+
+def test_codex_7218699983_case_2_fresh_tracker_300_then_60_at_120015():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker._perp(_store([CLOSED_300, OPEN_300], 300, NOON), NOON)
+    decision = NOON + timedelta(seconds=15)
+    out = tracker._perp(_store([CLOSED_300, OPEN_300], 60, decision), decision)
+    assert out["delta_5m"] == pytest.approx(0.0) and out["delta_15m"] == pytest.approx(1.0)
