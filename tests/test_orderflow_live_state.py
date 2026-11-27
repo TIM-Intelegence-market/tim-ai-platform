@@ -8,6 +8,7 @@ import pytest
 
 from src.models.market_data import Trade
 from src.orderflow import live_state as ls
+from tests._side_evidence import ABSENT, win
 
 T0 = datetime(2026, 11, 8, 12, 0, tzinfo=timezone.utc)
 SYMBOL = "BTCUSDT"
@@ -300,13 +301,13 @@ def test_known_share_boundary_and_lowest_window_counts():
     def lage(windows):
         return {"price": 1.0, "wave": {"direction": "auf"}, "windows": windows}
 
-    full = {"volume": 100.0, "unknown_volume": 0.0}
-    at = {"1m": {"volume": 100.0, "unknown_volume": 5.0}, "5m": full, "15m": full}
+    full = win(100.0, 0.0)
+    at = {"1m": win(100.0, 5.0), "5m": full, "15m": full}
     assert shadow.known_share(lage(at)) == 0.95 and shadow.gate("LONG", shadow.lage_view(lage(at))) == shadow.BESTAETIGT
-    below = {"1m": {"volume": 10000.0, "unknown_volume": 501.0}, "5m": full, "15m": full}
+    below = {"1m": win(10000.0, 501.0), "5m": full, "15m": full}
     assert shadow.gate("LONG", shadow.lage_view(lage(below))) == shadow.UNBEKANNT
-    mixed = {"1m": {"volume": 10.0, "unknown_volume": 5.0}, "5m": {"volume": 1000.0, "unknown_volume": 5.0},
-             "15m": {"volume": 0.0, "unknown_volume": 0.0}}               # one bad window is enough, an empty one is skipped
+    mixed = {"1m": win(10.0, 5.0), "5m": win(1000.0, 5.0),
+             "15m": win(0.0, 0.0)}                                                 # one bad window is enough, an empty one is skipped
     assert shadow.known_share(lage(mixed)) == 0.5 and shadow.gate("LONG", shadow.lage_view(lage(mixed))) == shadow.UNBEKANNT
 
 
@@ -419,7 +420,7 @@ def test_known_side_is_compared_exactly_not_rounded():
 
     def view(volume, unknown):
         return shadow.lage_view({"price": 100.0, "wave": {"direction": "auf"},
-                                 "windows": {name: {"volume": volume, "unknown_volume": unknown} for name in ("1m", "5m", "15m")}})
+                                 "windows": {name: win(volume, unknown) for name in ("1m", "5m", "15m")}})
 
     assert shadow.gate("LONG", view(100000.0, 5004.0)) == shadow.UNBEKANNT            # 0.94996
     assert shadow.gate("LONG", view(100000.0, 5000.0)) == shadow.BESTAETIGT           # exactly 0.95
@@ -433,7 +434,7 @@ def test_invalid_volumes_are_unknown_downstream(volume, unknown):
     from src.dashboard import orderflow_shadow as shadow
 
     v = shadow.lage_view({"price": 100.0, "wave": {"direction": "auf", "strength": 3},
-                          "windows": {"1m": {"volume": volume, "unknown_volume": unknown}}})
+                          "windows": {"1m": win(volume, unknown)}})
     assert v["side_ok"] is False and v["side_status"] == "INVALID"
     assert shadow.gate("LONG", v) == shadow.UNBEKANNT and shadow.should_exit("SHORT", v) is None
 
@@ -442,7 +443,7 @@ def test_empty_volume_is_no_evidence_and_old_views_still_work():
     from src.dashboard import orderflow_shadow as shadow
 
     # Codex Mission 07: volume 0 (or none) is no evidence, so even a forced wave "auf" is UNBEKANNT, never BESTÄTIGT.
-    empty = shadow.lage_view({"price": 100.0, "wave": {"direction": "auf", "strength": 2}, "windows": {name: {"volume": 0.0, "unknown_volume": 0.0} for name in ("1m", "5m", "15m")}})
+    empty = shadow.lage_view({"price": 100.0, "wave": {"direction": "auf", "strength": 2}, "windows": {name: win(0.0, 0.0) for name in ("1m", "5m", "15m")}})
     assert empty["side_ok"] is False and empty["side_status"] == "EMPTY" and shadow.gate("LONG", empty) == shadow.UNBEKANNT
     no_windows = shadow.lage_view({"price": 100.0, "wave": {"direction": "auf", "strength": 2}})
     assert shadow.gate("LONG", no_windows) == shadow.UNBEKANNT and no_windows["side_status"] == "MISSING"
@@ -450,22 +451,22 @@ def test_empty_volume_is_no_evidence_and_old_views_still_work():
 
 
 _WAVE = {"price": 100.0, "wave": {"direction": "auf", "strength": 3}}
-_FULL = {"volume": 100.0, "unknown_volume": 0.0}
+_FULL = win(100.0, 0.0)
 
 
 def _without(name):
-    return {k: v for k, v in _FULL.items() if k != name}
+    return win(**{"volume": 100.0, "unknown_volume": 0.0, name: ABSENT})
 
 
 @pytest.mark.parametrize("window, status", [
     (_without("unknown_volume"), "MISSING"),            # Codex Mission 07-FINAL: absent is not a proven 0
     (_without("volume"), "MISSING"),
-    ({}, "MISSING"),                                    # a window with neither field
-    ({**_FULL, "unknown_volume": None}, "MISSING"),     # null is no number either
-    ({**_FULL, "volume": None}, "MISSING"),
-    ({**_FULL, "unknown_volume": "0"}, "INVALID"),
-    ({**_FULL, "unknown_volume": False}, "INVALID"),    # False is not 0
-    ({"volume": "x"}, "INVALID"),                       # invalid wins over missing
+    (win(), "MISSING"),                                 # a window with neither field
+    (win(100.0, None), "MISSING"),                       # null is no number either
+    (win(None, 0.0), "MISSING"),
+    (win(100.0, "0"), "INVALID"),
+    (win(100.0, False), "INVALID"),                     # False is not 0
+    (win("x"), "INVALID"),                              # invalid wins over missing
 ])
 def test_missing_null_and_invalid_fields_are_never_a_known_side(window, status):
     from src.dashboard import orderflow_shadow as shadow
@@ -482,7 +483,7 @@ def test_explicit_zero_is_a_value_and_the_only_way_to_a_known_side():
     from src.dashboard import orderflow_shadow as shadow
 
     for zero in (0, 0.0):
-        v = shadow.lage_view({**_WAVE, "windows": {name: {"volume": 100.0, "unknown_volume": zero} for name in ("1m", "5m", "15m")}})
+        v = shadow.lage_view({**_WAVE, "windows": {name: win(100.0, zero) for name in ("1m", "5m", "15m")}})
         assert (v["side_ok"], v["side_status"], v["known_share"]) == (True, "OK", 1.0)
         assert shadow.gate("LONG", v) == shadow.BESTAETIGT and shadow.gate("SHORT", v) == shadow.GEGEN
     for windows, status in ((None, "MISSING"), ({}, "MISSING"), ([], "INVALID"), ("1m", "INVALID"),
@@ -533,7 +534,7 @@ def test_required_windows_per_signal_model():
     lage = {**_WAVE, "windows": {"1m": dict(_FULL), "5m": dict(_FULL)}}
     assert shadow.known_side(lage, "welle")["status"] == "OK"
     assert shadow.known_side(lage, "level")["status"] == "MISSING" and shadow.known_side(lage)["status"] == "MISSING"
-    extra = {**_WAVE, "windows": {"15m": dict(_FULL), "1h": {"volume": 5.0}}}  # a present window is always checked
+    extra = {**_WAVE, "windows": {"15m": dict(_FULL), "1h": win(5.0)}}  # a present window is always checked
     assert shadow.known_side(extra, "level")["status"] == "MISSING"
     with pytest.raises(KeyError):
         shadow.known_side(lage, "unbekanntes-modell")

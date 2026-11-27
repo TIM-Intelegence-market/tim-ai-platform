@@ -50,6 +50,7 @@ from typing import Any
 from src.models.market_data import Trade
 
 SCHEMA_VERSION = "orderflow-lage/3"  # 2: unknown aggressor side (Paket B); 3: point-in-time fields (Paket A)
+SIDE_SCHEMA = "side-evidence/1"  # windows[*].side_evidence, additive (27.11.): the input of the known-side policy
 BUY, SELL, UNKNOWN = 1, -1, 0  # aggressor side of a trade
 DEFAULT_PATH = Path("data/orderflow/orderflow_lage.json")
 WINDOWS = {"1m": 60, "5m": 300, "15m": 900}
@@ -89,6 +90,14 @@ def _day_start(moment: datetime) -> float:
 
 def _round(value: float, digits: int = 4) -> float:
     return round(float(value), digits)
+
+
+def _decimal_text(value: Decimal) -> str:
+    """A non-negative exact amount as a plain decimal string (no exponent, no sign), e.g. ``0.000007013695409686748``."""
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
 
 
 def _exact(value: float) -> Decimal:
@@ -222,6 +231,9 @@ class LiveOrderflowTracker:
         return {"trades": len(trades), "volume": float(volume), "delta": float(buy - sell),
                 "buy_share": float(buy / known) if known else None,
                 "unknown_volume": float(unknown), "unknown_trades": sum(1 for *_, side in trades if side == UNKNOWN),
+                # The only input of the known-side policy (orderflow_shadow.known_side): exact decimal strings, so no
+                # binary rounding sits between producer and consumer (Codex #376, 27.11., 20 x unknown vs total).
+                "side_evidence": {"schema": SIDE_SCHEMA, "known": _decimal_text(known), "unknown": _decimal_text(unknown)},
                 "high": max(prices) if prices else None, "low": min(prices) if prices else None,
                 "range": _round(max(prices) - min(prices), 2) if prices else 0.0}
 
