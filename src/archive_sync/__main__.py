@@ -48,6 +48,23 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
             )
         finally:
             await connection.close()
+    if args.command.startswith("cold-"):
+        from src.archive_sync import cold_store
+
+        if args.command == "cold-init":
+            store = cold_store.ColdStore.init(args.root, limit_bytes=int(args.limit_gib * 1024**3),
+                                              volume_mount=args.volume, parent=args.parent, image=args.image)
+            return {"root": str(store.root), "limit_bytes": store.limit_bytes, "initialised": True,
+                    "volume": store.volume}
+        store = cold_store.ColdStore(args.root)
+        if store.volume is None and not args.unbound_ok:
+            raise ArchiveSyncError("store is not bound to a mounted volume; refusing (use --unbound-ok only for local tests)")
+        if args.command == "cold-ingest":
+            return store.ingest_directory(args.dir, symbol=args.symbol)
+        if args.command == "cold-verify":
+            return store.verify()
+        if args.command == "cold-migrate":
+            return cold_store.migrate_store(args.root, args.to, volume_mount=args.volume, parent=args.parent)
     if args.command == "transfer":
         target: Any
         if args.local_target:
@@ -101,6 +118,27 @@ def build_parser() -> argparse.ArgumentParser:
     send.add_argument("--remote-dir")
     send.add_argument("--key")
     send.add_argument("--port", type=int)
+    cold = sub.add_parser("cold-init", help="interim file archive with a hard byte budget (INFRA-09 draft)")
+    cold.add_argument("--root", required=True)
+    cold.add_argument("--limit-gib", type=float, required=True,
+                      help="hard budget in GiB (1 GiB = 1024^3 bytes); always explicit, e.g. 26 for the 32 GiB volume")
+    cold.add_argument("--volume", help="mounted file system the store is bound to (checked before every write)")
+    cold.add_argument("--parent", help="parent file system that must keep 15%% free")
+    cold.add_argument("--image", help="image file behind the volume; must stay fully allocated (not sparse)")
+    cold = sub.add_parser("cold-ingest", help="verify batch files and store them, stop at the budget")
+    cold.add_argument("--root", required=True)
+    cold.add_argument("--unbound-ok", action="store_true", help=argparse.SUPPRESS)
+    cold.add_argument("--dir", required=True)
+    cold.add_argument("--symbol", required=True)
+    cold = sub.add_parser("cold-verify", help="re-hash every stored file")
+    cold.add_argument("--root", required=True)
+    cold.add_argument("--unbound-ok", action="store_true", help=argparse.SUPPRESS)
+    cold = sub.add_parser("cold-migrate", help="copy the store to a new empty root and verify it there")
+    cold.add_argument("--root", required=True)
+    cold.add_argument("--to", required=True)
+    cold.add_argument("--volume")
+    cold.add_argument("--parent")
+    cold.add_argument("--unbound-ok", action="store_true", help=argparse.SUPPRESS)
     for name, text in (
         ("init", "server: create the archive schema"),
         ("state", "server: watermark and open holes"),
@@ -137,6 +175,10 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(report, indent=2, sort_keys=True, default=str))
     if args.command == "health":
         return 0 if report.get("status") in ("OK", "WARN") else 1
+    if args.command == "cold-ingest":
+        return 0 if report.get("halted") is None else 1
+    if args.command in ("cold-verify", "cold-migrate"):
+        return 0 if report.get("status") == "OK" else 1
     if args.command == "import":
         return 1 if report["summary"].get("QUARANTINED") or report["summary"].get("FILE_INVALID") else 0
     return 0
