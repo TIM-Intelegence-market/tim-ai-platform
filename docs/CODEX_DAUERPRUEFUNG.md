@@ -1,6 +1,10 @@
 # INFRA-10: Dauerhafte unabhängige Codex-Abnahme
 
-Stand: 26.11.2026, Version 0.2 (Entwurf; 0.1 vom 25.11., Ergänzung INFRA-11 in §9). Status: **nur Plan. Nichts davon ist aktiviert.**
+Stand: 27.11.2026, Version 0.3 (Entwurf; 0.1 vom 25.11., Ergänzung INFRA-11 in §9, **Neuausrichtung auf Standardlösungen in §10**). Status: **nur Plan. Nichts davon ist aktiviert.**
+
+> **Ab 0.3 gilt §10.** Owner 27.11.: keine eigene Orchestrierung. §4–§5 (eigener Sammler-Status, eigener Workflow,
+> Ruleset-Pflicht) und der Code unter `src/review_pipeline/` (§9) werden **nicht weiter ausgebaut**. Bleiben als
+> Referenz: Urteilsregeln §4.4 und Rollen §4.1.
 Auftrag: Mission INFRA-10 des Owners vom 25.11.2026. `TRADING_AUTHORIZED=NO`.
 
 ## 0. Grenzen dieses Plans
@@ -315,3 +319,71 @@ ungültig) und sucht nach Geheimnis- und Adressmustern; ein Treffer macht den Be
 | Server tim-core-01 | Produktion | – | – | **ausgeschlossen** |
 
 Tests: `python -m pytest tests/test_review_pipeline.py -q` (38 Tests).
+
+## 10. Neuausrichtung 27.11.2026: offizielle Integrationen statt Eigenbau
+
+Owner-Auftrag 27.11.: "Bevorzuge vorhandene Standardlösungen. Keine neue eigene Orchestrierungsplattform." Ziel:
+Claude baut, Codex prüft, Claude übernimmt die Befunde, ohne dass der Owner Nachrichten weiterträgt.
+
+### 10.1 Vergleich
+
+Quellen, gelesen 27.11.2026: learn.chatgpt.com/docs/third-party/github (Codex Review),
+github.com/openai/codex-action (README, docs/security.md), code.claude.com/docs/en/github-actions.
+
+| Integration | Was sie tut | Voraussetzung | Kosten | Eignung |
+|---|---|---|---|---|
+| **Codex GitHub Code Review** | postet ein normales GitHub-Review am PR, automatisch oder auf Erwähnung `codex review` mit At-Zeichen; liest `AGENTS.md` | Codex-Cloud-Umgebung (steht seit 25.11., §9.1), Review für das Repo einschalten | im ChatGPT-Plan enthalten; Verbrauch zählt gegen Codex-Kontingent (Höhe **UNGEPRÜFT**) | **Prüfer im Pilot** |
+| openai/codex-action | führt `codex exec` in GitHub Actions aus, Ausgabe mit JSON-Schema, Sandbox `drop-sudo`/`read-only` | Secret `OPENAI_API_KEY`, Workflow unter `.github/` (gesperrt) | API-Abrechnung (kostenpflichtig) | später, nur falls ein Pflicht-Status nötig wird |
+| **Claude Code Auto-fix** (Cloud-Sitzung beobachtet den PR) | weckt die bauende Claude-Sitzung bei Review, Kommentar und CI des PRs; Claude bessert nach und pusht | läuft bereits (diese Sitzung erhält PR-Ereignisse, z. B. #396 am 25.11.) | im Claude-Plan | **Übernahme der Befunde im Pilot** |
+| Claude Code GitHub Actions (`claude-code-action`) | Claude im Actions-Runner, Auslöser per Erwähnung oder Automatik | Claude-GitHub-App, Secret (API-Key oder Abo-Token), Workflow unter `.github/` | API oder Abo | nicht nötig, Auto-fix deckt es ab |
+
+Ergebnis: Für den Pilot reichen **zwei Standardbausteine ohne neuen Workflow, ohne Secret, ohne Repo-Code**:
+Codex Review als Prüfer und Claude Auto-fix als Nachbesserer. Der Code aus §9 und die Phasen 2–4 aus §5 entfallen.
+
+Was gegenüber PR #396 0.1/0.2 wegfällt: eigener Status `codex-abnahme`, Abnahme-Sammler, eigener Prüfstand-Workflow,
+Handoff-Generator, Prüfbericht-Validator. Was bleibt: Urteilsregeln (§4.4), Rollen (§4.1), Befund aus §9.2 (ein
+Kommentar unter dem Owner-Konto ist nie eine Abnahme, nur das Review des Codex-Bots auf dem aktuellen SHA).
+
+### 10.2 Minimaler Pilot mit Paket B (#376)
+
+Ablauf:
+
+1. **Owner (einmalig):** in den Codex-Einstellungen Code Review für dieses Repo einschalten, Modus "nur auf
+   Erwähnung" (nicht "alle PRs"), damit nur der Pilot Kontingent verbraucht.
+2. **Claude:** schreibt in #376 einen Kommentar mit der Erwähnung und der Bitte um Urteil PASS, FAIL oder
+   INCONCLUSIVE nach `docs/TIM_AGENT_HANDOFF.md`, mit HEAD-SHA. Das ist die einzige "Übergabe".
+3. **Codex:** postet ein Review auf diesem SHA.
+4. **Claude (Auto-fix):** wird durch das Review geweckt, bewertet je Befund ACCEPT, REJECT oder NEEDS_EVIDENCE mit
+   Beleg, bessert ACCEPT-Befunde nach, pusht, fordert per Erwähnung ein neues Review an. Das ist **Runde 1**.
+5. Gleiches noch einmal als **Runde 2**.
+6. **Stopp und Eskalation an den Owner**, sobald eines gilt: nach Runde 2 kein PASS; Sicherheitsbefund;
+   Codex antwortet 2 Stunden nicht; Befund verlangt Änderung an gesperrten Pfaden; Befund und Claude sind sich nach
+   einer Rückfrage uneinig.
+7. Bei PASS: Claude meldet es dem Owner. **Kein Merge**, Paket B bleibt Entwurf bis zum Wort des Owners.
+
+Zählung: Pilotrunden laufen getrennt vom bisherigen Versuchszähler (B steht bei 4) und gelten nur mit GO des Owners
+für den Pilot.
+
+Abnahme des Pilots (bestanden, wenn alles stimmt):
+
+- Owner hat keine Nachricht zwischen Claude und Codex weitergetragen.
+- Jedes Codex-Review bezieht sich auf den jeweils aktuellen HEAD-SHA (`commit_id` des Reviews).
+- Jede Antwort von Claude nennt je Befund ACCEPT, REJECT oder NEEDS_EVIDENCE mit Beleg.
+- Höchstens 2 automatische Runden; Eskalation erfolgt wie in Schritt 6.
+- Keine Änderung an Workflows, Ruleset, Rechten, Secrets, Produktion.
+
+Bekannte Lücken (im Pilot beobachten, nicht vorab bauen):
+
+- Codex Review erzeugt laut Doku keinen Status-Check. Merge-Schutz bleibt wie heute: Mensch merged nur nach
+  sichtbarem Bot-Review mit PASS auf dem HEAD-SHA. Ein technischer Pflicht-Status wäre erst nach dem Pilot zu
+  entscheiden (dann codex-action, kostenpflichtig, eigenes GO).
+- Ob das Codex-Review ein klares PASS/FAIL/INCONCLUSIVE schreibt, wenn man es in der Erwähnung verlangt, ist
+  **UNGEPRÜFT**. Dauerhaft gehört die Regel in `AGENTS.md` (Abschnitt `## Code Review Rules`, gesperrter Pfad,
+  Owner-PR).
+- Laut Claude-Doku braucht Auto-fix die offizielle Claude-GitHub-App. PR-Ereignisse kommen in dieser Sitzung an;
+  ob Review-Kommentare des Codex-Bots ebenso ankommen, zeigt erst der Pilot.
+
+### 10.3 Nicht Teil des Pilots
+
+Automatische Merges, Produktionszugriffe, neue Rechte, Secrets, API-Keys, kostenpflichtige Aktivierungen,
+Workflow- oder Ruleset-Änderungen, weitere Pakete. INFRA-09 bleibt gesperrt.
