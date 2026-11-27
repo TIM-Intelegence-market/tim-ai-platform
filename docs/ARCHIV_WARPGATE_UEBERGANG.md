@@ -216,7 +216,7 @@ Einheiten: GB = 10^9 Byte, GiB = 1024^3 Byte. Alle Werte sind in Byte gemessen.
 | **Restore-Bedarf** | Letzter Lauf am 22.11.: PASS. Gebraucht wurden **208.662.998.398 B**, nämlich das Doppelte der 100,0 GB Datenbank plus 8 GiB Reserve |
 | Notzugang ohne Warpgate | `sshd` auf Port 22 (nur Schlüssel, kein root, 2 Konten mit Schlüsseln), Tailscale online, Fernwartungs-Controller des Servers vorhanden (`/dev/ipmi0`). Chris sollte bestätigen, dass er die Konsole erreicht |
 | Werkzeuge | `fallocate`, `mkfs.ext4` 1.47.2, `losetup` 2.41.5, `chattr`, `findmnt`, Loop-Modul (`blkid` am 24.11. nicht eigens geprüft, Schritt 0 bricht ohne ab). Ein Benutzer `tim-archive` existiert noch nicht |
-| **Trim** | `fstrim.timer` ist aktiv. Er würde ein Loop-Dateisystem trimmen und damit Löcher in die Image-Datei stanzen, sie also dünn machen. Gegenmittel: Option `X-fstrim.notrim` in fstab, `mkfs -E nodiscard`, und der Store prüft vor jedem Schreiben, ob das Image noch voll belegt ist |
+| **Trim** | `fstrim.timer` ist aktiv. Er würde ein Loop-Dateisystem trimmen und damit Löcher in die Image-Datei stanzen, sie also dünn machen. Gegenmittel: Option `X-fstrim.notrim` in fstab, `mkfs -E nodiscard`, und der Store prüft vor jedem Schreiben, ob das Image noch voll belegt ist. Dasselbe Lochstanzen löst die verzögerte Inode-Initialisierung des Kernels nach dem ersten Einhängen aus (Befund 27.11.); Gegenmittel `mkfs -E lazy_itable_init=0` und eine zweite Belegungsprüfung nach dem Einhängen |
 
 ### Kapazität und Restore-Budget
 
@@ -314,13 +314,16 @@ test "$image_bytes" -eq 34359738368
 test "$(( allocated_blocks * block_bytes ))" -ge "$image_bytes"
 
 # 3  Eigenes ext4 nur in der Image-Datei, ohne Discard und ohne Reserve.
+#    lazy_itable_init=0: mkfs schreibt die Inode-Tabellen sofort. Sonst nullt der Kernel sie nach dem
+#    ersten Einhängen im Hintergrund (ext4lazyinit), und das Loop-Gerät stanzt dabei Löcher in das
+#    Image (Befund 27.11.: 512 MiB, genau die Inode-Tabellen).
 #    Die Kennung wird VORHER festgelegt und geschützt abgelegt, dann mit -U gesetzt und geprüft;
 #    so wird nichts aus dem Ergebnis selbst abgeschrieben.
 $GUARD parent --target /var/lib/warpgate --expected-uuid-file "$WG_UUID_FILE" --fstype ext4
 cat /proc/sys/kernel/random/uuid > "$ARCH_UUID_FILE"; chmod 0600 "$ARCH_UUID_FILE"
 archive_uuid=$(cat "$ARCH_UUID_FILE")
 [[ $archive_uuid =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]]
-mkfs.ext4 -q -L tim-archive -m 0 -E nodiscard -U "$archive_uuid" "$IMG"
+mkfs.ext4 -q -L tim-archive -m 0 -E nodiscard,lazy_itable_init=0 -U "$archive_uuid" "$IMG"
 unset archive_uuid
 $GUARD image --image "$IMG" --expected-uuid-file "$ARCH_UUID_FILE"   # Größe, volle Belegung, UUID
 
@@ -332,10 +335,11 @@ echo "$IMG $MNT ext4 loop,nofail,noatime,nodev,nosuid,noexec,X-fstrim.notrim,x-s
 systemctl daemon-reload
 $GUARD parent --target /var/lib/warpgate --expected-uuid-file "$WG_UUID_FILE" --fstype ext4
 mount "$MNT"
-# Nach dem Einhängen: genau dieser Einhängepunkt, Loop auf genau diesem Image, ext4, rw,nodev,nosuid,
-# noexec, erwartete UUID. Schlägt das fehl: sofort aushängen (umount "$MNT"), nichts weiter.
-# Jede der drei Prüfungen, die fehlschlägt, hängt sofort wieder aus.
-if ! { $GUARD archive --target "$MNT" --image "$IMG" --expected-uuid-file "$ARCH_UUID_FILE" \
+# Nach dem Einhängen: Image weiterhin voll belegt (physische Belegung erneut), genau dieser
+# Einhängepunkt, Loop auf genau diesem Image, ext4, rw,nodev,nosuid, noexec, erwartete UUID.
+# Jede der vier Prüfungen, die fehlschlägt, hängt sofort wieder aus, nichts weiter.
+if ! { $GUARD image --image "$IMG" --expected-uuid-file "$ARCH_UUID_FILE" \
+       && $GUARD archive --target "$MNT" --image "$IMG" --expected-uuid-file "$ARCH_UUID_FILE" \
        && $GUARD parent --target /var/lib/warpgate --expected-uuid-file "$WG_UUID_FILE" --fstype ext4 \
        && $GUARD reserve --parent /var/lib/warpgate --image-allocated; }; then umount "$MNT"; exit 1; fi
 

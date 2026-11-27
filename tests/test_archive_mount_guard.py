@@ -360,13 +360,14 @@ def test_section_11_order_guards_before_side_effects():
     mkfs = _first(lines, "mkfs.ext4 -q")
     mount = _first(lines, 'mount "$MNT"')
     assert mkfs < _first(lines, "$GUARD image") < mount
-    after_mount = [i for i, line in enumerate(lines) if "$GUARD archive" in line]
+    after_mount = [i for i, line in enumerate(lines) if i > mount and "$GUARD image" in line]
     assert after_mount and after_mount[0] > mount
     # The three post-mount checks sit in one block that unmounts on any failure.
     bail = next(i for i in range(mount, len(lines)) if 'umount "$MNT"; exit 1' in lines[i])
     block = " ".join(lines[after_mount[0]:bail + 1])
     assert lines[after_mount[0]].startswith("if ! {")
-    for needle in ("$GUARD archive", "$GUARD parent", "$GUARD reserve --parent /var/lib/warpgate --image-allocated"):
+    for needle in ('$GUARD image --image "$IMG"', "$GUARD archive", "$GUARD parent",
+                   "$GUARD reserve --parent /var/lib/warpgate --image-allocated"):
         assert needle in block
     assert _first(lines, "find /opt/tim") < first_effect
     assert _first(lines, "cold-init") > after_mount[0]
@@ -437,12 +438,12 @@ _SETUP_STEPS = (
     "install", "fallocate", "chmod", "stat:%b", "stat:%B", "stat:%s",
     "guard:parent", "cat:kernel", "chmod", "cat:archive", "mkfs.ext4",
     "guard:image", "install", "chattr", "systemctl", "guard:parent", "mount",
-    "guard:archive", "guard:parent", "guard:reserve", "chown", "chmod",
+    "guard:image", "guard:archive", "guard:parent", "guard:reserve", "chown", "chmod",
     "install", "sudo", "cat:script", "chmod",
 )
 _RUNTIME_STEPS = ("find", "guard:parent", "guard:image", "guard:archive", "guard:reserve")
 _PLAN_STEPS = _SETUP_STEPS + _RUNTIME_STEPS
-_POST_MOUNT_CHECKS = range(27, 30)
+_POST_MOUNT_CHECKS = range(27, 31)
 _FIRST_EFFECT = 9  # adduser
 _STUBS = r"""
 record() {
@@ -727,3 +728,68 @@ def test_section_11_rollback_note_does_not_expect_empty_fuser():
     text = Path(__file__).resolve().parents[1].joinpath("docs/ARCHIV_WARPGATE_UEBERGANG.md").read_text("utf-8")
     assert "fuser -vm /srv/tim-archive-tmp      # darf nichts zeigen" not in text
     assert "root kernel mount" in text
+
+
+# Delayed inode-table initialisation (finding 27.11.): with the mkfs default lazy_itable_init=1 the
+# kernel zeroes the inode tables after the first mount (ext4lazyinit), and the loop device turns
+# that zeroing into punched holes, so a fully allocated image became 512 MiB sparse.
+def _section_11_mkfs_args():
+    line = next(line for line in _section_11() if line.startswith("mkfs.ext4 -q"))
+    args = line.split()
+    extended = args[args.index("-E") + 1].split(",")
+    return args, extended
+
+
+def test_section_11_mkfs_initialises_inode_tables_without_discard():
+    args, extended = _section_11_mkfs_args()
+    assert "nodiscard" in extended
+    assert "lazy_itable_init=0" in extended
+    assert not any(opt.startswith("lazy_itable_init=") and opt != "lazy_itable_init=0" for opt in extended)
+    assert "discard" not in extended
+
+
+def _section_11_image(tmp_path):
+    _args, extended = _section_11_mkfs_args()
+    img = tmp_path / "archive.img"
+    with open(img, "wb") as handle:
+        os.posix_fallocate(handle.fileno(), 0, 256 * 1024 * 1024)
+    subprocess.run(["mkfs.ext4", "-q", "-F", "-m", "0", "-E", ",".join(extended), "-U", GOOD, str(img)],
+                   check=True)
+    return img
+
+
+@needs_mkfs
+@pytest.mark.skipif(shutil.which("dumpe2fs") is None, reason="dumpe2fs not installed")
+def test_section_11_mkfs_leaves_no_inode_table_for_the_kernel(tmp_path):
+    img = _section_11_image(tmp_path)
+    out = subprocess.run(["dumpe2fs", str(img)], check=True, capture_output=True, text=True).stdout
+    groups = len(re.findall(r"^Group \d+:", out, re.M))
+    # A group without inodes in use keeps INODE_UNINIT, all others must already be zeroed.
+    zeroed = len(re.findall(r"^Group \d+:.*ITABLE_ZEROED", out, re.M))
+    assert groups > 1 and zeroed == groups, out[:2000]
+    info = os.stat(img)
+    assert info.st_blocks * 512 >= info.st_size
+
+
+def _can_loop_mount():
+    return (os.geteuid() == 0 and shutil.which("mount") is not None and shutil.which("umount") is not None
+            and os.path.exists("/dev/loop-control"))
+
+
+@needs_mkfs
+@pytest.mark.skipif(not _can_loop_mount(), reason="needs root and loop devices")
+def test_section_11_image_stays_fully_allocated_after_loop_mount(tmp_path):
+    import time
+    img = _section_11_image(tmp_path)
+    mnt = tmp_path / "mnt"
+    mnt.mkdir()
+    size = os.stat(img).st_size
+    for _round in range(2):
+        subprocess.run(["mount", "-o", "loop,noatime", str(img), str(mnt)], check=True)
+        try:
+            (mnt / "probe").write_bytes(os.urandom(1024 * 1024))
+            os.sync()
+            time.sleep(5)  # long enough for ext4lazyinit on 256 MiB (1 GiB took about 10 s)
+        finally:
+            subprocess.run(["umount", str(mnt)], check=True)
+        assert os.stat(img).st_blocks * 512 >= size, "image became sparse after mount"
