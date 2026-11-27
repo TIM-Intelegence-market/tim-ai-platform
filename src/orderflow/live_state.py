@@ -54,6 +54,8 @@ DEFAULT_PATH = Path("data/orderflow/orderflow_lage.json")
 WINDOWS = {"1m": 60, "5m": 300, "15m": 900}
 KEEP_SECONDS = 1800  # 15m window plus 20 one-minute baseline buckets, with reserve
 BASELINE_MINUTES = 20
+PERP_WIDTH_HISTORY = 256  # bucket-width revisions kept per tracker (a width change is rare; old ones fall out)
+BUCKET_NOT_AVAILABLE = "NOT_AVAILABLE"  # no store revision with a known time seen by the snapshot
 LEVEL_RANGE_PCT = 0.6  # levels farther away than this share of the price are not reported
 THRESHOLDS = {
     "direction_share": 0.15,  # |delta| / volume of the 5m window needed for a direction
@@ -108,6 +110,9 @@ class LiveOrderflowTracker:
         self.unavailable_dropped = 0  # trades handed in without available_at: availability UNKNOWN, never evidence
         self._incomplete_days: set[float] = set()  # UTC days whose own values miss such trades
         self._perp_log = RevisionLog()  # perp buckets with the moment each revision was first seen (pit contract)
+        # Perp bucket width per store revision, (seen epoch, width or None, status), in the order first seen. The width a
+        # snapshot uses is the one of the newest revision seen by its time, never one written later (Codex #377, 27.11.).
+        self._perp_widths: list[tuple[float, int | None, str]] = []
         self.last_trade_id: int | None = None
         self.last_trade_time: datetime | None = None
         self.day_key: float | None = None
@@ -219,6 +224,23 @@ class LiveOrderflowTracker:
                 buckets[index].append(item)
         return [self._window(bucket) for bucket in buckets]
 
+    def _note_perp_width(self, seen: float, width: int | None, status: str) -> None:
+        """Remember the bucket width a store revision states, at the moment it was first seen (never back in time)."""
+        if self._perp_widths:
+            last_seen, last_width, last_status = self._perp_widths[-1]
+            if seen < last_seen or (width, status) == (last_width, last_status):
+                return
+        self._perp_widths.append((seen, width, status))
+        if len(self._perp_widths) > PERP_WIDTH_HISTORY:
+            del self._perp_widths[: len(self._perp_widths) - PERP_WIDTH_HISTORY]
+
+    def _perp_width_at(self, moment: float) -> tuple[int | None, str]:
+        """Bucket width of the newest revision seen at or before ``moment``; ``NOT_AVAILABLE`` when none was seen yet."""
+        known = [(width, status) for seen, width, status in self._perp_widths if seen <= moment]
+        if not known:
+            return None, BUCKET_NOT_AVAILABLE
+        return known[-1]
+
     def _perp(self, store: Mapping[str, Any] | None, now: datetime) -> dict[str, Any] | None:
         """Perp delta of the last 5/15 minutes from closed buckets in the revision TIM had seen by ``now``.
 
@@ -231,10 +253,15 @@ class LiveOrderflowTracker:
             return None
         updated = as_time(store.get("updated_at"))
         if updated is not None:
-            self._perp_log.observe(store["days"], max(now, updated))
-        # The bucket size decides which buckets are closed by ``now``. It is taken from the store only: a missing or
-        # unusable size is never replaced by an assumed one (F1, #372 Mission 07-FINAL), the perp block is unknown.
-        bucket, bucket_status = bucket_size(store)
+            seen_at = max(now, updated)
+            self._perp_log.observe(store["days"], seen_at)
+            self._note_perp_width(seen_at.timestamp(), *bucket_size(store))
+        # The bucket size decides which buckets are closed by ``now``. It is evidence like the rows: only the width of
+        # the newest store revision seen by ``now`` counts, never the width of a revision written later (Codex #377,
+        # 27.11.: a 300 s bucket still open at 12:00 must not become closed because the 13:00 store says 60 s). A missing,
+        # unusable or not yet available size is never replaced by an assumed one (F1, #372 Mission 07-FINAL): the perp
+        # block is unknown (fail closed).
+        bucket, bucket_status = self._perp_width_at(_epoch(now))
         if bucket is None:
             return {"status": "Bucket-Größe unbekannt", "bucket_seconds": None, "bucket_seconds_status": bucket_status,
                     "updated_at": store.get("updated_at"), "store_time_known": updated is not None, "closed_buckets_only": True}

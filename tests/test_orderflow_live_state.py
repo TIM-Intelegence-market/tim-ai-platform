@@ -249,7 +249,9 @@ def test_perp_running_bucket_never_counts_and_a_store_from_after_now_is_not_seen
     assert live["delta_15m"] == pytest.approx(1.0) and live["closed_buckets_only"] is True   # running bucket t-120 left out
     later = ls.LiveOrderflowTracker(SYMBOL, 5.0)._perp(
         {"days": {"d": rows}, "bucket_seconds": 300, "updated_at": (now + timedelta(hours=1)).isoformat()}, now)
-    assert later["status"] == "keine Daten in den letzten 15 Minuten" and later["buckets_unknown"] == 1
+    # The store from after now is not seen at now, so neither are its rows nor its bucket width: fail closed.
+    assert later["status"] == "Bucket-Größe unbekannt" and later["bucket_seconds_status"] == "NOT_AVAILABLE"
+    assert "delta_15m" not in later
 
 
 # Codex #376: the consumer (Orderflow-Schatten) must not read unknown flow as neutral flow.
@@ -355,7 +357,8 @@ def test_perp_store_without_updated_at_is_not_evidence():
     t = int(now.timestamp())
     rows = [[t - 600, 75000.0, 1.0, 2.0], [t - 120, 75000.0, 0.0, 1.0]]
     out = ls.LiveOrderflowTracker(SYMBOL, 5.0)._perp({"days": {"d": rows}, "bucket_seconds": 300}, now)
-    assert out["status"] == "keine Daten in den letzten 15 Minuten" and out["store_time_known"] is False
+    assert out["status"] == "Bucket-Größe unbekannt" and out["store_time_known"] is False
+    assert out["bucket_seconds_status"] == "NOT_AVAILABLE" and "delta_15m" not in out
 
 
 # Mission 07 (Codex #377): a perp bucket of 11:50 that is first written at 13:00 is no evidence at 12:00.
@@ -382,7 +385,7 @@ def test_perp_backfill_after_the_decision_does_not_change_the_snapshot_at_the_de
     fresh = ls.LiveOrderflowTracker(SYMBOL, 5.0)
     late = fresh._perp({"days": {"d": backfill}, "bucket_seconds": 300,
                         "updated_at": (noon + timedelta(hours=1)).isoformat()}, noon)
-    assert late["status"] == "keine Daten in den letzten 15 Minuten"
+    assert late["status"] == "Bucket-Größe unbekannt" and late["bucket_seconds_status"] == "NOT_AVAILABLE"
 
 
 def test_trades_without_available_at_are_unknown_and_never_evidence():
@@ -565,3 +568,67 @@ def test_perp_uses_the_bucket_size_the_store_states(seconds):
     now = T0 + timedelta(seconds=1)
     perp = tracker.snapshot(now, perp_store=_perp_store(now, bucket_seconds=seconds))["perp"]
     assert perp["bucket_seconds"] == int(seconds) and type(perp["bucket_seconds"]) is int and "bucket_seconds_status" not in perp
+
+
+def _without_store_time(perp):
+    return {k: v for k, v in perp.items() if k != "updated_at"}
+
+
+# Codex #377 (27.11.): a 300 s perp bucket still open at 12:00 must not become closed in the identical 12:00 snapshot
+# because the store revision of 13:00 states a width of 60 s. The width is evidence of its own revision.
+def test_perp_bucket_width_from_a_later_revision_is_not_used_at_the_snapshot():
+    noon = datetime(2026, 11, 24, 12, 0, tzinfo=timezone.utc)
+    t = int(noon.timestamp())
+    rows = [[t - 900, 75000.0, 1.0, 2.0], [t - 240, 75000.0, 0.0, 5.0]]   # 11:45 closed, 11:56 open until 12:01 at 300 s
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    first = tracker._perp({"days": {"d": rows}, "bucket_seconds": 300, "updated_at": noon.isoformat()}, noon)
+    assert first["bucket_seconds"] == 300 and first["delta_5m"] == pytest.approx(0.0)
+    assert first["delta_15m"] == pytest.approx(1.0)
+    later = noon + timedelta(hours=1)
+    again = tracker._perp({"days": {"d": rows}, "bucket_seconds": 60, "updated_at": later.isoformat()}, noon)
+    assert again["bucket_seconds"] == 300                      # the 13:00 width is not known at 12:00
+    assert again["delta_5m"] == pytest.approx(0.0) and again["delta_15m"] == pytest.approx(1.0)
+    assert _without_store_time(again) == _without_store_time(first)   # only the echoed store time differs
+    # From 13:00 on the 60 s revision is the one seen (the old rows are then outside the 15 minutes).
+    assert tracker._perp_width_at(later.timestamp()) == (60, "OK")
+    assert tracker._perp_width_at(noon.timestamp()) == (300, "OK")
+
+
+def test_perp_bucket_width_only_from_a_later_revision_fails_closed():
+    noon = datetime(2026, 11, 24, 12, 0, tzinfo=timezone.utc)
+    t = int(noon.timestamp())
+    rows = [[t - 900, 75000.0, 1.0, 2.0], [t - 240, 75000.0, 0.0, 5.0]]
+    out = ls.LiveOrderflowTracker(SYMBOL, 5.0)._perp(
+        {"days": {"d": rows}, "bucket_seconds": 60, "updated_at": (noon + timedelta(hours=1)).isoformat()}, noon)
+    assert out["status"] == "Bucket-Größe unbekannt" and out["bucket_seconds"] is None
+    assert out["bucket_seconds_status"] == "NOT_AVAILABLE" and "delta_5m" not in out
+
+
+@pytest.mark.parametrize("bad", [{}, {"bucket_seconds": None}, {"bucket_seconds": "60"}, {"bucket_seconds": 0}])
+def test_perp_later_revision_with_missing_width_does_not_change_the_earlier_snapshot(bad):
+    noon = datetime(2026, 11, 24, 12, 0, tzinfo=timezone.utc)
+    t = int(noon.timestamp())
+    rows = [[t - 900, 75000.0, 1.0, 2.0], [t - 240, 75000.0, 0.0, 5.0]]
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    first = tracker._perp({"days": {"d": rows}, "bucket_seconds": 300, "updated_at": noon.isoformat()}, noon)
+    later = noon + timedelta(hours=1)
+    again = tracker._perp({"days": {"d": rows}, **bad, "updated_at": later.isoformat()}, noon)
+    assert _without_store_time(again) == _without_store_time(first)   # only the echoed store time differs
+    # At 13:00 the newest seen revision has no usable width: fail closed, the 300 s of 12:00 is not carried over.
+    at_one = tracker._perp({"days": {"d": rows}, **bad, "updated_at": later.isoformat()}, later)
+    assert at_one["status"] == "Bucket-Größe unbekannt" and at_one["bucket_seconds"] is None
+    assert at_one["bucket_seconds_status"] in {"MISSING", "INVALID"}
+
+
+def test_snapshot_replay_with_the_later_store_keeps_the_noon_perp_block():
+    noon = datetime(2026, 11, 24, 12, 0, tzinfo=timezone.utc)
+    t = int(noon.timestamp())
+    rows = [[t - 900, 75000.0, 1.0, 2.0], [t - 240, 75000.0, 0.0, 5.0]]
+    store = {"symbol": "BTCUSDT", "days": {"d": rows}, "bucket_seconds": 300, "updated_at": noon.isoformat()}
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    _feed(tracker, [trade(0, 75000, 1.0, True, 1)])
+    noon_state = tracker.snapshot(noon, perp_store=store)
+    late_store = {**store, "bucket_seconds": 60, "updated_at": (noon + timedelta(hours=1)).isoformat()}
+    replay = tracker.snapshot(noon, perp_store=late_store)
+    assert replay["perp"]["bucket_seconds"] == 300
+    assert replay["perp"]["delta_5m"] == noon_state["perp"]["delta_5m"] == pytest.approx(0.0)
