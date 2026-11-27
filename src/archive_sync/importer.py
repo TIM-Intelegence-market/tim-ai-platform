@@ -52,10 +52,50 @@ class _Quarantine(Exception):
     pass
 
 
-def _schema_ddl(schema: str) -> list[str]:
+LAYOUTS = ("v1", "v2")
+
+
+def _schema_ddl(schema: str, layout: str = "v1") -> list[str]:
+    """v1: every trade row repeats the 64-character batch_id (S1/S2 as tested).
+
+    v2 (S2.1 draft): batches get a numeric ``batch_no``; trade rows reference it as INTEGER and
+    are stored in alignment-friendly column order. The sha256 batch_id, content and file hashes
+    and the full manifest stay in ``batches``: provenance is the same, only the per-row
+    reference is smaller. The canonical (hashed) column order does not change.
+    """
+    if layout not in LAYOUTS:
+        raise ArchiveSyncError(f"unknown archive layout {layout!r}")
+    batch_no = "batch_no INTEGER GENERATED ALWAYS AS IDENTITY UNIQUE," if layout == "v2" else ""
+    if layout == "v1":
+        trades = f"""CREATE TABLE IF NOT EXISTS {schema}.agg_trades (
+            symbol TEXT NOT NULL,
+            aggregate_trade_id BIGINT NOT NULL CHECK (aggregate_trade_id >= 0),
+            trade_time TIMESTAMPTZ NOT NULL,
+            price DOUBLE PRECISION NOT NULL CHECK (price > 0),
+            quantity DOUBLE PRECISION NOT NULL CHECK (quantity > 0),
+            buyer_is_maker BOOLEAN NOT NULL,
+            source TEXT NOT NULL,
+            ingest_timestamp TIMESTAMPTZ NOT NULL,
+            batch_id TEXT NOT NULL REFERENCES {schema}.batches(batch_id),
+            PRIMARY KEY (symbol, aggregate_trade_id))"""
+        batch_index = f"CREATE INDEX IF NOT EXISTS agg_trades_batch_idx ON {schema}.agg_trades (batch_id)"
+    else:
+        trades = f"""CREATE TABLE IF NOT EXISTS {schema}.agg_trades (
+            aggregate_trade_id BIGINT NOT NULL CHECK (aggregate_trade_id >= 0),
+            trade_time TIMESTAMPTZ NOT NULL,
+            ingest_timestamp TIMESTAMPTZ NOT NULL,
+            price DOUBLE PRECISION NOT NULL CHECK (price > 0),
+            quantity DOUBLE PRECISION NOT NULL CHECK (quantity > 0),
+            batch_no INTEGER NOT NULL REFERENCES {schema}.batches(batch_no),
+            buyer_is_maker BOOLEAN NOT NULL,
+            symbol TEXT NOT NULL,
+            source TEXT NOT NULL,
+            PRIMARY KEY (symbol, aggregate_trade_id))"""
+        batch_index = f"CREATE INDEX IF NOT EXISTS agg_trades_batch_idx ON {schema}.agg_trades (batch_no)"
     return [
         f"CREATE SCHEMA IF NOT EXISTS {schema}",
         f"""CREATE TABLE IF NOT EXISTS {schema}.batches (
+            {batch_no}
             batch_id TEXT PRIMARY KEY CHECK (batch_id ~ '^[0-9a-f]{{64}}$'),
             kind TEXT NOT NULL CHECK (kind IN ('new','backfill','prefix')),
             symbol TEXT NOT NULL,
@@ -71,18 +111,8 @@ def _schema_ddl(schema: str) -> list[str]:
             reason TEXT,
             manifest JSONB NOT NULL,
             imported_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp())""",
-        f"""CREATE TABLE IF NOT EXISTS {schema}.agg_trades (
-            symbol TEXT NOT NULL,
-            aggregate_trade_id BIGINT NOT NULL CHECK (aggregate_trade_id >= 0),
-            trade_time TIMESTAMPTZ NOT NULL,
-            price DOUBLE PRECISION NOT NULL CHECK (price > 0),
-            quantity DOUBLE PRECISION NOT NULL CHECK (quantity > 0),
-            buyer_is_maker BOOLEAN NOT NULL,
-            source TEXT NOT NULL,
-            ingest_timestamp TIMESTAMPTZ NOT NULL,
-            batch_id TEXT NOT NULL REFERENCES {schema}.batches(batch_id),
-            PRIMARY KEY (symbol, aggregate_trade_id))""",
-        f"CREATE INDEX IF NOT EXISTS agg_trades_batch_idx ON {schema}.agg_trades (batch_id)",
+        trades,
+        batch_index,
         f"""CREATE TABLE IF NOT EXISTS {schema}.sync_state (
             symbol TEXT PRIMARY KEY,
             start_id BIGINT NOT NULL,
@@ -96,12 +126,41 @@ def _schema_ddl(schema: str) -> list[str]:
     ]
 
 
-async def ensure_schema(connection: Any, schema: str = DEFAULT_SCHEMA) -> None:
+async def archive_layout(connection: Any, schema: str = DEFAULT_SCHEMA) -> str | None:
+    """'v1' or 'v2' for an existing archive schema, None if it has no trade table yet."""
+    columns = {
+        str(r["column_name"])
+        for r in await connection.fetch(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema=$1 AND table_name='agg_trades'",
+            checked_schema(schema),
+        )
+    }
+    if "batch_no" in columns:
+        return "v2"
+    if "batch_id" in columns:
+        return "v1"
+    return None
+
+
+async def ensure_schema(connection: Any, schema: str = DEFAULT_SCHEMA, layout: str | None = None) -> str:
+    """Create the archive schema if needed and return its layout; never converts an existing one."""
     schema = checked_schema(schema)
     async with connection.transaction():
         await connection.execute("SELECT pg_advisory_xact_lock(hashtext($1))", f"archive-ddl:{schema}")
-        for statement in _schema_ddl(schema):
+        existing = await archive_layout(connection, schema)
+        if existing is not None and layout is not None and existing != layout:
+            raise ArchiveSyncError(f"archive schema {schema} has layout {existing}, not {layout}; no conversion")
+        chosen = existing or layout or "v1"
+        for statement in _schema_ddl(schema, chosen):
             await connection.execute(statement)
+    return chosen
+
+
+def row_reference(layout: str) -> tuple[str, str]:
+    """SQL column and value expression that tie a trade row to its batch (value takes batch_id as $1)."""
+    if layout == "v2":
+        return "batch_no", "(SELECT batch_no FROM {schema}.batches WHERE batch_id=$1)"
+    return "batch_id", "$1"
 
 
 async def server_state(connection: Any, symbol: str, schema: str = DEFAULT_SCHEMA) -> dict[str, Any]:
@@ -355,10 +414,10 @@ async def import_batch(
                 raise _Quarantine("archive already holds rows inside a range it lists as missing")
 
             await _record(connection, schema, manifest, "ACCEPTED", None)
+            ref_column, ref_value = row_reference(await archive_layout(connection, schema) or "v1")
             inserted = await connection.execute(
-                f"""INSERT INTO {schema}.agg_trades ({', '.join(COLUMNS)}, batch_id)
-                    SELECT {', '.join(COLUMNS)}, $1 FROM archive_stage"""
-                ,
+                f"""INSERT INTO {schema}.agg_trades ({', '.join(COLUMNS)}, {ref_column})
+                    SELECT {', '.join(COLUMNS)}, {ref_value.format(schema=schema)} FROM archive_stage""",
                 manifest["batch_id"],
             )
             if int(inserted.split()[-1]) != int(manifest["row_count"]):
@@ -425,9 +484,10 @@ async def import_directory(
     gate_path: str | Path,
     schema: str = DEFAULT_SCHEMA,
     usage: Callable[[str], Any] = shutil.disk_usage,
+    layout: str | None = None,
 ) -> dict[str, Any]:
     """Import every complete batch in ``directory``; safe to run again after any interruption."""
-    await ensure_schema(connection, schema)
+    await ensure_schema(connection, schema, layout)
     entries = []
     results: list[dict[str, Any]] = []
     halted = None
