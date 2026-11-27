@@ -63,3 +63,10 @@ def test_watchdog_queue_query_filters_in_where_clause() -> None:
     source = inspect.getsource(watchdog.IndependentWatchdog._database)
     assert "FILTER (WHERE status" not in source
     assert "FROM ingestion_outbox WHERE status IN ('PENDING','PROCESSING','RETRY','QUARANTINED')" in source
+
+
+def test_watchdog_freshness_query_uses_the_primary_key_not_a_table_scan() -> None:
+    """max(ingest_timestamp) has no index: on the server it scanned 10 GB every 30 s."""
+    source = inspect.getsource(watchdog.IndependentWatchdog._database)
+    assert "max(ingest_timestamp)" not in source
+    assert "ORDER BY aggregate_trade_id DESC LIMIT 1" in source
