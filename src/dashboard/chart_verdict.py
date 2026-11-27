@@ -21,7 +21,7 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 SCHEMA = "tim_chart_verdict/1"
 RULESET = "chart-urteil/1.0"  # frozen 11.11.2026; a rule change needs a new version and a new start
@@ -292,8 +292,13 @@ def summary(state: Mapping[str, Any], now: datetime) -> dict[str, Any]:
 
 
 def update(path: Path, journal_paths: Sequence[Path], series: Mapping[str, Sequence[Mapping[str, Any]]],
-           lage: Mapping[str, Any] | None, now: datetime | None = None, trades: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    """One step: every new plan gets the Chart-Lage and the Urteil at its creation, closed plans get the journal result."""
+           lage: Mapping[str, Any] | None, now: datetime | None = None, trades: Mapping[str, Any] | None = None,
+           lage_at: Callable[[datetime], Mapping[str, Any] | None] | None = None) -> dict[str, Any]:
+    """One step: every new plan gets the Chart-Lage and the Urteil at its creation, closed plans get the journal result.
+
+    ``lage_at`` (optional) gives the Lage known at a moment: with it the plan gets ``lage_at(created_at)`` (point in
+    time, None when there is none) instead of this step's Lage. Without it (BTC, unchanged) as before.
+    """
     from src.dashboard.plan_journal import load_view
 
     now = now or datetime.now(timezone.utc)
@@ -316,7 +321,7 @@ def update(path: Path, journal_paths: Sequence[Path], series: Mapping[str, Seque
                 targets = [t for t in (entry.get("targets") or []) if _num(t) is not None]
                 target = _num(targets[0]) if targets else None
                 # The live Lage counts only if this step runs close to the plan's creation (orderflow_view checks it).
-                chart = chart_lage(series, created, lage, trades)
+                chart = chart_lage(series, created, lage_at(created) if lage_at is not None else lage, trades)
                 urteil = judge(str(entry.get("direction")), entry_price, chart, stop, target) if entry_price else None
                 record = plans[key] = {"id": entry["id"], "journal_file": Path(journal_path).name, "timeframe": entry.get("timeframe"),
                                        "direction": entry.get("direction"), "created_at": entry["created_at"],

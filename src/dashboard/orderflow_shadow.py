@@ -24,7 +24,7 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 SCHEMA = "tim_orderflow_shadow/1"
 DEFAULT_PATH = Path("data/journal/tim_orderflow_shadow.json")
@@ -157,9 +157,23 @@ def summary(state: Mapping[str, Any]) -> dict[str, Any]:
                         "sum_journal_net_r": round(sum(float(p["journal"]["net_r"]) for p in with_exit), 4)}}
 
 
+def _at_moment(name: str, direction: str, view: dict[str, Any] | None,
+               lage_at: Callable[[datetime], Mapping[str, Any] | None] | None, moment: Any) -> dict[str, Any]:
+    """``lage_at_<name>`` and ``gate_at_<name>``: from ``lage_at(moment)`` when given (point in time), else this step's view."""
+    if lage_at is not None:
+        view = lage_view(lage_at(_time(moment)))
+    return {f"lage_at_{name}": view, f"gate_at_{name}": gate(direction, view)}
+
+
 def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | None,
-           now: datetime | None = None, series: Mapping[str, Sequence[Mapping[str, Any]]] | None = None) -> dict[str, Any]:
-    """One step: new plans get the gate and the timing, filled plans are watched for the orderflow exit, closed plans get the journal result."""
+           now: datetime | None = None, series: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
+           lage_at: Callable[[datetime], Mapping[str, Any] | None] | None = None) -> dict[str, Any]:
+    """One step: new plans get the gate and the timing, filled plans are watched for the orderflow exit, closed plans get the journal result.
+
+    ``lage_at`` (optional) gives the Lage known at a moment (point in time): with it, ``lage_at_plan`` and
+    ``lage_at_fill`` come from ``lage_at(created_at)`` / ``lage_at(filled_at)`` and are None when no Lage from
+    then exists. Without it (BTC, unchanged) both take the Lage of this step.
+    """
     from src.dashboard.plan_journal import load_view
 
     now = now or datetime.now(timezone.utc)
@@ -184,14 +198,13 @@ def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | 
                 record = plans[key] = {"id": entry["id"], "journal_file": Path(journal_path).name, "timeframe": entry.get("timeframe"),
                                        "direction": entry.get("direction"), "created_at": entry["created_at"],
                                        "entry": entry.get("entry"), "stop": entry.get("stop"),
-                                       "lage_at_plan": view, "gate_at_plan": gate(str(entry.get("direction")), view),
+                                       **_at_moment("plan", str(entry.get("direction")), view, lage_at, entry["created_at"]),
                                        "timing_at_plan": timing(_time(entry["created_at"]), candles_30m)}
             record["journal"] = {"status": entry.get("status"), "filled_at": entry.get("filled_at"), "closed_at": entry.get("closed_at"),
                                  "exit_reason": entry.get("exit_reason"), "exit_price": entry.get("exit_price"), "net_r": entry.get("net_r")}
             if entry.get("filled_at") and "gate_at_fill" not in record:
                 record["fill_price"] = entry.get("fill_price") or entry.get("entry")
-                record["lage_at_fill"] = view
-                record["gate_at_fill"] = gate(str(entry.get("direction")), view)
+                record.update(_at_moment("fill", str(entry.get("direction")), view, lage_at, entry["filled_at"]))
                 record["timing_at_fill"] = timing(_time(entry["filled_at"]), candles_30m)
             if entry.get("status") == "FILLED" and not record.get("of_exit") and view:
                 reason = should_exit(str(entry.get("direction")), view)

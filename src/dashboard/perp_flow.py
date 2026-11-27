@@ -193,6 +193,9 @@ class PerpFlow:
         self._order: list[float] | None = None  # running taker order [ms, side, quantity, notional]
         # Hour boundary (epoch seconds) -> [buy, sell] quantity of multi-fill aggTrades in the last EDGE_MS before it.
         self.edges: dict[int, list[float]] = {}
+        # Readers of the raw batch (XMR Live-Orderflow-Lage, 24.11.2026): called after the batch is counted, every
+        # failure swallowed, so a reader can never break the record. Empty for BTC: nothing changes there.
+        self.listeners: list[Callable[[str, Sequence[Mapping[str, Any]]], None]] = []
 
     # --- persistence -------------------------------------------------------------------------
 
@@ -285,6 +288,11 @@ class PerpFlow:
             raise ValueError("perp aggTrades: answer is not a list")
         for row in rows:
             self._add(row)
+        for listener in self.listeners:
+            try:
+                listener(self.symbol, rows)
+            except Exception:  # noqa: BLE001 - a reader must never stop the record
+                pass
         if len(rows) < BATCH and self.segments:
             # Caught up: the record reaches up to now even when the market was quiet.
             self.segments[-1][1] = max(self.segments[-1][1], int(self.clock() * 1000) - 1000)
@@ -619,8 +627,12 @@ class _Runner:
 
 async def run(state: Any, stop: Any, directory: Path | str = DATA_DIR, log: Any = None,
               flow: PerpFlow | None = None, oi_fetch: Fetch | None = None,
-              flows: Sequence[PerpFlow] | None = None, bybit_fetch: Fetch | None = None) -> None:
+              flows: Sequence[PerpFlow] | None = None, bybit_fetch: Fetch | None = None,
+              listeners: Mapping[str, Callable[[str, Sequence[Mapping[str, Any]]], None]] | None = None) -> None:
     """Runtime loop (main.py): collect, check, save and publish every symbol (``publish``).
+
+    ``listeners`` (symbol -> reader) get each raw batch of that symbol (PerpFlow.listeners), e.g. the XMR
+    Live-Orderflow-Lage; a symbol without one runs exactly as before.
 
     One call at a time for all symbols together, at most ``CALLS_PER_MINUTE``: a symbol that is
     caught up waits ``IDLE_SECONDS`` before its next call, one that is catching up takes the next
@@ -630,6 +642,10 @@ async def run(state: Any, stop: Any, directory: Path | str = DATA_DIR, log: Any 
 
     if flows is None:
         flows = [flow] if flow is not None else [PerpFlow(symbol_directory(s, directory), symbol=s) for s in SYMBOLS]
+    for item in flows:
+        reader = (listeners or {}).get(item.symbol)
+        if reader is not None:
+            item.listeners.append(reader)
     runners = [_Runner(f) for f in flows]
     for runner in runners:
         try:
