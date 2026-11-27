@@ -24,11 +24,11 @@ NOW = T0 + timedelta(seconds=50)
 
 
 def _lage(parts, order=None):
-    """``parts`` = [(qty, maker)] all inside the last minute; maker True = sell, False = buy, None = unknown side."""
+    """``parts`` = [(qty, maker)] all inside the last minute (at most 120 trades, all available before ``NOW``); maker True = sell, False = buy, None = unknown side."""
     items = list(enumerate(parts))
     if order is not None:
         items = [items[i] for i in order]
-    trades = [Trade(SYMBOL, 75000.0, qty, T0 + timedelta(seconds=10 + k), k + 1, buyer_is_maker=maker)  # type: ignore[arg-type]
+    trades = [Trade(SYMBOL, 75000.0, qty, T0 + timedelta(seconds=10 + k * 0.25), k + 1, buyer_is_maker=maker)  # type: ignore[arg-type]
               for k, (_, (qty, maker)) in enumerate(items)]
     tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
     if "available_at" in inspect.signature(tracker.ingest).parameters:   # Paket A: availability is evidence too
