@@ -36,7 +36,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from collections import deque
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timezone
@@ -57,6 +57,7 @@ KEEP_SECONDS = 1800  # 15m window plus 20 one-minute baseline buckets, with rese
 BASELINE_MINUTES = 20
 PERP_WIDTH_HISTORY = 256  # bucket-width revisions kept per tracker (a width change is rare; old ones fall out)
 BUCKET_NOT_AVAILABLE = "NOT_AVAILABLE"  # no store revision with a known time seen by the snapshot
+BUCKET_INCONSISTENT = "INCONSISTENT"  # store revisions seen at the same moment state different widths
 LEVEL_RANGE_PCT = 0.6  # levels farther away than this share of the price are not reported
 THRESHOLDS = {
     "direction_share": 0.15,  # |delta| / volume of the 5m window needed for a direction
@@ -235,21 +236,28 @@ class LiveOrderflowTracker:
         return [self._window(bucket) for bucket in buckets]
 
     def _note_perp_width(self, seen: float, width: int | None, status: str) -> None:
-        """Remember the bucket width a store revision states, at the moment it was first seen (never back in time)."""
-        if self._perp_widths:
-            last_seen, last_width, last_status = self._perp_widths[-1]
-            if seen < last_seen or (width, status) == (last_width, last_status):
-                return
-        self._perp_widths.append((seen, width, status))
+        """Remember the bucket width a store revision states, at the moment it was first seen.
+
+        Kept in order of that moment: a revision noted late (e.g. 12:00:15 after 13:00 in a replay) is put in its
+        place, never dropped and never overwritten by a neighbour (Codex #377, 27.11.)."""
+        entry = (seen, width, status)
+        if entry in self._perp_widths:
+            return
+        self._perp_widths.insert(bisect_right([e[0] for e in self._perp_widths], seen), entry)
         if len(self._perp_widths) > PERP_WIDTH_HISTORY:
             del self._perp_widths[: len(self._perp_widths) - PERP_WIDTH_HISTORY]
 
     def _perp_width_at(self, moment: float) -> tuple[int | None, str]:
-        """Bucket width of the newest revision seen at or before ``moment``; ``NOT_AVAILABLE`` when none was seen yet."""
-        known = [(width, status) for seen, width, status in self._perp_widths if seen <= moment]
-        if not known:
+        """Bucket width of the newest revision seen at or before ``moment``; ``NOT_AVAILABLE`` when none was seen yet,
+        ``INCONSISTENT`` when revisions seen at that same moment state different widths (fail closed, order-free)."""
+        index = bisect_right([e[0] for e in self._perp_widths], moment)
+        if not index:
             return None, BUCKET_NOT_AVAILABLE
-        return known[-1]
+        latest = self._perp_widths[index - 1][0]
+        stated = {(w, st) for seen, w, st in self._perp_widths[:index] if seen == latest}
+        if len(stated) > 1:
+            return None, BUCKET_INCONSISTENT     # two revisions seen at the same moment disagree: no width is evidence
+        return stated.pop()
 
     def _perp(self, store: Mapping[str, Any] | None, now: datetime) -> dict[str, Any] | None:
         """Perp delta of the last 5/15 minutes from closed buckets in the revision TIM had seen by ``now``.
@@ -275,22 +283,38 @@ class LiveOrderflowTracker:
         if bucket is None:
             return {"status": "Bucket-Größe unbekannt", "bucket_seconds": None, "bucket_seconds_status": bucket_status,
                     "updated_at": store.get("updated_at"), "store_time_known": updated is not None, "closed_buckets_only": True}
-        days, counts = self._perp_log.rows_at(now, bucket)
         moment = _epoch(now)
+        # Each bucket is judged by the width of the store revision its value was first seen in, not by the newest
+        # width (Codex #377, 27.11.): a 300 s bucket written at 12:00 and unchanged in a 60 s revision of 12:00:15 is
+        # still open until 12:01. A bucket whose revision came without a usable width is unknown, never assumed.
+        rows, unknown = self._perp_log.revisions_at(now)
+        counts = {"unknown": unknown, "revised_later": 0, "open": 0, "width_unknown": 0, "other_width": 0}
         delta5 = delta15 = volume15 = 0.0
         seen = False
-        for rows in days.values():
-            for row in rows:
-                bucket_time, bid, ask = row[0], row[2], row[3]
-                if bucket_time < moment - 900 - bucket:
-                    continue
-                seen = True
-                delta15 += ask - bid
-                volume15 += ask + bid
-                if bucket_time >= moment - 300 - bucket:
-                    delta5 += ask - bid
+        for _day, bucket_time, _level, first_seen, values, revised_later in rows:
+            width, _status = self._perp_width_at(first_seen)
+            if width is None:
+                counts["width_unknown"] += 1
+                continue
+            if bucket_time + width > moment:
+                counts["open"] += 1
+                continue
+            if len(values) < 2:
+                counts["unknown"] += 1
+                continue
+            counts["revised_later"] += int(revised_later)
+            counts["other_width"] += int(width != bucket)
+            bid, ask = values[0], values[1]
+            if bucket_time < moment - 900 - width:
+                continue
+            seen = True
+            delta15 += ask - bid
+            volume15 += ask + bid
+            if bucket_time >= moment - 300 - width:
+                delta5 += ask - bid
         meta = {"updated_at": store.get("updated_at"), "store_time_known": updated is not None,
-                "closed_buckets_only": True, "buckets_unknown": counts["unknown"], "buckets_revised_later": counts["revised_later"]}
+                "closed_buckets_only": True, "buckets_unknown": counts["unknown"], "buckets_revised_later": counts["revised_later"],
+                "buckets_width_unknown": counts["width_unknown"], "buckets_other_width": counts["other_width"]}
         if not seen:
             return {"status": "keine Daten in den letzten 15 Minuten", **meta}
         return {"symbol": store.get("symbol"), "bucket_seconds": bucket, "delta_5m": _round(delta5), "delta_15m": _round(delta15),

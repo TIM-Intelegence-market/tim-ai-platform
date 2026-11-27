@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -632,3 +633,150 @@ def test_snapshot_replay_with_the_later_store_keeps_the_noon_perp_block():
     replay = tracker.snapshot(noon, perp_store=late_store)
     assert replay["perp"]["bucket_seconds"] == 300
     assert replay["perp"]["delta_5m"] == noon_state["perp"]["delta_5m"] == pytest.approx(0.0)
+
+
+# Codex #377 Gegenproben (27.11., COORD-376-86dd94f-377-e51e4f25): the width is evidence of the revision a bucket was
+# first seen in. A late-noted revision is kept in its place; a width change never closes an unchanged open bucket.
+NOON = datetime(2026, 11, 24, 12, 0, tzinfo=timezone.utc)
+N = int(NOON.timestamp())
+OPEN_300 = [N - 240, 75000.0, 0.0, 5.0]          # 11:56, open until 12:01 at 300 s, closed at 60 s
+CLOSED_300 = [N - 900, 75000.0, 1.0, 2.0]        # 11:45, closed either way
+
+
+def _store(rows, width, at):
+    store = {"symbol": "BTCUSDT", "days": {"d": [list(r) for r in rows]}, "updated_at": at.isoformat()}
+    if width is not ABSENT_WIDTH:
+        store["bucket_seconds"] = width
+    return store
+
+
+ABSENT_WIDTH = object()
+
+
+def test_width_change_300_to_60_at_120015_does_not_close_the_unchanged_open_bucket():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    first = tracker._perp(_store([CLOSED_300, OPEN_300], 300, NOON), NOON)
+    assert first["delta_5m"] == pytest.approx(0.0) and first["delta_15m"] == pytest.approx(1.0)
+    switch = NOON + timedelta(seconds=15)
+    after = tracker._perp(_store([CLOSED_300, OPEN_300], 60, switch), switch)
+    assert after["bucket_seconds"] == 60
+    assert after["delta_5m"] == pytest.approx(0.0), "delta_5m=5 would mean the open 300 s bucket was closed by 60 s"
+    assert after["delta_15m"] == pytest.approx(1.0) and after["buckets_other_width"] == 1
+    # At 12:01 the bucket is closed under its own 300 s and counts.
+    one = NOON + timedelta(seconds=61)
+    later = tracker._perp(_store([CLOSED_300, OPEN_300], 60, switch), one)
+    assert later["delta_5m"] == pytest.approx(5.0) and later["delta_15m"] == pytest.approx(6.0)
+
+
+def test_a_new_bucket_in_the_60s_revision_is_judged_by_60s():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker._perp(_store([CLOSED_300], 300, NOON), NOON)
+    switch = NOON + timedelta(seconds=15)
+    new = [N - 60, 75000.0, 0.0, 3.0]            # 11:59, a 60 s bucket first written at 12:00:15: closed at 12:00
+    out = tracker._perp(_store([CLOSED_300, new], 60, switch), switch)
+    assert out["delta_5m"] == pytest.approx(3.0) and out["delta_15m"] == pytest.approx(4.0)
+
+
+@pytest.mark.parametrize("missing", [ABSENT_WIDTH, None, "300", 0])
+def test_120015_revision_without_width_noted_after_1300_is_kept_and_not_filled_with_300(missing):
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker._perp(_store([CLOSED_300, OPEN_300], 300, NOON), NOON)
+    one = NOON + timedelta(hours=1)
+    tracker._perp(_store([CLOSED_300, OPEN_300], 60, one), one)
+    gap = NOON + timedelta(seconds=15)
+    seen = NOON + timedelta(seconds=20)          # a replay step at 12:00:20 reads the 12:00:15 store after 13:00
+    tracker._perp(_store([CLOSED_300, OPEN_300], missing, gap), seen)
+    assert [e[0] for e in tracker._perp_widths] == sorted(e[0] for e in tracker._perp_widths)
+    assert len(tracker._perp_widths) == 3
+    assert tracker._perp_width_at(seen.timestamp())[0] is None                    # not lost, not 300
+    assert tracker._perp_width_at((NOON + timedelta(seconds=10)).timestamp()) == (300, "OK")
+    assert tracker._perp_width_at(one.timestamp()) == (60, "OK")
+    between = tracker._perp(_store([CLOSED_300, OPEN_300], 60, one), NOON + timedelta(minutes=30))
+    assert between["status"] == "Bucket-Größe unbekannt" and between["bucket_seconds"] is None   # no 300 carried over
+    assert "delta_5m" not in between
+
+
+def _events(rng):
+    """Store revisions (seen offset s, width, rows) around noon; widths 300, 60 or missing; rows change sometimes."""
+    rows = [list(CLOSED_300), list(OPEN_300)]
+    events = []
+    for _ in range(rng.randint(2, 6)):
+        offset = rng.choice((0, 5, 15, 30, 61, 120, 300, 3600))
+        width = rng.choice((300, 300, 60, ABSENT_WIDTH))
+        if rng.random() < 0.3:
+            rows = rows + [[N - 60 * rng.randint(0, 14), 75000.0, float(rng.randint(0, 4)), float(rng.randint(0, 4))]]
+        events.append((offset, width, [list(r) for r in rows]))
+    return events
+
+
+def _run(events, snapshot_offsets):
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    out = []
+    for offset, width, rows in events:
+        at = NOON + timedelta(seconds=offset)
+        tracker._perp(_store(rows, width, at), at)
+    for offset in snapshot_offsets:
+        moment = NOON + timedelta(seconds=offset)
+        out.append(tracker._perp(_store(events[-1][2], events[-1][1], NOON + timedelta(seconds=events[-1][0])), moment))
+    return tracker, out
+
+
+def test_seeded_sweep_width_history_invariants():
+    rng = random.Random(1377)
+    for _ in range(300):
+        events = sorted(_events(rng), key=lambda e: e[0])
+        tracker, _ = _run(events, ())
+        # Replay determinism: the same events give the same width history and the same perp blocks.
+        again, _ = _run(events, ())
+        assert tracker._perp_widths == again._perp_widths
+        # Temporal permutation: the width history depends on when a revision was seen, not on the order it is noted.
+        shuffled = events[:]
+        rng.shuffle(shuffled)
+        perm = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+        for offset, width, rows in shuffled:
+            at = NOON + timedelta(seconds=offset)
+            perm._note_perp_width(at.timestamp(), *ls.bucket_size({"bucket_seconds": width} if width is not ABSENT_WIDTH else {}))
+        expected = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+        for offset, width, rows in events:
+            at = NOON + timedelta(seconds=offset)
+            expected._note_perp_width(at.timestamp(), *ls.bucket_size({"bucket_seconds": width} if width is not ABSENT_WIDTH else {}))
+        for probe in (0, 10, 15, 29, 60, 200, 3599, 3600, 4000):
+            t = (NOON + timedelta(seconds=probe)).timestamp()
+            assert perm._perp_width_at(t) == expected._perp_width_at(t)
+        # Point in time: at every probe, no bucket is counted that is open under the width it was first seen with,
+        # and nothing counts when the newest width seen by then is unusable.
+        for probe in (0, 10, 15, 29, 60, 61, 200, 3600):
+            moment = NOON + timedelta(seconds=probe)
+            rows, _ = tracker._perp_log.revisions_at(moment)
+            latest = tracker._perp_width_at(moment.timestamp())[0]
+            last = events[-1]
+            perp = tracker._perp({"symbol": "BTCUSDT", "days": {"d": last[2]}, "updated_at": None}, moment)
+            if latest is None:
+                assert perp["status"] == "Bucket-Größe unbekannt"
+                continue
+            expected5 = 0.0
+            for _d, start, _l, first_seen, values, _r in rows:
+                width = tracker._perp_width_at(first_seen)[0]
+                if width is None or start + width > moment.timestamp():
+                    continue
+                if start >= moment.timestamp() - 300 - width:
+                    expected5 += values[1] - values[0]
+            if "delta_5m" in perp:
+                assert perp["delta_5m"] == pytest.approx(expected5)
+
+
+def test_restart_sees_nothing_before_its_first_look():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker._perp(_store([CLOSED_300, OPEN_300], 300, NOON), NOON)
+    fresh = ls.LiveOrderflowTracker(SYMBOL, 5.0)                       # restart at 13:00, store says 60 s
+    one = NOON + timedelta(hours=1)
+    out = fresh._perp(_store([CLOSED_300, OPEN_300], 60, one), NOON)  # a replay of noon after the restart
+    assert out["status"] == "Bucket-Größe unbekannt" and out["bucket_seconds_status"] == "NOT_AVAILABLE"
+
+
+def test_two_revisions_seen_at_the_same_moment_with_different_widths_are_inconsistent():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    tracker._perp(_store([CLOSED_300, OPEN_300], 300, NOON), NOON)
+    tracker._perp(_store([CLOSED_300, OPEN_300], 60, NOON), NOON)
+    out = tracker._perp(_store([CLOSED_300, OPEN_300], 300, NOON), NOON)
+    assert out["status"] == "Bucket-Größe unbekannt" and out["bucket_seconds_status"] == "INCONSISTENT"

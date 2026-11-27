@@ -94,3 +94,18 @@ def test_rows_at_without_a_usable_bucket_width_returns_nothing(width):
     assert log.rows_at(t0, 300)[1]["kept"] == 2
     days, counts = log.rows_at(t0, width)
     assert days == {} and counts == {"kept": 0, "open": 0, "unknown": 2, "revised_later": 0}
+
+
+def test_revisions_at_gives_the_known_revision_with_its_first_seen_time():
+    from datetime import datetime, timedelta, timezone
+    from src.orderflow.pit_contract import RevisionLog
+
+    noon = datetime(2026, 11, 24, 12, 0, tzinfo=timezone.utc)
+    log = RevisionLog()
+    log.observe({"d": [[100.0, 1.0, 1.0, 2.0]]}, noon)
+    log.observe({"d": [[100.0, 1.0, 1.0, 3.0], [200.0, 1.0, 0.0, 1.0]]}, noon + timedelta(hours=1))
+    rows, unknown = log.revisions_at(noon + timedelta(minutes=1))
+    assert rows == [("d", 100.0, 1.0, noon.timestamp(), (1.0, 2.0), True)] and unknown == 1
+    rows, unknown = log.revisions_at(noon + timedelta(hours=2))
+    assert [r[3] for r in rows] == [(noon + timedelta(hours=1)).timestamp()] * 2 and unknown == 0
+    assert log.revisions_at("not a time") == ([], 0)

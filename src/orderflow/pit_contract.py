@@ -185,6 +185,30 @@ class RevisionLog:
             days.setdefault(day, []).append([start, level, *known[-1]])
         return days, counts
 
+    def revisions_at(self, target: Any) -> tuple[list[tuple[str, float, float, float, tuple[float, ...], bool]], int]:
+        """Per bucket the revision known at ``target``, with the moment it was first seen; no closed-bucket rule.
+
+        Returns ``(rows, unknown)``: rows are ``(day, start, level, seen, values, revised_later)``; ``unknown`` counts
+        the buckets with no revision seen by ``target``. For callers whose bucket width depends on the revision
+        (``live_state``, Codex #377 27.11.): the width a bucket is judged by is the one of the store revision it was
+        first seen in."""
+        moment = as_time(target)
+        if moment is None:
+            return [], 0
+        limit = moment.timestamp()
+        with self._lock:
+            items = [(k, list(h)) for k, h in self._log.items()]
+        rows: list[tuple[str, float, float, float, tuple[float, ...], bool]] = []
+        unknown = 0
+        for (day, start, level), history in sorted(items):
+            known = [(seen, values) for seen, values in history if seen <= limit]
+            if not known:
+                unknown += 1
+                continue
+            seen, values = known[-1]
+            rows.append((day, start, level, seen, values, len(known) < len(history)))
+        return rows, unknown
+
     def reset(self) -> None:
         with self._lock:
             self._log.clear()
