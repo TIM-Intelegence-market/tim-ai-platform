@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from tests.playwright_fixture import chromium_env
+
 from src.dashboard import footprint_data
 from src.dashboard.app import DashboardState
 from src.dashboard.chart_live import KlineCache, build_live_chart
@@ -224,8 +226,7 @@ def test_footprint_rows_stay_fine_enough_for_zooming() -> None:
     assert result["step"] % 5.0 == 0
 
 
-def test_browser_shows_footprint_after_the_button(tmp_path, monkeypatch) -> None:
-    import shutil
+def test_browser_shows_footprint_after_the_button(tmp_path, monkeypatch, chromium_env) -> None:
     import subprocess
     import json
     from pathlib import Path
@@ -234,8 +235,6 @@ def test_browser_shows_footprint_after_the_button(tmp_path, monkeypatch) -> None
     from src.dashboard.public_server import PublicDashboardServer
     from tests.test_chart_live import fake_fetch
 
-    if not shutil.which("node") or subprocess.run(["node", "-e", "require('playwright')"], capture_output=True, timeout=30, check=False).returncode:
-        pytest.skip("node with playwright not installed (cloud sandbox has it, the Mac runner not)")
     fetch = fake_fetch()
     monkeypatch.setattr(chart_live, "CACHE", KlineCache(fetch))
     # Trades inside every 5m candle: bid x ask on each 5 USD tick between low and high.
@@ -254,7 +253,7 @@ def test_browser_shows_footprint_after_the_button(tmp_path, monkeypatch) -> None
     try:
         script = Path(__file__).resolve().parent.parent / "scripts" / "chart_footprint_check.mjs"
         result = subprocess.run(["node", str(script), f"http://127.0.0.1:{server.httpd.server_address[1]}", str(tmp_path)],
-                                capture_output=True, text=True, timeout=180, check=False)
+                                capture_output=True, text=True, timeout=180, check=False, env=chromium_env)
     finally:
         server.stop()
     assert result.returncode == 0, result.stdout + result.stderr
