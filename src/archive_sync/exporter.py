@@ -165,6 +165,7 @@ async def export_batches(
     usage: Callable[[str], Any] = shutil.disk_usage,
     now: datetime | None = None,
     code_version: str | None = None,
+    id_window: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
     """Export up to ``max_batches`` batches from ONE read-only REPEATABLE READ snapshot.
 
@@ -202,6 +203,13 @@ async def export_batches(
             f"SELECT aggregate_trade_id FROM {table} WHERE symbol=$1 ORDER BY aggregate_trade_id LIMIT 1",
             symbol,
         )
+        if id_window is not None:
+            # Dry runs (S2): only one fixed id range, e.g. one trading day; never older data.
+            window_lo, window_hi = (int(v) for v in id_window)
+            if window_lo > window_hi or mac_min is None:
+                raise ArchiveSyncError("empty id window")
+            mac_min = window_lo
+            mac_cursor = min(mac_cursor, window_hi)
         plan = plan_ranges(
             server_state=server_state,
             mac_cursor=mac_cursor,
