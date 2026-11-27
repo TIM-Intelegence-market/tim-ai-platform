@@ -29,6 +29,7 @@ from bisect import bisect_left
 from collections import deque
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from statistics import median
 from typing import Any
@@ -72,6 +73,11 @@ def _day_start(moment: datetime) -> float:
 
 def _round(value: float, digits: int = 4) -> float:
     return round(float(value), digits)
+
+
+def _exact(value: float) -> Decimal:
+    """A trade quantity as the decimal it was written as (shortest repr of the float), so sums carry no binary noise."""
+    return Decimal(repr(float(value)))
 
 
 class LiveOrderflowTracker:
@@ -139,15 +145,19 @@ class LiveOrderflowTracker:
 
     @staticmethod
     def _window(trades: Sequence[tuple[float, float, float, int]]) -> dict[str, Any]:
-        buy = sum(q for _, _, q, side in trades if side == BUY)
-        sell = sum(q for _, _, q, side in trades if side == SELL)
-        unknown = sum(q for _, _, q, side in trades if side == UNKNOWN)
+        """One window of trades. ``volume``, ``delta``, ``unknown_volume`` and ``buy_share`` are policy values and are
+        not rounded (Codex P2 #376, 27.11.: rounding to 4 places turned 0.00056 known + 0.00004 unknown into "100 %
+        known"). The quantities are summed exactly as the decimals they were written as (``_exact``); rounding is only
+        for display (``describe`` and the per-minute display list)."""
+        buy = sum((_exact(q) for _, _, q, side in trades if side == BUY), Decimal(0))
+        sell = sum((_exact(q) for _, _, q, side in trades if side == SELL), Decimal(0))
+        unknown = sum((_exact(q) for _, _, q, side in trades if side == UNKNOWN), Decimal(0))
         known = buy + sell
         volume = known + unknown
         prices = [p for _, p, _, _ in trades]
-        return {"trades": len(trades), "volume": _round(volume), "delta": _round(buy - sell),
-                "buy_share": _round(buy / known, 3) if known else None,
-                "unknown_volume": _round(unknown), "unknown_trades": sum(1 for *_, side in trades if side == UNKNOWN),
+        return {"trades": len(trades), "volume": float(volume), "delta": float(buy - sell),
+                "buy_share": float(buy / known) if known else None,
+                "unknown_volume": float(unknown), "unknown_trades": sum(1 for *_, side in trades if side == UNKNOWN),
                 "high": max(prices) if prices else None, "low": min(prices) if prices else None,
                 "range": _round(max(prices) - min(prices), 2) if prices else 0.0}
 

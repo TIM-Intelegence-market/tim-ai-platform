@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import math
 import random
+from decimal import Decimal
 from fractions import Fraction
 
 import pytest
@@ -21,6 +22,11 @@ def _valid(value) -> bool:
     return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value) and value >= 0
 
 
+def _q(value) -> Fraction:
+    """A float as the decimal it is written as (#376, 27.11.: 0.95 is 19/20 exactly, like producer and consumer)."""
+    return Fraction(Decimal(repr(value))) if isinstance(value, float) else Fraction(value)
+
+
 def _oracle(windows) -> bool:
     """Independent restatement of the rule: OK only with every needed window, both numbers valid, share >= 95 %."""
     if not isinstance(windows, dict) or any(name not in windows for name in NAMES):
@@ -30,10 +36,10 @@ def _oracle(windows) -> bool:
         if not isinstance(window, dict) or "volume" not in window or "unknown_volume" not in window:
             return False
         volume, unknown = window["volume"], window["unknown_volume"]
-        if not _valid(volume) or not _valid(unknown) or Fraction(unknown) > Fraction(volume):
+        if not _valid(volume) or not _valid(unknown) or _q(unknown) > _q(volume):
             return False
         if volume > 0:
-            share = (Fraction(volume) - Fraction(unknown)) / Fraction(volume)
+            share = (_q(volume) - _q(unknown)) / _q(volume)
             lowest = share if lowest is None else min(lowest, share)
     return lowest is not None and lowest >= Fraction(95, 100)
 
