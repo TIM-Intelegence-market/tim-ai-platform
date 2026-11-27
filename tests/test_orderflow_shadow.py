@@ -7,15 +7,16 @@ from datetime import datetime, timedelta, timezone
 from src.dashboard import orderflow_shadow as shadow
 from src.dashboard import orderflow_tile as tile
 from src.dashboard.plan_journal import SCHEMA
+from tests._side_evidence import win
 
 T0 = datetime(2026, 11, 8, 12, 0, tzinfo=timezone.utc)
 
 
 def lage(direction: str, strength: int = 2, exhaustion: bool = False, price: float = 75000.0, at: datetime = T0) -> dict:
     return {"schema": "orderflow-lage/2", "symbol": "BTCUSDT", "as_of": at.isoformat(), "price": price, "stale": False,
-            "tempo": 1.8, "windows": {"1m": {"delta": 0.5, "volume": 1.0, "unknown_volume": 0.0},
-                        "5m": {"delta": 3.0 if direction == "auf" else -3.0, "volume": 10.0, "unknown_volume": 0.0},
-                        "15m": {"volume": 30.0, "unknown_volume": 0.0}},
+            "tempo": 1.8, "windows": {"1m": win(1.0, 0.0, delta=0.5),
+                        "5m": win(10.0, 0.0, delta=3.0 if direction == "auf" else -3.0),
+                        "15m": win(30.0, 0.0)},
             "wave": {"direction": direction, "strength": strength, "phase": "läuft", "exhaustion": exhaustion},
             "levels": [{"name": "Vortag VAL", "price": 74950.0, "distance_pct": -0.07, "bid": 10.0, "ask": 1.0, "delta": -9.0,
                         "imbalance": "Verkäufer", "absorption": True}],

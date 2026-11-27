@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 from decimal import Decimal
 from fractions import Fraction
 from datetime import datetime, timezone
@@ -43,7 +44,7 @@ OHNE_LAGE = "OHNE LAGE"  # summary only: NEUTRAL because no Lage was there, kept
 # is still judged. Live Binance spot trades always carry the side, so this should never trigger; if it does, it is
 # a data problem to look at, not a threshold to tune.
 MIN_KNOWN_SHARE = 0.95
-MIN_KNOWN = Fraction(95, 100)  # the same threshold as an exact fraction, used for the decision
+MIN_KNOWN = Fraction(95, 100)  # the same threshold as an exact fraction; the decision is 20 * unknown <= total
 WITH = {"LONG": "auf", "SHORT": "ab"}
 # UTC hour -> session. Fixed UTC bounds so the label never moves with daylight saving.
 SESSIONS = ((0, "Asien"), (7, "London"), (13, "London+NY"), (16, "NY"), (21, "nach NY"))
@@ -59,14 +60,20 @@ def _time(value: Any) -> datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
 
-def _number(value: Any) -> Fraction | None:
-    """An exact, finite, non-negative number, else None (bools, text, NaN, inf and negatives are invalid).
+SIDE_SCHEMA = "side-evidence/1"
+_DECIMAL = re.compile(r"[0-9]+(\.[0-9]+)?")
 
-    A float is read as the decimal it is written as (its shortest repr), the same way the producer sums the trade
-    quantities (``live_state._exact``): 0.95 is exactly 19/20, so a share of exactly 95 % stays exactly 95 % (#376)."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
-        return None
-    return Fraction(Decimal(repr(value))) if isinstance(value, float) else Fraction(value)
+
+def _exact(raw: Any) -> tuple[str, Fraction | None]:
+    """(state, value) of one side-evidence amount. Only a plain decimal string (digits, optional point and digits; no
+    sign, exponent, space, NaN or infinity) is a VALUE; it is read exactly. A float, int, bool or any other type is
+    INVALID: the policy never takes a binary number (#376, 27.11.: ``float(volume)`` turned a share just below 95 %
+    into 95 %). A missing key or ``None`` is MISSING."""
+    if raw is _ABSENT or raw is None:
+        return "MISSING", None
+    if not isinstance(raw, str) or not _DECIMAL.fullmatch(raw):
+        return "INVALID", None
+    return "VALUE", Fraction(Decimal(raw))
 
 
 _ABSENT = object()
@@ -79,32 +86,41 @@ REQUIRED_WINDOWS = {"welle": ("1m", "5m"), "level": ("15m",), "of-schatten": ("1
 GATE_MODEL = "of-schatten"
 
 
-def _field(window: Mapping[str, Any], name: str) -> tuple[str, Fraction | None]:
-    """(state, value) of one window field. ABSENT (no key), NULL (key with ``None``) and INVALID (anything that is
-    not a finite, non-negative number) carry no value; only a number that is really there does, 0 included."""
-    raw = window.get(name, _ABSENT)
-    if raw is _ABSENT:
-        return "ABSENT", None
-    if raw is None:
-        return "NULL", None
-    value = _number(raw)
-    return ("INVALID", None) if value is None else ("VALUE", value)
+def side_evidence(window: Any) -> tuple[str, Fraction | None, Fraction | None]:
+    """(state, known, unknown) of one window's ``side_evidence`` (``live_state`` writes it, schema ``side-evidence/1``).
+
+    MISSING: no evidence block or an amount absent/null (e.g. a Lage written before this schema). INVALID: not a
+    mapping, another schema, or an amount that is not a plain decimal string. VALUE: both amounts exact."""
+    if not isinstance(window, Mapping):
+        return "INVALID", None, None
+    evidence = window.get("side_evidence", _ABSENT)
+    if evidence is _ABSENT or evidence is None:
+        return "MISSING", None, None
+    if not isinstance(evidence, Mapping) or evidence.get("schema") != SIDE_SCHEMA:
+        return "INVALID", None, None
+    (known_state, known), (unknown_state, unknown) = (_exact(evidence.get("known", _ABSENT)),
+                                                      _exact(evidence.get("unknown", _ABSENT)))
+    states = {known_state, unknown_state}
+    if "INVALID" in states:
+        return "INVALID", None, None
+    if "MISSING" in states:
+        return "MISSING", None, None
+    return "VALUE", known, unknown
 
 
 def known_side(lage: Mapping[str, Any] | None, model: str = GATE_MODEL) -> dict[str, Any]:
-    """Known-side check over the Lage's windows, exact (Mission 07: no rounding before the policy).
+    """Known-side check over the Lage's windows, exact from producer to consumer (reference: ``docs/ORDERFLOW_REFERENZ_AB.md``).
 
-    Fail closed (Codex #372, Mission 07-FINAL): only a number that is written in the Lage is evidence. ``ok`` is True
-    only when every window ``model`` needs (``REQUIRED_WINDOWS``) is there, every window carries ``volume`` and
-    ``unknown_volume`` as valid numbers (an explicit 0 is a value) and every window with volume has known volume >=
-    ``MIN_KNOWN_SHARE`` x volume, compared as exact fractions. An unknown ``model`` raises ``KeyError``.
-    Otherwise False with ``status`` MISSING (``windows``, a needed window or a field is absent or null, e.g. a Lage written before
-    ``orderflow-lage/2``), INVALID (a field is there but no usable number, or more unknown
-    than volume), EMPTY (no window has volume) or BELOW. A default never stands in for a missing field.
-    ``share`` is the lowest raw share for display only, never for the decision."""
+    The policy reads only each window's ``side_evidence`` (exact decimal strings of known and unknown volume), never
+    the display floats ``volume``/``unknown_volume``. A window with ``total = known + unknown > 0`` passes when
+    ``20 * unknown <= total`` (known share >= 95 %, equality passes), in exact rational arithmetic. ``ok`` is True only
+    when every window ``model`` needs (``REQUIRED_WINDOWS``) is there, every window present carries valid evidence and
+    every window with volume passes. An unknown ``model`` raises ``KeyError``. Otherwise False with ``status``
+    MISSING (``windows``, a needed window or evidence absent), INVALID (evidence there but unusable), EMPTY (no window
+    has volume) or BELOW; INVALID before MISSING before EMPTY/BELOW. ``share`` is the lowest share, display only."""
     required = REQUIRED_WINDOWS[model]
     lowest: Fraction | None = None
-    invalid = missing = False
+    below = invalid = missing = False
     windows = (lage or {}).get("windows")
     if windows is None:
         return {"ok": False, "status": "MISSING", "share": None}
@@ -113,23 +129,18 @@ def known_side(lage: Mapping[str, Any] | None, model: str = GATE_MODEL) -> dict[
     if any(name not in windows for name in required):
         missing = True
     for window in windows.values():
-        if not isinstance(window, Mapping):
+        state, known, unknown = side_evidence(window)
+        if state == "INVALID":
             invalid = True
             continue
-        (volume_state, volume), (unknown_state, unknown) = _field(window, "volume"), _field(window, "unknown_volume")
-        states = {volume_state, unknown_state}
-        if states & {"ABSENT", "NULL"}:
+        if state == "MISSING":
             missing = True
-        if "INVALID" in states:
-            invalid = True
-        if volume is None or unknown is None:
             continue
-        if unknown > volume:
-            invalid = True
-            continue
-        if volume > 0:
-            share = (volume - unknown) / volume
+        total = known + unknown
+        if total > 0:
+            share = known / total
             lowest = share if lowest is None else min(lowest, share)
+            below = below or 20 * unknown > total
     display = float(lowest) if lowest is not None else None
     if invalid:
         return {"ok": False, "status": "INVALID", "share": display}
@@ -137,8 +148,7 @@ def known_side(lage: Mapping[str, Any] | None, model: str = GATE_MODEL) -> dict[
         return {"ok": False, "status": "MISSING", "share": display}
     if lowest is None:
         return {"ok": False, "status": "EMPTY", "share": None}
-    ok = lowest >= MIN_KNOWN
-    return {"ok": ok, "status": "OK" if ok else "BELOW", "share": float(lowest)}
+    return {"ok": not below, "status": "BELOW" if below else "OK", "share": display}
 
 
 def known_share(lage: Mapping[str, Any] | None) -> float | None:

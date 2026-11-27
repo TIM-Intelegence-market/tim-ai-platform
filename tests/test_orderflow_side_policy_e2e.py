@@ -7,6 +7,7 @@ Hypothesis variant runs where Hypothesis is installed.
 from __future__ import annotations
 
 import inspect
+import json
 import random
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -86,16 +87,82 @@ def test_known_volume_split_over_many_trades_keeps_the_exact_boundary():
     assert _judge(_lage(parts))[0]["side_ok"] is False
 
 
-@pytest.mark.parametrize("lage_patch, status", [
-    ({"volume": "0.0006"}, "INVALID"), ({"unknown_volume": None}, "MISSING"), ({"unknown_volume": -0.00004}, "INVALID"),
-    ({"volume": float("nan")}, "INVALID"), ({"unknown_volume": float("inf")}, "INVALID"), ({"volume": True}, "INVALID"),
+@pytest.mark.parametrize("evidence_patch, status", [
+    ({"known": 0.95}, "INVALID"), ({"unknown": 0.05}, "INVALID"), ({"known": "9.5e-1"}, "INVALID"),
+    ({"unknown": "-0.05"}, "INVALID"), ({"known": "nan"}, "INVALID"), ({"unknown": "inf"}, "INVALID"),
+    ({"known": True}, "INVALID"), ({"known": " 0.95"}, "INVALID"), ({"schema": "side-evidence/0"}, "INVALID"),
+    ({"known": None}, "MISSING"), ({"unknown": None}, "MISSING"),
 ])
-def test_invalid_values_written_into_a_produced_lage_fail_closed(lage_patch, status):
+def test_invalid_evidence_written_into_a_produced_lage_fails_closed(evidence_patch, status):
     lage = _lage([(0.95, False), (0.05, None)])
-    lage["windows"]["5m"].update(lage_patch)
+    assert _judge(lage)[0]["side_status"] == "OK"
+    lage["windows"]["5m"]["side_evidence"].update(evidence_patch)
     view, gate, exit_long, _ = _judge(lage)
     assert view["side_ok"] is False and view["side_status"] == status
     assert gate == shadow.UNBEKANNT and exit_long is None
+
+
+@pytest.mark.parametrize("drop", ["known", "unknown", "block"])
+def test_evidence_taken_out_of_a_produced_lage_is_missing(drop):
+    lage = _lage([(0.95, False), (0.05, None)])
+    if drop == "block":
+        del lage["windows"]["15m"]["side_evidence"]
+    else:
+        del lage["windows"]["15m"]["side_evidence"][drop]
+    view, gate, exit_long, exit_short = _judge(lage)
+    assert (view["side_ok"], view["side_status"]) == (False, "MISSING") and gate == shadow.UNBEKANNT
+    assert exit_long is None and exit_short is None
+
+
+@pytest.mark.parametrize("display", [{"volume": "0.0006"}, {"unknown_volume": None}, {"volume": float("nan")},
+                                     {"volume": 1e9, "unknown_volume": 0.0}])
+def test_display_numbers_do_not_feed_the_policy(display):
+    """volume/unknown_volume are display only since round 2: changing them leaves the verdict as the evidence says."""
+    for parts, status in (([(0.95, False), (0.05, None)], "OK"), ([(0.56, False), (0.04, None)], "BELOW")):
+        lage = _lage(parts)
+        lage["windows"]["5m"].update(display)
+        assert _judge(lage)[0]["side_status"] == status
+
+
+# Codex #376 (27.11.): two tracker trades, exact sum 0.000140273908193734948 < 20 * unknown 0.000140273908193734960;
+# float(volume) is 0.00014027390819373496 and used to give OK/0.95, LONG confirmed and a SHORT exit.
+CODEX_KNOWN, CODEX_UNKNOWN = 0.0001332602127840482, 0.000007013695409686748
+
+
+def test_codex_case_is_below_through_json_and_the_view():
+    lage = json.loads(json.dumps(_lage([(CODEX_KNOWN, False), (CODEX_UNKNOWN, None)])))
+    for window in lage["windows"].values():
+        assert window["side_evidence"] == {"schema": "side-evidence/1", "known": "0.0001332602127840482",
+                                           "unknown": "0.000007013695409686748"}
+        assert 20 * Decimal(window["side_evidence"]["unknown"]) > Decimal("0.000140273908193734948")
+    view, gate, exit_long, exit_short = _judge(lage)
+    assert (view["side_ok"], view["side_status"]) == (False, "BELOW")
+    assert gate == shadow.UNBEKANNT and exit_long is None and exit_short is None
+    stored = json.loads(json.dumps(view))                       # the view kept on a plan survives JSON as well
+    assert shadow.gate("LONG", stored) == shadow.UNBEKANNT and shadow.should_exit("SHORT", stored) is None
+
+
+def test_codex_case_mirror_on_the_other_side_of_the_boundary():
+    """One unit more known in the last written digit (…482 -> …483) brings 20 * unknown <= total: OK."""
+    known = 0.0001332602127840483
+    assert Decimal(repr(known)) + Decimal(repr(CODEX_UNKNOWN)) >= 20 * Decimal(repr(CODEX_UNKNOWN))
+    lage = json.loads(json.dumps(_lage([(known, False), (CODEX_UNKNOWN, None)])))
+    assert _judge(lage)[0]["side_status"] == "OK"
+
+
+def test_evidence_sums_are_exact_over_many_trades_and_survive_json():
+    parts = [(0.1, False)] * 190 + [(0.1, None)] * 10   # float sum of 0.1s is not 19; the evidence is
+    lage = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    trades = [Trade(SYMBOL, 75000.0, q, T0 + timedelta(seconds=10 + k * 0.2), k + 1, buyer_is_maker=m)  # type: ignore[arg-type]
+              for k, (q, m) in enumerate(parts)]
+    if "available_at" in inspect.signature(lage.ingest).parameters:
+        lage.ingest(trades, available_at=T0 + timedelta(seconds=50))
+    else:
+        lage.ingest(trades)
+    state = json.loads(json.dumps(lage.snapshot(NOW + timedelta(seconds=1))))
+    assert state["windows"]["1m"]["side_evidence"]["known"] == "19"
+    assert state["windows"]["1m"]["side_evidence"]["unknown"] == "1"
+    assert _judge(state)[0]["side_status"] == "OK"
 
 
 def test_display_text_stays_rounded():
