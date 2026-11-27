@@ -63,6 +63,13 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
             return store.ingest_directory(args.dir, symbol=args.symbol)
         if args.command == "cold-verify":
             return store.verify()
+        if args.command == "cold-state":
+            from src.archive_sync import cold_state
+
+            report = cold_state.cold_state(store, args.symbol, deep=args.deep)
+            if args.out:
+                report["written_to"] = str(cold_state.write_state(report, args.out, store.root))
+            return report
         if args.command == "cold-migrate":
             return cold_store.migrate_store(args.root, args.to, volume_mount=args.volume, parent=args.parent)
     if args.command == "transfer":
@@ -133,6 +140,12 @@ def build_parser() -> argparse.ArgumentParser:
     cold = sub.add_parser("cold-verify", help="re-hash every stored file")
     cold.add_argument("--root", required=True)
     cold.add_argument("--unbound-ok", action="store_true", help=argparse.SUPPRESS)
+    cold = sub.add_parser("cold-state", help="read-only: archive state of a cold store for 'export --server-state'")
+    cold.add_argument("--root", required=True)
+    cold.add_argument("--symbol", required=True)
+    cold.add_argument("--out", help="also write the state as JSON here (never inside the store)")
+    cold.add_argument("--deep", action="store_true", help="also unpack every batch and check its exact trade ids")
+    cold.add_argument("--unbound-ok", action="store_true", help=argparse.SUPPRESS)
     cold = sub.add_parser("cold-migrate", help="copy the store to a new empty root and verify it there")
     cold.add_argument("--root", required=True)
     cold.add_argument("--to", required=True)
@@ -177,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if report.get("status") in ("OK", "WARN") else 1
     if args.command == "cold-ingest":
         return 0 if report.get("halted") is None else 1
-    if args.command in ("cold-verify", "cold-migrate"):
+    if args.command in ("cold-verify", "cold-migrate", "cold-state"):
         return 0 if report.get("status") == "OK" else 1
     if args.command == "import":
         return 1 if report["summary"].get("QUARANTINED") or report["summary"].get("FILE_INVALID") else 0
