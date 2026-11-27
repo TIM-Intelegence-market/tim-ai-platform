@@ -432,7 +432,8 @@ def test_test_env_never_relaxes_for_root(tmp_path, monkeypatch, capsys):
 # The documented plan is executable test input. All its paths are rebased into
 # tmp_path and every external command is replaced before running Bash.
 _SETUP_STEPS = (
-    "find", "guard:parent", "guard:reserve", "df", "tail", "adduser",
+    "find", "guard:parent", "guard:reserve", "df", "tail",
+    "getent:passwd", "getent:group", "awk", "adduser",
     "install", "fallocate", "chmod", "stat:%b", "stat:%B", "stat:%s",
     "guard:parent", "cat:kernel", "chmod", "cat:archive", "mkfs.ext4",
     "guard:image", "install", "chattr", "systemctl", "guard:parent", "mount",
@@ -441,7 +442,8 @@ _SETUP_STEPS = (
 )
 _RUNTIME_STEPS = ("find", "guard:parent", "guard:image", "guard:archive", "guard:reserve")
 _PLAN_STEPS = _SETUP_STEPS + _RUNTIME_STEPS
-_POST_MOUNT_CHECKS = range(24, 27)
+_POST_MOUNT_CHECKS = range(27, 30)
+_FIRST_EFFECT = 9  # adduser
 _STUBS = r"""
 record() {
     printf '%s\n' "$1" >> "$TRACE"
@@ -449,6 +451,18 @@ record() {
     while IFS= read -r line; do ((count += 1)); done < "$TRACE"
     test "$count" -ne "$FAIL_STEP" || return 73
     test "$1" != umount || test "$FAIL_UNMOUNT" != 1 || return 74
+}
+getent() {
+    record "getent:$1" || return
+    case "$1" in
+        passwd) return "$GETENT_PASSWD_RC" ;;
+        group) return "$GETENT_GROUP_RC" ;;
+        *) return 75 ;;
+    esac
+}
+awk() {
+    record awk || return
+    "$REAL_AWK" "$@"
 }
 find() {
     record find || return
@@ -505,8 +519,9 @@ sudo() { record sudo; }
 def _run_section_11(tmp_path, *, fail_step=0, fail_unmount=False, before_run=None, **overrides):
     bash = shutil.which("bash")
     assert bash is not None
-    for directory in ("opt/tim/.venv/bin", "etc/tim", "usr/local/sbin"):
+    for directory in ("opt/tim/.venv/bin", "etc/tim", "usr/local/sbin", "srv"):
         (tmp_path / directory).mkdir(parents=True)
+    (tmp_path / "etc/fstab").write_text("# leer\nUUID=x / ext4 defaults 0 1\n")
     trace = tmp_path / "trace"
     trace.touch()
     stubs = tmp_path / "stubs"
@@ -517,12 +532,16 @@ def _run_section_11(tmp_path, *, fail_step=0, fail_unmount=False, before_run=Non
 
     lines = _section_11()
     replacements = ("/opt/tim", "/var/lib/warpgate", "/srv/tim-archive-tmp", "/etc/",
-                    "/proc/sys/kernel/random/uuid", "/usr/local/sbin/tim-archive-guard")
+                    "/proc/sys/kernel/random/uuid", "/usr/local/sbin/tim-archive-guard",
+                    "/usr/local/sbin")
     # Rebase the fixed paths before executing any of the documented steps.
     paths = re.compile("|".join(re.escape(path) for path in replacements))
     script = paths.sub(lambda match: f"{tmp_path}{match[0]}", "\n".join(lines))
     guard = tmp_path / "usr/local/sbin/tim-archive-guard"
     script = script.replace(f"\n{guard}", f'\n"{bash}" "{guard}"')
+    # $EUID is read-only in Bash; the tests run the root check against a stand-in.
+    assert script.count('test "$EUID" -eq 0') == 1
+    script = script.replace('test "$EUID" -eq 0', 'test "$TEST_EUID" -eq 0')
     env = {
         "PATH": str(tmp_path / "empty-path"),
         "BASH_ENV": str(stubs),
@@ -534,6 +553,10 @@ def _run_section_11(tmp_path, *, fail_step=0, fail_unmount=False, before_run=Non
         "AVAILABLE_BYTES": "325000000000",
         "ALLOCATED_BLOCKS": "67108864",
         "TEST_UUID": GOOD,
+        "TEST_EUID": "0",
+        "GETENT_PASSWD_RC": "2",
+        "GETENT_GROUP_RC": "2",
+        "REAL_AWK": shutil.which("awk") or "/usr/bin/awk",
         **overrides,
     }
     if before_run is not None:
@@ -563,16 +586,22 @@ def test_section_11_stops_after_a_failed_command(tmp_path, step):
 
 
 def test_section_11_stops_even_if_post_mount_cleanup_fails(tmp_path):
-    result, steps = _run_section_11(tmp_path, fail_step=24, fail_unmount=True)
+    result, steps = _run_section_11(tmp_path, fail_step=27, fail_unmount=True)
     assert result.returncode != 0
-    assert steps == [*_PLAN_STEPS[:24], "umount"]
+    assert steps == [*_PLAN_STEPS[:27], "umount"]
 
 
 @pytest.mark.parametrize(("overrides", "last_step"), [
     ({"FIND_RESULT": "unsafe"}, 1),
     ({"AVAILABLE_BYTES": "299999999999"}, 5),
-    ({"ALLOCATED_BLOCKS": "67108863"}, 12),
-    ({"TEST_UUID": "invalid"}, 16),
+    ({"ALLOCATED_BLOCKS": "67108863"}, 15),
+    ({"TEST_UUID": "invalid"}, 19),
+    ({"TEST_EUID": "1000"}, 0),
+    ({"GETENT_PASSWD_RC": "0"}, 6),   # account exists already
+    ({"GETENT_PASSWD_RC": "1"}, 6),   # lookup error is not "absent"
+    ({"GETENT_PASSWD_RC": "3"}, 6),
+    ({"GETENT_GROUP_RC": "0"}, 7),
+    ({"GETENT_GROUP_RC": "1"}, 7),
 ])
 def test_section_11_rejects_unsuitable_inputs(tmp_path, overrides, last_step):
     result, steps = _run_section_11(tmp_path, **overrides)
@@ -584,11 +613,13 @@ def test_section_11_rejects_unsuitable_inputs(tmp_path, overrides, last_step):
     ("var/lib/warpgate/tim-archive-img", 5),
     ("srv/tim-archive-tmp", 5),
     ("etc/tim/archive-volume.uuid", 5),
-    ("etc/fstab", 20),  # Directory in place of the append target.
-    ("usr/local/sbin/tim-archive-guard", 30),  # Guard redirection fails.
+    ("etc/fstab", 7),  # Directory in place of the fstab file.
+    ("usr/local/sbin/tim-archive-guard", 5),
 ])
 def test_section_11_rejects_blocked_paths(tmp_path, path, last_step):
     def block_path(root):
+        if (root / path).is_file():
+            (root / path).unlink()
         (root / path).mkdir(parents=True)
 
     result, steps = _run_section_11(tmp_path, before_run=block_path)
@@ -605,3 +636,94 @@ def test_section_11_rejects_missing_required_command(tmp_path):
     result, steps = _run_section_11(tmp_path, before_run=remove_command)
     assert result.returncode != 0
     assert steps == ["find"]
+
+
+def test_section_11_rejects_blocked_regular_files_and_links(tmp_path):
+    """An existing regular file or a dangling link counts as an existing target."""
+    def guard_file(root):
+        (root / "usr/local/sbin/tim-archive-guard").write_text("#!/bin/bash\nexit 0\n")
+
+    def dangling(name):
+        def make(root):
+            (root / name).parent.mkdir(parents=True, exist_ok=True)
+            (root / name).symlink_to(root / "nowhere")
+        return make
+
+    for before_run in (guard_file, dangling("usr/local/sbin/tim-archive-guard"),
+                       dangling("srv/tim-archive-tmp"), dangling("etc/tim/archive-volume.uuid"),
+                       dangling("var/lib/warpgate/tim-archive-img")):
+        root = tmp_path / before_run.__name__ / str(id(before_run))
+        root.mkdir(parents=True)
+        result, steps = _run_section_11(root, before_run=before_run)
+        assert result.returncode != 0
+        assert steps == list(_PLAN_STEPS[:5])
+
+
+@pytest.mark.parametrize("fstab", [
+    "{img} {mnt} ext4 loop 0 2\n",
+    "/other {mnt} ext4 defaults 0 2\n",
+    "/other {mnt}/ ext4 defaults 0 2\n",
+    "{img} /elsewhere ext4 loop 0 2\n",
+    "   {img}\t{mnt}\text4 loop 0 2\n",
+])
+def test_section_11_rejects_existing_fstab_entry(tmp_path, fstab):
+    def write(root):
+        img = root / "var/lib/warpgate/tim-archive-img/archive.img"
+        (root / "etc/fstab").write_text(fstab.format(img=img, mnt=root / "srv/tim-archive-tmp"))
+
+    result, steps = _run_section_11(tmp_path, before_run=write)
+    assert result.returncode != 0
+    assert steps == list(_PLAN_STEPS[:8])
+
+
+def test_section_11_accepts_commented_old_fstab_entry(tmp_path):
+    def write(root):
+        img = root / "var/lib/warpgate/tim-archive-img/archive.img"
+        (root / "etc/fstab").write_text(f"# {img} {root / 'srv/tim-archive-tmp'} ext4 loop 0 2\n")
+
+    result, steps = _run_section_11(tmp_path, before_run=write)
+    assert result.returncode == 0, result.stderr
+    assert steps == list(_PLAN_STEPS)
+
+
+@pytest.mark.parametrize("change", ["missing_fstab", "fstab_link", "missing_srv", "srv_link", "missing_etc_tim"])
+def test_section_11_rejects_unreliable_parents(tmp_path, change):
+    def apply(root):
+        if change == "missing_fstab":
+            (root / "etc/fstab").unlink()
+        elif change == "fstab_link":
+            real = root / "fstab.real"
+            (root / "etc/fstab").rename(real)
+            (root / "etc/fstab").symlink_to(real)
+        elif change == "missing_srv":
+            (root / "srv").rmdir()
+        elif change == "srv_link":
+            (root / "srv").rmdir()
+            (root / "srv-real").mkdir()
+            (root / "srv").symlink_to(root / "srv-real")
+        else:
+            shutil.rmtree(root / "etc/tim")
+
+    result, steps = _run_section_11(tmp_path, before_run=apply)
+    assert result.returncode != 0
+    assert len(steps) < _FIRST_EFFECT
+    assert "adduser" not in steps
+
+
+def test_section_11_every_target_check_precedes_first_side_effect():
+    lines = _section_11()
+    first_effect = _first(lines, "adduser --system")
+    for needle in ('test ! -e "$IMG_DIR"', 'test ! -e "$MNT"', 'test ! -e "$ARCH_UUID_FILE"',
+                   "test ! -e /usr/local/sbin/tim-archive-guard", "getent passwd tim-archive",
+                   "getent group tim-archive", "test -f /etc/fstab", 'test -z "$fstab_hits"',
+                   'test "$EUID" -eq 0'):
+        assert _first(lines, needle) < first_effect, needle
+    # No negated command as a precondition: "! cmd" is exempt from errexit.
+    assert not any(line.startswith("! ") for line in lines[:first_effect])
+
+
+def test_section_11_rollback_note_does_not_expect_empty_fuser():
+    from pathlib import Path
+    text = Path(__file__).resolve().parents[1].joinpath("docs/ARCHIV_WARPGATE_UEBERGANG.md").read_text("utf-8")
+    assert "fuser -vm /srv/tim-archive-tmp      # darf nichts zeigen" not in text
+    assert "root kernel mount" in text

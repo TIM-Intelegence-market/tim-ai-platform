@@ -252,6 +252,7 @@ Grundsätze:
 ```
 set -euo pipefail
 umask 077
+test "$EUID" -eq 0   # nur als root
 IMG_DIR=/var/lib/warpgate/tim-archive-img; IMG=$IMG_DIR/archive.img; MNT=/srv/tim-archive-tmp
 # Der Wächter läuft als root aus /opt/tim. Darum muss dort alles root gehören und darf für niemand
 # anderen beschreibbar sein, sonst liefe fremder Code als root. Symbolische Links (venv: python ->
@@ -260,7 +261,7 @@ IMG_DIR=/var/lib/warpgate/tim-archive-img; IMG=$IMG_DIR/archive.img; MNT=/srv/ti
 test -d /opt/tim -a ! -L /opt/tim
 unsafe_entry=$(find /opt/tim \( ! -user root -o \( ! -type l -perm /022 \) \) -print -quit)
 test -z "$unsafe_entry"
-for required in findmnt blkid df tail adduser install fallocate chmod stat cat mkfs.ext4 chattr systemctl mount umount chown sudo; do
+for required in findmnt blkid df tail getent awk adduser install fallocate chmod stat cat mkfs.ext4 chattr systemctl mount umount chown sudo; do
     command -v "$required" >/dev/null
 done
 cd /opt/tim; GUARD="/opt/tim/.venv/bin/python -m src.archive_sync.mount_guard"   # nur lesend
@@ -279,9 +280,25 @@ $GUARD parent --target /var/lib/warpgate --expected-uuid-file "$WG_UUID_FILE" --
 $GUARD reserve --parent /var/lib/warpgate
 available_bytes=$(df -B1 --output=avail /var/lib/warpgate | tail -1)
 test "$available_bytes" -ge 300000000000
+# Jedes Ziel, das ein späterer Schritt anlegt oder beschreibt, darf noch nicht existieren, auch nicht
+# als (toter) Link. Die Elternordner müssen echte Ordner sein, sonst wäre "fehlt" nicht belastbar.
+test -d "${MNT%/*}" -a ! -L "${MNT%/*}"
+test -d "${ARCH_UUID_FILE%/*}" -a ! -L "${ARCH_UUID_FILE%/*}"
+test -d /usr/local/sbin -a ! -L /usr/local/sbin
 test ! -e "$IMG_DIR" -a ! -L "$IMG_DIR"
 test ! -e "$MNT" -a ! -L "$MNT"
 test ! -e "$ARCH_UUID_FILE" -a ! -L "$ARCH_UUID_FILE"
+test ! -e /usr/local/sbin/tim-archive-guard -a ! -L /usr/local/sbin/tim-archive-guard
+# Konto und Gruppe: "adduser --system" meldet bei einem schon vorhandenen Systemkonto Erfolg, darum
+# hier prüfen. getent: 2 = nicht vorhanden; 0 = vorhanden und jeder andere Wert = Fehler, beides bricht ab.
+account_rc=0; getent passwd tim-archive >/dev/null || account_rc=$?
+test "$account_rc" -eq 2
+group_rc=0; getent group tim-archive >/dev/null || group_rc=$?
+test "$group_rc" -eq 2
+# fstab: echte Datei ohne aktive Zeile für dieses Image oder diesen Einhängepunkt.
+test -f /etc/fstab -a ! -L /etc/fstab
+fstab_hits=$(awk -v img="$IMG" -v mnt="$MNT" '$1 !~ /^#/ && ($1 == img || $2 == mnt || $2 == mnt "/") { print NR }' /etc/fstab)
+test -z "$fstab_hits"
 
 # 1  Dienstkonto ohne Login-Shell und ohne sudo (der Import-Login aus E4 wird ihm zugeordnet)
 adduser --system --group --no-create-home --shell /usr/sbin/nologin tim-archive
@@ -398,7 +415,10 @@ Nachprüfung nach der Einrichtung, nur lesend:
 Sicher aushängen und Rückweg:
 
 ```
-sync; fuser -vm /srv/tim-archive-tmp      # darf nichts zeigen
+sync
+findmnt --mountpoint /srv/tim-archive-tmp   # muss genau das Archiv zeigen, sonst nichts aushängen
+fuser -vm /srv/tim-archive-tmp   # normal ist genau die Zeile "root kernel mount /srv/tim-archive-tmp";
+                                 # jede weitere Zeile ist ein Prozess: erst beenden, dann aushängen
 umount /srv/tim-archive-tmp
 losetup -j /var/lib/warpgate/tim-archive-img/archive.img   # darf nichts mehr zeigen
 # Die Image-Datei und alle Daten bleiben. Dauerhaft aus: fstab-Zeile auskommentieren (nicht löschen).
