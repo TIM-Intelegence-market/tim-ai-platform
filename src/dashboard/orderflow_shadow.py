@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import math
 import os
+from decimal import Decimal
 from fractions import Fraction
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,10 +60,13 @@ def _time(value: Any) -> datetime:
 
 
 def _number(value: Any) -> Fraction | None:
-    """An exact, finite, non-negative number, else None (bools, text, NaN, inf and negatives are invalid)."""
+    """An exact, finite, non-negative number, else None (bools, text, NaN, inf and negatives are invalid).
+
+    A float is read as the decimal it is written as (its shortest repr), the same way the producer sums the trade
+    quantities (``live_state._exact``): 0.95 is exactly 19/20, so a share of exactly 95 % stays exactly 95 % (#376)."""
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
         return None
-    return Fraction(value)
+    return Fraction(Decimal(repr(value))) if isinstance(value, float) else Fraction(value)
 
 
 _ABSENT = object()
