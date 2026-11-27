@@ -73,6 +73,8 @@ LAYERS: dict[str, list[Mark]] = {
         (("line", "#ff9800", "solid"), "Fibonacci auf dem letzten großen Swing: 1 = Start, 0 = Ende", "Fibonacci on the last big swing: 1 = start, 0 = end"),
         (("box", "rgba(76,175,80,0.25)", "#4caf50"), "Zonen 0,236 bis 1 farbig wie in TradingView, dazu 0,886 / 0,941 / 1,618", "Zones 0.236 to 1 coloured as in TradingView, plus 0.886 / 0.941 / 1.618"),
     ],
+    "tpo_month": [(_line("tpo_month"), "Monatsprofil nach Zeit (4h-Blöcke, 50-$-Zeilen bei BTC): TPOC, TVAH, TVAL des laufenden und des Vormonats (grau gestrichelt)",
+                   "Month profile by time (4h blocks, 50 $ rows for BTC): TPOC, TVAH, TVAL of the running and the prior month (grey, dashed)")],
     "tpo": [
         (("box", "rgba(94,200,216,0.38)", "none"), "TPO-Tagesprofil aus 30-min-Perioden (Buchstaben A, B, C …), Value Area heller", "TPO day profile from 30-min periods (letters A, B, C …), value area lighter"),
         (("box", "rgba(245,197,66,0.70)", "none"), "POC gelb", "POC yellow"),

@@ -102,6 +102,7 @@ GROUP_STYLE = {
     "year": ("#ff5c9a", "solid"),
     "vwap": ("#3fd0c9", "solid"),
     "vwap_bands": ("#3fd0c9", "dotted"),
+    "tpo_month": ("#c8ccd6", "dashed"),
     "fib": ("#c9a227", "dotted"),
     "gamma": ("#ffb020", "solid"),  # each gamma level brings its own colour (gamma_data.LEVEL_STYLE)
     "gamma_ob": ("#ffd24a", "solid"),  # gamma level with a standing order book wall (gamma_zones.py), drawn as a band
@@ -115,6 +116,7 @@ GROUP_NAMES = {
     "absorb": "Summen-Blasen (Orders am selben Preis addiert, als Linie)",
     "running": "laufende POCs", "session": "Sessions", "ib": "Initial Balance",
     "structure": "BOS / MSS", "trend": "Trendlinien", "fib": "Fibonacci (letzter Swing)", "tpo": "TPO (Tagesprofil)",
+    "tpo_month": "TPO Monat (Zeit, 4h-Blöcke, 50-$-Zeilen)",
     "vp": "Volume Profile (Tag, echte Trades)", "fp": "Footprint (Bid × Ask)",
     "bubbles": "Volume Bubbles (große Market Orders; Perp: Binance + Bybit)",
     "bubbles_exo": "Market Order Bubbles Exo-Stil (Medium ×3, Large ×4,5)",
@@ -143,8 +145,16 @@ TPO_DAYS = 6  # finished days drawn as TPO profiles, plus the running day
 DAYS_KEPT_TPO = 14  # days the naked tPOC check looks back (same as the trade store, footprint_data.DAYS_KEPT)
 TPO_BINS = 40  # price rows per day profile
 TPO_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"  # 48 half-hour periods from 00:00 UTC
+# Month TPO (Uzi 26.11.2026, compared with a reference TPO indicator): time at price per calendar month (00:00 UTC on the 1st),
+# one TPO per 4h block, fixed rows of about 0.05 % of price, rounded up (50 USDT for BTC), value area 70 %. The levels sit in the
+# middle of their row, as on the reference (TPOC 64925 = row 64900-64950). Finer blocks (30m) move the November 2026
+# POC to the other of two almost equal peaks (~75.9k instead of ~64.9k), so the block size matters.
+MONTH_TPO_BLOCK_HOURS = 4
+MONTH_TPO_PEAK_GAP = 0.02  # a second peak counts when it lies more than 2 % of the month high away from the POC
+MONTH_TPO_PEAK_SHARE = 0.9  # ... and has at least 90 % of the POC's blocks
+MONTH_TPO_ROW_SHARE = 0.0005  # rounded up to a nice number: 50 USDT for BTC between 50k and 100k
 # The earlier 30m test versions start hidden: their many closed trades crowd the candles (Uzi 27.10.2026).
-DEFAULT_GROUPS = ("day", "week", "month", "naked", "absorb", "vwap", "vwap_bands", "structure", "trend", "tpo", "vp", "fp", "bubbles",
+DEFAULT_GROUPS = ("day", "week", "month", "naked", "absorb", "vwap", "vwap_bands", "structure", "trend", "tpo", "tpo_month", "vp", "fp", "bubbles",
                   "plans_short", "plans_mid", "plans_long", "gamma", "gamma_ob", "liq", "liqev", "cvd", "oi", "macro", "usdtd_swing", "usdtd_sr", "usdtd_ema")
 # TIM's paper plans on the chart (Uzi 27.10.2026: "man kann nicht richtig sehen wo die Entrys von TIM waren").
 # Journal key -> (layer, short label); the earlier 30m test versions share one layer.
@@ -433,6 +443,15 @@ def level_drawings(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datet
         add("ib", "", "IB Low", ib["low"], today, "Initial Balance (90 min ab 00:00 UTC)")
     if trades and trades.get("days"):
         out = trade_levels(out, trades, series, now, tpo_series)
+    for profile in month_tpo_profiles(series, now):
+        start = datetime.fromisoformat(profile["start"])
+        note = f"TPO Monat {start:%m.%Y}" + (" (läuft)" if profile["running"] else "")
+        suffix = " lfd." if profile["running"] else f" {start:%m.%y}"
+        for key, name in (("tvah", "TVAH"), ("tpoc", "TPOC"), ("tval", "TVAL")):
+            add("tpo_month", "1M", name + suffix, profile[key], start, note)
+        if profile.get("tpoc2") is not None:
+            add("tpo_month", "1M", "TPOC 2" + suffix, profile["tpoc2"], start,
+                f"{note}: zweite Spitze, {profile['tpoc2_count']} statt {profile['tpoc_count']} Blöcke (fast gleich lang)")
     return out
 
 
@@ -983,6 +1002,74 @@ def tpo_profiles(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetim
                        "poc": round(first + poc_index * step, 8), "vah": round(first + (above - 1) * step + step, 8),
                        "val": round(first + (below + 1) * step, 8), "high": high, "low": low,
                        "max_count": max(len(v) for v in letters.values())})
+    return result
+
+
+def month_tpo_profiles(series: Mapping[str, Sequence[Mapping[str, Any]]], now: datetime, months: int = 2,
+                       block_hours: int = MONTH_TPO_BLOCK_HOURS) -> list[dict[str, Any]]:
+    """Market Profile per calendar month (UTC) by time: one TPO per ``block_hours`` block.
+
+    Takes the finest series that reaches back to the month's start (30m, 1h, then 4h) and only closed
+    candles of it; the running block counts with the candles that are already closed. Rows are fixed
+    (``MONTH_TPO_ROW_SHARE`` of the month high, a nice number: 50 USDT for BTC). TPOC = row with the most
+    blocks (tie: nearer the middle of the range), value area grows row by row to the richer side until
+    70 % of all TPOs are inside. ``tpoc``, ``tvah`` and ``tval`` are row middles. Newest ``months``
+    months, oldest first; a month whose start the series does not reach is left out. ``tpoc2``: a second
+    peak far from the TPOC with at least 90 % of its blocks (else None).
+    """
+    utc_now = now.astimezone(timezone.utc)
+    begin = datetime(utc_now.year, utc_now.month, 1, tzinfo=timezone.utc)
+    starts = [begin]
+    for _ in range(months - 1):
+        prev = starts[0] - timedelta(days=1)
+        starts.insert(0, datetime(prev.year, prev.month, 1, tzinfo=timezone.utc))
+    result = []
+    for start in starts:
+        end = datetime(start.year + (start.month == 12), start.month % 12 + 1, 1, tzinfo=timezone.utc)
+        candles: list[dict[str, Any]] = []
+        for tf in ("30m", "1h", "4h"):
+            rows = [c for c in clean_candles(series.get(tf) or [], tf) if c["close_time"] <= now]
+            if rows and rows[0]["open_time"] <= start:
+                candles = [c for c in rows if start <= c["open_time"] < end]
+                break
+        blocks: dict[int, list[float]] = {}
+        for c in candles:
+            slot = int((c["open_time"] - start).total_seconds() // (block_hours * 3600))
+            block = blocks.setdefault(slot, [c["high"], c["low"]])
+            block[0], block[1] = max(block[0], c["high"]), min(block[1], c["low"])
+        if len(blocks) < 2:
+            continue
+        high, low = max(b[0] for b in blocks.values()), min(b[1] for b in blocks.values())
+        step = _nice_step(high * MONTH_TPO_ROW_SHARE, 1)
+        first = math.floor(low / step) * step
+        counts: dict[int, int] = {}
+        for block_high, block_low in blocks.values():
+            for index in range(int((block_low - first) // step), int((block_high - first) // step) + 1):
+                counts[index] = counts.get(index, 0) + 1
+        total, middle = sum(counts.values()), (max(counts) + min(counts)) / 2
+        poc = max(sorted(counts), key=lambda i: (counts[i], -abs(i - middle)))
+        # A second peak almost as long as the POC (November 2026: 22 vs 21 blocks, ~11k apart) is named too:
+        # with two equal peaks the POC flips on small changes, and other tools may show the other one.
+        far = [i for i in counts if abs(i - poc) * step > high * MONTH_TPO_PEAK_GAP]
+        rival = max(sorted(far), key=lambda i: (counts[i], -abs(i - middle))) if far else None
+        if rival is not None and counts[rival] < counts[poc] * MONTH_TPO_PEAK_SHARE:
+            rival = None
+        lowest, highest = min(counts), max(counts)
+        above, below, inside = poc + 1, poc - 1, counts[poc]
+        while inside < total * 0.7 and (above <= highest or below >= lowest):  # empty rows inside the range are crossed
+            up, down = counts.get(above, 0), counts.get(below, 0)
+            if (up >= down and above <= highest) or below < lowest:
+                inside += up
+                above += 1
+            else:
+                inside += down
+                below -= 1
+        mid = lambda i: round(first + i * step + step / 2, 8)  # noqa: E731 - row middle
+        result.append({"month": start.strftime("%Y-%m"), "start": start.isoformat(), "end": end.isoformat(),
+                       "running": start == begin, "step": step, "blocks": len(blocks), "block_hours": block_hours,
+                       "tpoc": mid(poc), "tvah": mid(above - 1), "tval": mid(below + 1), "high": high, "low": low,
+                       "tpoc_count": counts[poc], "tpoc2": mid(rival) if rival is not None else None,
+                       "tpoc2_count": counts[rival] if rival is not None else None})
     return result
 
 
