@@ -377,12 +377,13 @@ def test_perp_backfill_after_the_decision_does_not_change_the_snapshot_at_the_de
     replay._perp({"days": {"d": early}, "bucket_seconds": 300, "updated_at": noon.isoformat()}, noon)
     again = replay._perp({"days": {"d": backfill}, "bucket_seconds": 300,
                           "updated_at": (noon + timedelta(hours=1)).isoformat()}, noon)
-    assert again["delta_15m"] == pytest.approx(1.0) and again["buckets_unknown"] == 1
+    assert again["delta_15m"] == pytest.approx(1.0)
+    assert {k: v for k, v in again.items() if k != "updated_at"} == {k: v for k, v in at_noon.items() if k != "updated_at"}
     # A revision of a known bucket after the decision: the decision keeps the old value.
     revised = [[t - 600, 75000.0, 1.0, 40.0]]
     kept = replay._perp({"days": {"d": revised}, "bucket_seconds": 300,
                          "updated_at": (noon + timedelta(hours=1)).isoformat()}, noon)
-    assert kept["delta_15m"] == pytest.approx(1.0) and kept["buckets_revised_later"] == 1
+    assert kept["delta_15m"] == pytest.approx(1.0) and kept["buckets_revised"] == 0   # nothing after noon leaks in
     # After a restart the log is empty: what was before is seen from the first look on, never earlier.
     fresh = ls.LiveOrderflowTracker(SYMBOL, 5.0)
     late = fresh._perp({"days": {"d": backfill}, "bucket_seconds": 300,
@@ -592,8 +593,8 @@ def test_perp_bucket_width_from_a_later_revision_is_not_used_at_the_snapshot():
     assert again["delta_5m"] == pytest.approx(0.0) and again["delta_15m"] == pytest.approx(1.0)
     assert _without_store_time(again) == _without_store_time(first)   # only the echoed store time differs
     # From 13:00 on the 60 s revision is the one seen (the old rows are then outside the 15 minutes).
-    assert tracker._perp_width_at(later.timestamp()) == (60, "OK")
-    assert tracker._perp_width_at(noon.timestamp()) == (300, "OK")
+    assert tracker._perp_history.width_at(later.timestamp()) == (60, "OK")
+    assert tracker._perp_history.width_at(noon.timestamp()) == (300, "OK")
 
 
 def test_perp_bucket_width_only_from_a_later_revision_fails_closed():
@@ -655,18 +656,26 @@ ABSENT_WIDTH = object()
 
 
 def test_width_change_300_to_60_at_120015_does_not_close_the_unchanged_open_bucket():
+    """Round 2: a start stated once under 300 s and once under 60 s is two different buckets; which one the row means
+    cannot be decided, so the windows it could fall into are UNKNOWN, never counted under the shorter width."""
     tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
     first = tracker._perp(_store([CLOSED_300, OPEN_300], 300, NOON), NOON)
     assert first["delta_5m"] == pytest.approx(0.0) and first["delta_15m"] == pytest.approx(1.0)
     switch = NOON + timedelta(seconds=15)
     after = tracker._perp(_store([CLOSED_300, OPEN_300], 60, switch), switch)
-    assert after["bucket_seconds"] == 60
-    assert after["delta_5m"] == pytest.approx(0.0), "delta_5m=5 would mean the open 300 s bucket was closed by 60 s"
-    assert after["delta_15m"] == pytest.approx(1.0) and after["buckets_other_width"] == 1
-    # At 12:01 the bucket is closed under its own 300 s and counts.
+    assert after["bucket_seconds"] == 60 and after["buckets_ambiguous"] == 2
+    assert after["delta_5m"] is None and after["delta_15m"] is None and after["volume_15m"] is None
+    assert after["window_status"] == {"5m": "UNKNOWN", "15m": "UNKNOWN"}
+    # Not at 12:01 either: the bucket end is never decided by one of the two widths.
     one = NOON + timedelta(seconds=61)
     later = tracker._perp(_store([CLOSED_300, OPEN_300], 60, switch), one)
-    assert later["delta_5m"] == pytest.approx(5.0) and later["delta_15m"] == pytest.approx(6.0)
+    assert later["delta_5m"] is None and later["delta_15m"] is None
+    # Once both starts are out of reach (start < t - 15 min - 300 s), the windows are known again.
+    clear = NOON + timedelta(minutes=17)
+    fresh_row = [int(clear.timestamp()) - 120, 75000.0, 1.0, 4.0]       # a 60 s bucket, closed
+    out = tracker._perp(_store([CLOSED_300, OPEN_300, fresh_row], 60, clear), clear)
+    assert out["window_status"] == {"5m": "OK", "15m": "OK"}
+    assert out["delta_5m"] == pytest.approx(3.0) and out["delta_15m"] == pytest.approx(3.0)
 
 
 def test_a_new_bucket_in_the_60s_revision_is_judged_by_60s():
@@ -675,7 +684,8 @@ def test_a_new_bucket_in_the_60s_revision_is_judged_by_60s():
     switch = NOON + timedelta(seconds=15)
     new = [N - 60, 75000.0, 0.0, 3.0]            # 11:59, a 60 s bucket first written at 12:00:15: closed at 12:00
     out = tracker._perp(_store([CLOSED_300, new], 60, switch), switch)
-    assert out["delta_5m"] == pytest.approx(3.0) and out["delta_15m"] == pytest.approx(4.0)
+    assert out["delta_5m"] == pytest.approx(3.0)                 # 11:45 (now ambiguous) is out of the 5m reach
+    assert out["delta_15m"] is None and out["window_status"]["15m"] == "UNKNOWN"
 
 
 @pytest.mark.parametrize("missing", [ABSENT_WIDTH, None, "300", 0])
@@ -687,83 +697,255 @@ def test_120015_revision_without_width_noted_after_1300_is_kept_and_not_filled_w
     gap = NOON + timedelta(seconds=15)
     seen = NOON + timedelta(seconds=20)          # a replay step at 12:00:20 reads the 12:00:15 store after 13:00
     tracker._perp(_store([CLOSED_300, OPEN_300], missing, gap), seen)
-    assert [e[0] for e in tracker._perp_widths] == sorted(e[0] for e in tracker._perp_widths)
-    assert len(tracker._perp_widths) == 3
-    assert tracker._perp_width_at(seen.timestamp())[0] is None                    # not lost, not 300
-    assert tracker._perp_width_at((NOON + timedelta(seconds=10)).timestamp()) == (300, "OK")
-    assert tracker._perp_width_at(one.timestamp()) == (60, "OK")
+    history = tracker._perp_history
+    assert len(history._widths) == 3
+    assert history.width_at(seen.timestamp())[0] is None                    # not lost, not 300
+    assert history.width_at((NOON + timedelta(seconds=10)).timestamp()) == (300, "OK")
+    assert history.width_at(one.timestamp()) == (60, "OK")
     between = tracker._perp(_store([CLOSED_300, OPEN_300], 60, one), NOON + timedelta(minutes=30))
     assert between["status"] == "Bucket-Größe unbekannt" and between["bucket_seconds"] is None   # no 300 carried over
     assert "delta_5m" not in between
 
 
-def _events(rng):
-    """Store revisions (seen offset s, width, rows) around noon; widths 300, 60 or missing; rows change sometimes."""
+# --- Round 2 (27.11., COORD-REF-AB-62de6bd-6a9a8fb-20261127): canonical as-of history ---------------------------------
+# Oracle written from the reference text (docs/ORDERFLOW_REFERENZ_AB.md), not from the code: plain loops over every
+# revision ever noted, no folding, exact Fractions.
+
+def _width(width):
+    return ls.bucket_size({} if width is ABSENT_WIDTH else {"bucket_seconds": width})
+
+
+def _oracle(revisions, t):
+    """revisions: (u, seen, width, rows). Returns (bucket_seconds, delta_5m, delta_15m) or a status string."""
+    from fractions import Fraction
+    from decimal import Decimal
+
+    visible = [r for r in revisions if r[1] <= t]
+    if not visible:
+        return "NOT_AVAILABLE"
+    top = max(r[0] for r in visible)
+    stated = {_width(r[2]) for r in visible if r[0] == top}
+    if len(stated) > 1:
+        return "INCONSISTENT"
+    (current, status), = stated
+    if current is None:
+        return status
+    if current > ls.PERP_MAX_WIDTH:
+        return "TOO_WIDE"
+    starts = {row[0] for r in visible for row in r[3] if row[0] >= r[1] - ls.PERP_ROW_HORIZON}
+    total = {"5m": Fraction(0), "15m": Fraction(0)}
+    unknown = set()
+    for start in starts:
+        having = [r for r in visible if any(row[0] == start for row in r[3]) and start >= r[1] - ls.PERP_ROW_HORIZON]
+        widths = {_width(r[2]) for r in having}
+        newest = max(r[0] for r in having)
+        values = set()
+        for r in having:
+            if r[0] == newest:
+                rows = [row for row in r[3] if row[0] == start]
+                values.add((sum(Fraction(Decimal(repr(float(row[2])))) for row in rows),
+                            sum(Fraction(Decimal(repr(float(row[3])))) for row in rows)))
+        only = next(iter(widths))[0]
+        if len(widths) != 1 or only is None or only > ls.PERP_MAX_WIDTH or len(values) != 1 or (None, None) in values:
+            reach = min(max([w for w, _s in widths if w is not None] + [current]), ls.PERP_MAX_WIDTH)
+            for name, span in (("5m", 300), ("15m", 900)):
+                if t - span - reach <= start < t:
+                    unknown.add(name)
+            continue
+        (w, _s), = widths
+        if start + w > t:
+            continue
+        (bid, ask), = values
+        for name, span in (("5m", 300), ("15m", 900)):
+            if start >= t - span - w:
+                total[name] += ask - bid
+    return (current, *(None if name in unknown else float(total[name]) for name in ("5m", "15m")))
+
+
+def _answer(perp):
+    if perp.get("bucket_seconds") is None:
+        return perp["bucket_seconds_status"]
+    if "delta_5m" not in perp:                                   # no data in the last 15 minutes
+        return (perp["bucket_seconds"], 0.0, 0.0)
+    return (perp["bucket_seconds"], perp["delta_5m"], perp["delta_15m"])
+
+
+def _note(tracker, revision, now=None):
+    u, seen, width, rows = revision
+    at = datetime.fromtimestamp(u, timezone.utc)
+    return tracker._perp(_store(rows, width, at), datetime.fromtimestamp(seen if now is None else now, timezone.utc))
+
+
+def _query(tracker, t):
+    """The as-of answer at t without noting anything new (a store without updated_at is never noted)."""
+    return _answer(tracker._perp({"symbol": "BTCUSDT", "days": {"d": [[0, 0, 0, 0]]}}, datetime.fromtimestamp(t, timezone.utc)))
+
+
+def _close(a, b):
+    if isinstance(a, str) or isinstance(b, str):
+        return a == b
+    return a[0] == b[0] and all((x is None and y is None) or (x is not None and y is not None and abs(x - y) < 1e-6)
+                                for x, y in zip(a[1:], b[1:]))
+
+
+def _revisions(rng):
     rows = [list(CLOSED_300), list(OPEN_300)]
-    events = []
-    for _ in range(rng.randint(2, 6)):
-        offset = rng.choice((0, 5, 15, 30, 61, 120, 300, 3600))
-        width = rng.choice((300, 300, 60, ABSENT_WIDTH))
-        if rng.random() < 0.3:
-            rows = rows + [[N - 60 * rng.randint(0, 14), 75000.0, float(rng.randint(0, 4)), float(rng.randint(0, 4))]]
-        events.append((offset, width, [list(r) for r in rows]))
-    return events
-
-
-def _run(events, snapshot_offsets):
-    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
     out = []
-    for offset, width, rows in events:
-        at = NOON + timedelta(seconds=offset)
-        tracker._perp(_store(rows, width, at), at)
-    for offset in snapshot_offsets:
-        moment = NOON + timedelta(seconds=offset)
-        out.append(tracker._perp(_store(events[-1][2], events[-1][1], NOON + timedelta(seconds=events[-1][0])), moment))
-    return tracker, out
+    for _ in range(rng.randint(1, 6)):
+        u = N + rng.choice((0, 0, 5, 15, 30, 61, 120, 300, 900, 3600))
+        seen = u + rng.choice((0, 0, 0, 10, 600))
+        width = rng.choice((300, 300, 300, 60, ABSENT_WIDTH))
+        if rng.random() < 0.4:
+            rows = [list(r) for r in rows]
+            if rng.random() < 0.5:
+                rows.append([N - 60 * rng.randint(0, 20), 75000.0, float(rng.randint(0, 4)), float(rng.randint(0, 9))])
+            else:
+                pick = rng.randrange(len(rows))
+                rows[pick] = rows[pick][:3] + [float(rng.randint(0, 9))]
+        out.append((u, seen, width, [list(r) for r in rows]))
+    return out
 
 
-def test_seeded_sweep_width_history_invariants():
-    rng = random.Random(1377)
-    for _ in range(300):
-        events = sorted(_events(rng), key=lambda e: e[0])
-        tracker, _ = _run(events, ())
-        # Replay determinism: the same events give the same width history and the same perp blocks.
-        again, _ = _run(events, ())
-        assert tracker._perp_widths == again._perp_widths
-        # Temporal permutation: the width history depends on when a revision was seen, not on the order it is noted.
-        shuffled = events[:]
+PROBES = (0, 10, 15, 20, 29, 60, 61, 200, 300, 900, 1000, 3600, 3610, 4500)
+
+
+def test_seeded_sweep_as_of_agrees_with_the_oracle_in_every_noting_order():
+    rng = random.Random(20261127)
+    for _ in range(250):
+        revisions = _revisions(rng)
+        orders = [list(revisions), list(reversed(revisions))]
+        shuffled = list(revisions)
         rng.shuffle(shuffled)
-        perm = ls.LiveOrderflowTracker(SYMBOL, 5.0)
-        for offset, width, rows in shuffled:
-            at = NOON + timedelta(seconds=offset)
-            perm._note_perp_width(at.timestamp(), *ls.bucket_size({"bucket_seconds": width} if width is not ABSENT_WIDTH else {}))
-        expected = ls.LiveOrderflowTracker(SYMBOL, 5.0)
-        for offset, width, rows in events:
-            at = NOON + timedelta(seconds=offset)
-            expected._note_perp_width(at.timestamp(), *ls.bucket_size({"bucket_seconds": width} if width is not ABSENT_WIDTH else {}))
-        for probe in (0, 10, 15, 29, 60, 200, 3599, 3600, 4000):
-            t = (NOON + timedelta(seconds=probe)).timestamp()
-            assert perm._perp_width_at(t) == expected._perp_width_at(t)
-        # Point in time: at every probe, no bucket is counted that is open under the width it was first seen with,
-        # and nothing counts when the newest width seen by then is unusable.
-        for probe in (0, 10, 15, 29, 60, 61, 200, 3600):
-            moment = NOON + timedelta(seconds=probe)
-            rows, _ = tracker._perp_log.revisions_at(moment)
-            latest = tracker._perp_width_at(moment.timestamp())[0]
-            last = events[-1]
-            perp = tracker._perp({"symbol": "BTCUSDT", "days": {"d": last[2]}, "updated_at": None}, moment)
-            if latest is None:
-                assert perp["status"] == "Bucket-Größe unbekannt"
-                continue
-            expected5 = 0.0
-            for _d, start, _l, first_seen, values, _r in rows:
-                width = tracker._perp_width_at(first_seen)[0]
-                if width is None or start + width > moment.timestamp():
-                    continue
-                if start >= moment.timestamp() - 300 - width:
-                    expected5 += values[1] - values[0]
-            if "delta_5m" in perp:
-                assert perp["delta_5m"] == pytest.approx(expected5)
+        orders.append(shuffled)
+        orders.append(revisions + revisions[: rng.randint(0, len(revisions))])        # duplicates change nothing
+        answers = []
+        for order in orders:
+            tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+            for revision in order:
+                _note(tracker, revision)
+            answers.append([_query(tracker, N + p) for p in PROBES])
+        for p, expected in zip(PROBES, (_oracle(revisions, N + p) for p in PROBES)):
+            for answer in answers:
+                got = answer[PROBES.index(p)]
+                assert _close(got, expected), (revisions, p, got, expected)
+
+
+def test_hypothesis_as_of_is_order_free_and_agrees_with_the_oracle():
+    hypothesis = pytest.importorskip("hypothesis")
+    st = hypothesis.strategies
+    row = st.tuples(st.integers(0, 20), st.integers(0, 5), st.integers(0, 9))
+    revision = st.tuples(st.sampled_from((0, 5, 15, 61, 300, 900, 3600)), st.sampled_from((0, 0, 10, 600)),
+                         st.sampled_from((300, 60, 900, 1800, ABSENT_WIDTH)), st.lists(row, max_size=5))
+
+    @hypothesis.settings(max_examples=200, deadline=None, derandomize=True)
+    @hypothesis.given(st.lists(revision, min_size=1, max_size=5), st.randoms(use_true_random=False))
+    def run(raw, rnd):
+        revisions = [(N + u, N + u + lag, width, [[N - 60 * k, 75000.0, float(b), float(a)] for k, b, a in rows])
+                     for u, lag, width, rows in raw]
+        order = list(revisions)
+        rnd.shuffle(order)
+        one, two = ls.LiveOrderflowTracker(SYMBOL, 5.0), ls.LiveOrderflowTracker(SYMBOL, 5.0)
+        for revision in revisions:
+            _note(one, revision)
+        for revision in order:
+            _note(two, revision)
+        for p in PROBES:
+            expected = _oracle(revisions, N + p)
+            assert _close(_query(one, N + p), expected) and _close(_query(two, N + p), expected)
+
+    run()
+
+
+def test_noting_a_revision_at_a_later_decision_time_never_backdates_it():
+    """seen = max(now, updated_at): a store read at 12:10 is not evidence at 12:05, even if it was written at 12:00."""
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    _note(tracker, (N, N, 300, [[N - 300, 75000.0, 1.0, 2.0]]), now=N + 600)
+    assert _query(tracker, N + 300) == "NOT_AVAILABLE"
+    assert _query(tracker, N + 600) == (300, 0.0, 1.0)
+
+
+def test_restart_with_the_same_available_revisions_gives_the_same_answers():
+    rng = random.Random(4011)
+    for _ in range(50):
+        revisions = _revisions(rng)
+        running = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+        for revision in sorted(revisions, key=lambda r: r[1]):
+            _note(running, revision)
+        restarted = ls.LiveOrderflowTracker(SYMBOL, 5.0)              # empty after a restart, then fed the same set
+        for revision in revisions:
+            _note(restarted, revision)
+        for p in PROBES:
+            assert _query(running, N + p) == _query(restarted, N + p)
+
+
+def test_history_is_bounded_and_folding_changes_no_answer_after_the_floor():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    revisions = []
+    for step in range(0, 4 * 3600, 30):                          # four hours of a live store saved every 30 s
+        start = N + step - step % 300
+        rows = [[start - 300 * k, 75000.0, float(k), float(step % 7)] for k in range(1, 5)]
+        revisions.append((N + step, N + step, 300, rows))
+    for revision in revisions:
+        _note(tracker, revision)
+    history = tracker._perp_history
+    assert len(history._widths) <= ls.PERP_KEEP // 30 + 2
+    assert len(history._buckets) <= (ls.PERP_KEEP + 2 * ls.PERP_ROW_HORIZON) // 300 + 2
+    last = revisions[-1][1]
+    for offset in (0, 300, 1800, ls.PERP_KEEP - 1):
+        t = last - offset
+        assert _close(_query(tracker, t), _oracle(revisions, t)), offset
+    assert _query(tracker, last - ls.PERP_KEEP - 1) == ls.BUCKET_HISTORY_GONE
+
+
+def test_codex_round2_a1_reversed_noting_order_keeps_the_noon_answer():
+    """Codex #377 (27.11.), A1: 12:00 with 300 s; 13:00 with 60 s where 11:45 ask 2 -> 9 and 11:56 unchanged.
+    Both noted at the decision time 12:00, then the 12:00 revision asked again: (0, 1) in either order."""
+    noon = (N, N, 300, [list(CLOSED_300), list(OPEN_300)])
+    one = (N + 3600, N + 3600, 60, [CLOSED_300[:3] + [9.0], list(OPEN_300)])
+    for order in ([noon, one], [one, noon]):
+        tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+        for u, seen, width, rows in order:
+            tracker._perp(_store(rows, width, datetime.fromtimestamp(u, timezone.utc)), NOON)
+        out = tracker._perp(_store(noon[3], 300, NOON), NOON)
+        assert (out["delta_5m"], out["delta_15m"]) == (pytest.approx(0.0), pytest.approx(1.0)), order
+        assert out["bucket_seconds"] == 300
+
+
+def test_codex_round2_a2_value_update_under_60s_does_not_move_the_bucket_end():
+    """Codex #377 (27.11.), A2: at 12:00:15 a 60 s revision changes only 11:56 ask 5 -> 6. Round 1 gave
+    delta_5m=6, delta_15m=7 (11:56 closed by 60 s). The 300 s bucket may not end before 12:01; which bucket the row
+    means is ambiguous, so 5m and 15m are UNKNOWN, at 12:00:15 and still at 12:01:01, in either noting order."""
+    noon = (N, N, 300, [list(CLOSED_300), list(OPEN_300)])
+    update = (N + 15, N + 15, 60, [list(CLOSED_300), OPEN_300[:3] + [6.0]])
+    for order in ([noon, update], [update, noon]):
+        tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+        for revision in order:
+            _note(tracker, revision)
+        for t in (N + 15, N + 61):
+            out = tracker._perp({"days": {"d": [[0, 0, 0, 0]]}}, datetime.fromtimestamp(t, timezone.utc))
+            assert out["delta_5m"] is None and out["delta_15m"] is None, (order, t, out)
+            assert out["delta_5m"] != 6.0 and out["window_status"] == {"5m": "UNKNOWN", "15m": "UNKNOWN"}
+        assert _query(tracker, N + 10) == (300, 0.0, 1.0)               # before the update: the noon answer
+
+
+def test_same_write_time_different_values_is_ambiguous_not_first_or_last():
+    a = (N, N, 300, [list(CLOSED_300)])
+    b = (N, N + 5, 300, [CLOSED_300[:3] + [7.0]])
+    for order in ([a, b], [b, a]):
+        tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+        for revision in order:
+            _note(tracker, revision)
+        assert _query(tracker, N + 1) == (300, 0.0, 1.0)              # only a is seen by then
+        assert _query(tracker, N + 10) == (300, 0.0, None)            # both: the 11:45 value is not decidable
+
+
+def test_unusable_rows_and_too_wide_widths_fail_closed():
+    tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    _note(tracker, (N, N, 300, [list(CLOSED_300), [N - 600, 75000.0, float("nan"), 1.0]]))
+    assert _query(tracker, N) == (300, None, None)             # 11:50 could be in both windows: not decidable
+    wide = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+    _note(wide, (N, N, 1800, [list(CLOSED_300)]))
+    assert _query(wide, N) == ls.BUCKET_TOO_WIDE
 
 
 def test_restart_sees_nothing_before_its_first_look():
@@ -801,4 +983,32 @@ def test_codex_7218699983_case_2_fresh_tracker_300_then_60_at_120015():
     tracker._perp(_store([CLOSED_300, OPEN_300], 300, NOON), NOON)
     decision = NOON + timedelta(seconds=15)
     out = tracker._perp(_store([CLOSED_300, OPEN_300], 60, decision), decision)
-    assert out["delta_5m"] == pytest.approx(0.0) and out["delta_15m"] == pytest.approx(1.0)
+    # Round 2: never 5 (the open 300 s bucket closed by 60 s); the identity of both starts is ambiguous: UNKNOWN.
+    assert out["delta_5m"] is None and out["delta_15m"] is None and out["buckets_ambiguous"] == 2
+
+
+def test_ab_integration_one_snapshot_exact_side_and_order_free_perp_through_json():
+    """A+B together (round 2): the real tracker with available trades (Codex B case) and two perp revisions
+    (Codex A1), noted in either order at the decision time. Same snapshot hash, exact side evidence through JSON,
+    the shadow says BELOW/UNBEKANNT, the perp block is the noon answer (0, 1)."""
+    from src.dashboard import orderflow_shadow as shadow
+
+    noon_store = _store([CLOSED_300, OPEN_300], 300, NOON)
+    late_store = _store([CLOSED_300[:3] + [9.0], OPEN_300], 60, NOON + timedelta(hours=1))
+    states = []
+    for order in ([noon_store, late_store], [late_store, noon_store]):
+        tracker = ls.LiveOrderflowTracker(SYMBOL, 5.0)
+        for k, (qty, maker) in enumerate(((0.0001332602127840482, False), (0.000007013695409686748, None))):
+            at = NOON - timedelta(seconds=20 - k)
+            tracker.ingest([Trade(SYMBOL, 75000.0, qty, at, k + 1, buyer_is_maker=maker)], available_at=at)  # type: ignore[arg-type]
+        for store in order:
+            tracker.snapshot(NOON, perp_store=store)
+        states.append(json.loads(json.dumps(tracker.snapshot(NOON, perp_store=noon_store))))
+    first, second = states
+    assert first["snapshot_hash"] == second["snapshot_hash"] and first == second
+    assert first["windows"]["1m"]["side_evidence"] == {"schema": "side-evidence/1", "known": "0.0001332602127840482",
+                                                       "unknown": "0.000007013695409686748"}
+    view = shadow.lage_view(first)
+    assert (view["side_ok"], view["side_status"]) == (False, "BELOW")
+    assert shadow.gate("LONG", view) == shadow.UNBEKANNT and shadow.should_exit("SHORT", view) is None
+    assert (first["perp"]["bucket_seconds"], first["perp"]["delta_5m"], first["perp"]["delta_15m"]) == (300, 0.0, 1.0)

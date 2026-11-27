@@ -20,8 +20,9 @@ Point-in-Time (Paket A, #372, 24.11.2026): ``snapshot(now)`` sieht nur Trades mi
 <= ``now``. Verfügbarkeit ist der Zeitpunkt, zu dem der Aufrufer den Trade bekam (``ingest(..., available_at=)``). Ohne diese Angabe
 ist die Verfügbarkeit UNKNOWN (gemeinsamer Vertrag ``src/orderflow/pit_contract.py``, Mission 07): solche Trades werden nie
 aus der Eventzeit erschlossen, sondern verworfen und als ``unavailable_dropped`` gezählt; die eigenen Tageswerte des Tages
-heißen dann ``UNVOLLSTÄNDIG``. Perp-Körbe laufen über ein ``RevisionLog``: ein Korb zählt bei ``now`` nur geschlossen und in
-der Fassung, die TIM bis ``now`` gesehen hat (ein Nachtrag nach ``now`` bleibt draußen). Fenster, Preis, Tageswerte (aus dem Stand je Trade), Level und Perp-Körbe enden bei ``now``; spätere Trades
+heißen dann ``UNVOLLSTÄNDIG``. Perp-Körbe laufen über eine kanonische As-of-Historie (``PerpAsOf``, Runde 2 27.11.): ein Korb zählt bei ``now`` nur
+geschlossen und in der Fassung, die TIM bis ``now`` gesehen hat (ein Nachtrag nach ``now`` bleibt draußen), unabhängig
+von der Reihenfolge, in der die Fassungen eingelesen wurden; ein Korb mit mehrdeutiger Breite macht sein Fenster UNKNOWN. Fenster, Preis, Tageswerte (aus dem Stand je Trade), Level und Perp-Körbe enden bei ``now``; spätere Trades
 zählen nur als ``future_trades``. Zu spät gelieferte Trades mit älterer Eventzeit werden nicht rückwirkend eingefügt, sondern
 als ``late_dropped`` gezählt. Snapshots laufen zeitlich vorwärts; ein früheres ``now`` als ein schon gezeigtes ist ein Fehler.
 Gleicher Strom, ob in Stücken oder auf einmal eingelesen, ergibt so denselben Snapshot (``snapshot_hash``).
@@ -35,15 +36,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
-from bisect import bisect_left, bisect_right
+from bisect import bisect_left
 from collections import deque
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
-from src.orderflow.pit_contract import RevisionLog, as_time, bucket_size
+from src.orderflow.pit_contract import as_time, bucket_size
 from statistics import median
 from typing import Any
 
@@ -56,9 +58,13 @@ DEFAULT_PATH = Path("data/orderflow/orderflow_lage.json")
 WINDOWS = {"1m": 60, "5m": 300, "15m": 900}
 KEEP_SECONDS = 1800  # 15m window plus 20 one-minute baseline buckets, with reserve
 BASELINE_MINUTES = 20
-PERP_WIDTH_HISTORY = 256  # bucket-width revisions kept per tracker (a width change is rare; old ones fall out)
 BUCKET_NOT_AVAILABLE = "NOT_AVAILABLE"  # no store revision with a known time seen by the snapshot
-BUCKET_INCONSISTENT = "INCONSISTENT"  # store revisions seen at the same moment state different widths
+BUCKET_INCONSISTENT = "INCONSISTENT"  # store revisions with the same write time state different widths
+BUCKET_TOO_WIDE = "TOO_WIDE"  # a width above PERP_MAX_WIDTH: the 5/15-minute windows cannot be judged with it
+BUCKET_HISTORY_GONE = "HISTORY_GONE"  # the snapshot asks for a moment older than the kept as-of history
+PERP_MAX_WIDTH = 900  # widest bucket a 5/15-minute perp delta can be built from
+PERP_ROW_HORIZON = WINDOWS["15m"] + PERP_MAX_WIDTH  # a revision seen at s only matters for buckets starting >= s - this
+PERP_KEEP = 2 * 3600  # as-of history kept behind the newest store revision; older moments are HISTORY_GONE
 LEVEL_RANGE_PCT = 0.6  # levels farther away than this share of the price are not reported
 THRESHOLDS = {
     "direction_share": 0.15,  # |delta| / volume of the 5m window needed for a direction
@@ -105,6 +111,168 @@ def _exact(value: float) -> Decimal:
     return Decimal(repr(float(value)))
 
 
+def _bucket_state(rows: Sequence[Any]) -> tuple[float, float] | None:
+    """(bid, ask) of one bucket in one store revision, summed over its level rows; ``None`` when a row is unusable."""
+    bids, asks = [], []
+    for row in rows:
+        try:
+            values = [row[2], row[3]]
+        except (TypeError, IndexError, KeyError):
+            return None
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0 for v in values):
+            return None
+        bids.append(float(values[0]))
+        asks.append(float(values[1]))
+    return math.fsum(bids), math.fsum(asks)     # correctly rounded: independent of the row order
+
+
+class PerpAsOf:
+    """Bitemporal history of perp store revisions: canonical, so the noting order never matters (Codex #377, 27.11.).
+
+    Every store revision has a write time ``u`` (``updated_at``) and the moment ``s`` TIM first held it (``seen``).
+    Kept per revision: the width it states and, per bucket start, its ``(bid, ask)`` summed over the level rows.
+    Entries are keyed by content with the earliest ``seen``: noting the same revision twice, or the revisions in
+    another order, gives the same history. The answer at ``t`` uses only revisions with ``seen <= t``:
+
+    - width at ``t``: the one of the newest write time seen by ``t``; revisions with that write time and different
+      widths are ``INCONSISTENT``; none seen is ``NOT_AVAILABLE``; above ``PERP_MAX_WIDTH`` it is ``TOO_WIDE``.
+    - a bucket (start ``b``) is AMBIGUOUS when the revisions seen by ``t`` that contain it state more than one width,
+      a missing/unusable/too wide width, an unusable row, or, at their newest write time, different values. The same
+      start under another width is another bucket and which one a row means cannot be decided: it is never counted
+      and never closed early (a value update may not move a bucket end forward).
+    - otherwise its width ``w`` is that single width; it is closed iff ``b + w <= t``; its value is the one of the
+      newest write time seen by ``t``.
+    - a window (5 or 15 minutes) sums closed buckets with ``b >= t - window - w``; an ambiguous bucket that could fall
+      into it makes the window UNKNOWN (``None``), never a partial sum.
+
+    Bounded without changing any answer at ``t >= F`` (``F`` = newest ``seen`` - ``PERP_KEEP``): rows starting more than
+    ``PERP_ROW_HORIZON`` before their revision's ``seen`` are not kept (never in a window at ``t >= seen``); entries
+    seen by ``F`` are folded into what every later answer needs (the newest write time, the set of widths and values
+    seen); buckets starting before ``F - PERP_ROW_HORIZON`` are dropped. Each cut depends only on the set of revisions,
+    not on the order. A moment before ``F`` is ``HISTORY_GONE`` (snapshots move forward, so live this never happens).
+    """
+
+    def __init__(self) -> None:
+        self._widths: dict[tuple[float, int | None, str], float] = {}           # (u, width, status) -> first seen
+        # bucket start -> {(u, width, status, (bid, ask) or None): first seen}
+        self._buckets: dict[float, dict[tuple[float, int | None, str, tuple[float, float] | None], float]] = {}
+        # bucket start -> (widths, values) of every entry folded at the floor
+        self._folded: dict[float, tuple[frozenset, frozenset]] = {}
+        self._newest: float | None = None
+
+    def observe(self, store: Mapping[str, Any], updated: datetime, seen_at: datetime) -> None:
+        u, seen = updated.timestamp(), seen_at.timestamp()
+        width, status = bucket_size(store)
+        key = (u, width, status)
+        self._widths[key] = min(seen, self._widths.get(key, seen))
+        grouped: dict[float, list[Any]] = {}
+        for rows in (store.get("days") or {}).values():
+            for row in rows or ():
+                try:
+                    start = float(row[0])
+                except (TypeError, ValueError, IndexError, KeyError):
+                    continue
+                if math.isfinite(start) and start >= seen - PERP_ROW_HORIZON:
+                    grouped.setdefault(start, []).append(row)
+        for start, rows in grouped.items():
+            entries = self._buckets.setdefault(start, {})
+            entry = (u, width, status, _bucket_state(rows))
+            entries[entry] = min(seen, entries.get(entry, seen))
+        self._newest = seen if self._newest is None else max(self._newest, seen)
+        self._fold(self._newest - PERP_KEEP)
+
+    def _fold(self, floor: float) -> None:
+        old = [k for k, s in self._widths.items() if s <= floor]
+        if old:
+            top = max(u for u, _w, _st in old)
+            self._widths = {k: s for k, s in self._widths.items() if s > floor or k[0] == top}
+        for start in list(self._buckets):
+            if start < floor - PERP_ROW_HORIZON:
+                del self._buckets[start]
+                self._folded.pop(start, None)
+                continue
+            entries = self._buckets[start]
+            old_entries = [e for e, s in entries.items() if s <= floor]
+            if not old_entries:
+                continue
+            widths, values = self._folded.get(start, (frozenset(), frozenset()))
+            self._folded[start] = (widths | {(w, st) for _u, w, st, _v in old_entries},
+                                   values | {v for *_x, v in old_entries})
+            top = max(e[0] for e in old_entries)
+            self._buckets[start] = {e: s for e, s in entries.items() if s > floor or e[0] == top}
+        for start in [k for k in self._folded if k not in self._buckets]:
+            del self._folded[start]
+
+    def _floor(self) -> float | None:
+        return None if self._newest is None else self._newest - PERP_KEEP
+
+    def width_at(self, t: float) -> tuple[int | None, str]:
+        floor = self._floor()
+        if floor is not None and t < floor:
+            return None, BUCKET_HISTORY_GONE
+        known = [k for k, s in self._widths.items() if s <= t]
+        if not known:
+            return None, BUCKET_NOT_AVAILABLE
+        newest = max(u for u, _w, _st in known)
+        stated = {(w, st) for u, w, st in known if u == newest}
+        if len(stated) > 1:
+            return None, BUCKET_INCONSISTENT
+        width, status = stated.pop()
+        if width is not None and width > PERP_MAX_WIDTH:
+            return None, BUCKET_TOO_WIDE
+        return width, status
+
+    def at(self, now: datetime) -> dict[str, Any]:
+        t = now.timestamp()
+        bucket, bucket_status = self.width_at(t)
+        if bucket is None:
+            return {"status": "Bucket-Größe unbekannt", "bucket_seconds": None, "bucket_seconds_status": bucket_status}
+        counts = {"open": 0, "ambiguous": 0, "revised": 0, "other_width": 0}
+        unknown_windows: set[str] = set()
+        sums = {"5m": 0.0, "15m": 0.0}
+        volume15 = 0.0
+        seen_any = False
+        for start, entries in sorted(self._buckets.items()):
+            known = [e for e, s in entries.items() if s <= t]
+            if not known:
+                continue
+            folded_widths, folded_values = self._folded.get(start, (frozenset(), frozenset()))
+            widths = set(folded_widths) | {(w, st) for _u, w, st, _v in known}
+            newest = max(u for u, *_ in known)
+            values = {v for u, _w, _st, v in known if u == newest}
+            usable = {w for w, _st in widths if w is not None and w <= PERP_MAX_WIDTH}
+            if len(widths) > 1 or len(usable) != 1 or len(values) > 1 or None in values:
+                counts["ambiguous"] += 1
+                reach = min(max([w for w, _st in widths if w is not None] + [bucket]), PERP_MAX_WIDTH)
+                for name in ("5m", "15m"):
+                    if t - WINDOWS[name] - reach <= start < t:
+                        unknown_windows.add(name)
+                continue
+            width = usable.pop()
+            if start + width > t:
+                counts["open"] += 1
+                continue
+            bid, ask = next(iter(values))
+            counts["revised"] += int(len(set(folded_values) | {e[3] for e in known}) > 1)
+            if start < t - WINDOWS["15m"] - width:
+                continue
+            counts["other_width"] += int(width != bucket)
+            seen_any = True
+            sums["15m"] += ask - bid
+            volume15 += ask + bid
+            if start >= t - WINDOWS["5m"] - width:
+                sums["5m"] += ask - bid
+        meta = {"buckets_open": counts["open"], "buckets_ambiguous": counts["ambiguous"],
+                "buckets_revised": counts["revised"], "buckets_other_width": counts["other_width"],
+                "window_status": {name: "UNKNOWN" if name in unknown_windows else "OK" for name in ("5m", "15m")}}
+        if not seen_any and not unknown_windows:
+            return {"status": "keine Daten in den letzten 15 Minuten", "bucket_seconds": bucket, **meta}
+        return {"bucket_seconds": bucket,
+                "delta_5m": None if "5m" in unknown_windows else _round(sums["5m"]),
+                "delta_15m": None if "15m" in unknown_windows else _round(sums["15m"]),
+                "volume_15m": None if "15m" in unknown_windows else _round(volume15), **meta}
+
+
 class LiveOrderflowTracker:
     """Rolling store of the last ``keep_seconds`` of trades for one spot symbol."""
 
@@ -125,10 +293,7 @@ class LiveOrderflowTracker:
         self._last_snapshot: float | None = None
         self.unavailable_dropped = 0  # trades handed in without available_at: availability UNKNOWN, never evidence
         self._incomplete_days: set[float] = set()  # UTC days whose own values miss such trades
-        self._perp_log = RevisionLog()  # perp buckets with the moment each revision was first seen (pit contract)
-        # Perp bucket width per store revision, (seen epoch, width or None, status), in the order first seen. The width a
-        # snapshot uses is the one of the newest revision seen by its time, never one written later (Codex #377, 27.11.).
-        self._perp_widths: list[tuple[float, int | None, str]] = []
+        self._perp_history = PerpAsOf()  # canonical as-of history of the perp store revisions (reference: docs/ORDERFLOW_REFERENZ_AB.md)
         self.last_trade_id: int | None = None
         self.last_trade_time: datetime | None = None
         self.day_key: float | None = None
@@ -247,91 +412,24 @@ class LiveOrderflowTracker:
                 buckets[index].append(item)
         return [self._window(bucket) for bucket in buckets]
 
-    def _note_perp_width(self, seen: float, width: int | None, status: str) -> None:
-        """Remember the bucket width a store revision states, at the moment it was first seen.
-
-        Kept in order of that moment: a revision noted late (e.g. 12:00:15 after 13:00 in a replay) is put in its
-        place, never dropped and never overwritten by a neighbour (Codex #377, 27.11.)."""
-        entry = (seen, width, status)
-        if entry in self._perp_widths:
-            return
-        self._perp_widths.insert(bisect_right([e[0] for e in self._perp_widths], seen), entry)
-        if len(self._perp_widths) > PERP_WIDTH_HISTORY:
-            del self._perp_widths[: len(self._perp_widths) - PERP_WIDTH_HISTORY]
-
-    def _perp_width_at(self, moment: float) -> tuple[int | None, str]:
-        """Bucket width of the newest revision seen at or before ``moment``; ``NOT_AVAILABLE`` when none was seen yet,
-        ``INCONSISTENT`` when revisions seen at that same moment state different widths (fail closed, order-free)."""
-        index = bisect_right([e[0] for e in self._perp_widths], moment)
-        if not index:
-            return None, BUCKET_NOT_AVAILABLE
-        latest = self._perp_widths[index - 1][0]
-        stated = {(w, st) for seen, w, st in self._perp_widths[:index] if seen == latest}
-        if len(stated) > 1:
-            return None, BUCKET_INCONSISTENT     # two revisions seen at the same moment disagree: no width is evidence
-        return stated.pop()
-
     def _perp(self, store: Mapping[str, Any] | None, now: datetime) -> dict[str, Any] | None:
-        """Perp delta of the last 5/15 minutes from closed buckets in the revision TIM had seen by ``now``.
+        """Perp delta of the last 5/15 minutes as TIM could know it at ``now`` (see :class:`PerpAsOf`).
 
-        The store is noted in the revision log at ``max(now, updated_at)``: live that is the moment TIM holds it, in a
-        replay a store written after ``now`` is never seen before it was written. A store without a readable
-        ``updated_at`` is not noted (its time is unknown); only what was seen before counts (Codex #377, Mission 07:
-        the 11:50 bucket written at 13:00 is not evidence at 12:00).
+        The store is noted at ``seen = max(now, updated_at)``: live that is the moment TIM holds it, in a replay a
+        store written after ``now`` is never seen before it was written (availability is never backdated). A store
+        without a readable ``updated_at`` is not noted (its time is unknown). The answer depends only on the revisions
+        seen by ``now``, never on the order they were noted or on anything seen later.
         """
         if not store or not store.get("days"):
             return None
         updated = as_time(store.get("updated_at"))
         if updated is not None:
-            seen_at = max(now, updated)
-            self._perp_log.observe(store["days"], seen_at)
-            self._note_perp_width(seen_at.timestamp(), *bucket_size(store))
-        # The bucket size decides which buckets are closed by ``now``. It is evidence like the rows: only the width of
-        # the newest store revision seen by ``now`` counts, never the width of a revision written later (Codex #377,
-        # 27.11.: a 300 s bucket still open at 12:00 must not become closed because the 13:00 store says 60 s). A missing,
-        # unusable or not yet available size is never replaced by an assumed one (F1, #372 Mission 07-FINAL): the perp
-        # block is unknown (fail closed).
-        bucket, bucket_status = self._perp_width_at(_epoch(now))
-        if bucket is None:
-            return {"status": "Bucket-Größe unbekannt", "bucket_seconds": None, "bucket_seconds_status": bucket_status,
-                    "updated_at": store.get("updated_at"), "store_time_known": updated is not None, "closed_buckets_only": True}
-        moment = _epoch(now)
-        # Each bucket is judged by the width of the store revision its value was first seen in, not by the newest
-        # width (Codex #377, 27.11.): a 300 s bucket written at 12:00 and unchanged in a 60 s revision of 12:00:15 is
-        # still open until 12:01. A bucket whose revision came without a usable width is unknown, never assumed.
-        rows, unknown = self._perp_log.revisions_at(now)
-        counts = {"unknown": unknown, "revised_later": 0, "open": 0, "width_unknown": 0, "other_width": 0}
-        delta5 = delta15 = volume15 = 0.0
-        seen = False
-        for _day, bucket_time, _level, first_seen, values, revised_later in rows:
-            width, _status = self._perp_width_at(first_seen)
-            if width is None:
-                counts["width_unknown"] += 1
-                continue
-            if bucket_time + width > moment:
-                counts["open"] += 1
-                continue
-            if len(values) < 2:
-                counts["unknown"] += 1
-                continue
-            counts["revised_later"] += int(revised_later)
-            counts["other_width"] += int(width != bucket)
-            bid, ask = values[0], values[1]
-            if bucket_time < moment - 900 - width:
-                continue
-            seen = True
-            delta15 += ask - bid
-            volume15 += ask + bid
-            if bucket_time >= moment - 300 - width:
-                delta5 += ask - bid
-        meta = {"updated_at": store.get("updated_at"), "store_time_known": updated is not None,
-                "closed_buckets_only": True, "buckets_unknown": counts["unknown"], "buckets_revised_later": counts["revised_later"],
-                "buckets_width_unknown": counts["width_unknown"], "buckets_other_width": counts["other_width"]}
-        if not seen:
-            return {"status": "keine Daten in den letzten 15 Minuten", **meta}
-        return {"symbol": store.get("symbol"), "bucket_seconds": bucket, "delta_5m": _round(delta5), "delta_15m": _round(delta15),
-                "volume_15m": _round(volume15), **meta}
-
+            self._perp_history.observe(store, updated, max(now, updated))
+        meta = {"updated_at": store.get("updated_at"), "store_time_known": updated is not None, "closed_buckets_only": True}
+        block = self._perp_history.at(now)
+        if "delta_5m" in block:
+            meta["symbol"] = store.get("symbol")
+        return {**meta, **block}
 
     def snapshot(self, now: datetime, levels: Sequence[Mapping[str, Any]] = (),
                  perp_store: Mapping[str, Any] | None = None,
@@ -505,8 +603,9 @@ def describe(state: Mapping[str, Any]) -> str:
         tag = f" ({', '.join(flags)})" if flags else ""
         parts.append(f"{level['name']} {level['price']:.0f} {level['distance_pct']:+.2f} %{tag}.")
     perp = state.get("perp") or {}
-    if perp.get("delta_5m") is not None:
-        parts.append(f"Perp-Delta 5m {perp['delta_5m']:+.1f}, 15m {perp['delta_15m']:+.1f}.")
+    if perp.get("delta_5m") is not None or perp.get("delta_15m") is not None:
+        five, fifteen = (f"{perp[k]:+.1f}" if perp.get(k) is not None else "unbekannt" for k in ("delta_5m", "delta_15m"))
+        parts.append(f"Perp-Delta 5m {five}, 15m {fifteen}.")
     return " ".join(parts)
 
 
