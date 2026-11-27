@@ -53,6 +53,9 @@ class _Quarantine(Exception):
 
 
 LAYOUTS = ("v1", "v2")
+# Layout for archive schemas created from now on through the command line. The library default
+# stays v1 so existing callers and benches behave exactly as before; an existing schema keeps its layout.
+PREFERRED_NEW_LAYOUT = "v2"
 
 
 def _schema_ddl(schema: str, layout: str = "v1") -> list[str]:
@@ -154,6 +157,14 @@ async def ensure_schema(connection: Any, schema: str = DEFAULT_SCHEMA, layout: s
         for statement in _schema_ddl(schema, chosen):
             await connection.execute(statement)
     return chosen
+
+
+async def layout_for_new_schema(connection: Any, schema: str, requested: str | None = None) -> str | None:
+    """Layout to pass to ensure_schema: the requested one, else the preferred one for a schema that
+    does not exist yet, else None (an existing schema keeps whatever layout it has)."""
+    if requested is not None:
+        return requested
+    return PREFERRED_NEW_LAYOUT if await archive_layout(connection, checked_schema(schema)) is None else None
 
 
 def row_reference(layout: str) -> tuple[str, str]:

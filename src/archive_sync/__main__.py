@@ -58,13 +58,15 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     connection = await _connect("TIM_ARCHIVE_TARGET_URL")
     try:
         if args.command == "init":
-            layout = await importer.ensure_schema(connection, args.schema, args.layout)
+            requested = await importer.layout_for_new_schema(connection, args.schema, args.layout)
+            layout = await importer.ensure_schema(connection, args.schema, requested)
             return {"schema": args.schema, "initialised": True, "layout": layout}
         if args.command == "state":
             return await importer.server_state(connection, args.symbol, args.schema)
         if args.command == "import":
             return await importer.import_directory(
-                connection, args.dir, symbol=args.symbol, gate_path=args.gate_path, schema=args.schema
+                connection, args.dir, symbol=args.symbol, gate_path=args.gate_path, schema=args.schema,
+                layout=await importer.layout_for_new_schema(connection, args.schema),
             )
         if args.command == "health":
             return await health.archive_health(
@@ -110,7 +112,7 @@ def build_parser() -> argparse.ArgumentParser:
         if name != "init":
             command.add_argument("--symbol", required=True)
         else:
-            command.add_argument("--layout", choices=("v1", "v2"), help="only for a new schema; default v1")
+            command.add_argument("--layout", choices=("v1", "v2"), help="only for a new schema; default v2 (an existing schema keeps its layout)")
         if name == "import":
             command.add_argument("--dir", required=True)
         if name in ("import", "health"):
