@@ -734,7 +734,7 @@ class TIMApplication:
         while not self.worker_stop.is_set():
             try:
                 trades = await self.repository.agg_trades_since(settings.symbol, since)
-                tracker.ingest(trades)
+                tracker.ingest(trades, available_at=datetime.now(timezone.utc))  # visible from the read on (Paket A)
                 if tracker.last_trade_time is not None:
                     since = tracker.last_trade_time
                 now = datetime.now(timezone.utc)

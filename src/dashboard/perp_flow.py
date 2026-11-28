@@ -183,6 +183,7 @@ class PerpFlow:
         self.next_id: int | None = None
         self.segments: list[list[int]] = []  # [first_ms, last_ms] of each stretch read without a hole
         self.gaps: list[dict[str, Any]] = []
+        self.unknown_side = 0  # trades whose "m" is not a real bool: not counted on either side (Paket B, #372)
         self.checks: list[dict[str, Any]] = []
         self.calls = 0
         self.updated_at: str | None = None
@@ -206,6 +207,7 @@ class PerpFlow:
         self.next_id = state.get("next_id")
         self.segments = [list(map(int, s)) for s in state.get("segments") or []]
         self.gaps = list(state.get("gaps") or [])
+        self.unknown_side = int(state.get("unknown_side") or 0)
         self.checks = list(state.get("checks") or [])
         self.edges = {int(k): [float(v[0]), float(v[1])] for k, v in (state.get("edges") or {}).items()}
         self.updated_at = state.get("updated_at")
@@ -237,6 +239,7 @@ class PerpFlow:
                 os.replace(path, archive / path.name)
         state = {"symbol": self.symbol, "tick": self.spec.tick, "next_id": self.next_id, "segments": self.segments,
                  "gaps": self.gaps[-50:], "checks": self.checks[-CHECK_KEEP:], "updated_at": self.updated_at,
+                 "unknown_side": self.unknown_side,
                  "edges": {str(k): v for k, v in sorted(self.edges.items())[-EDGES_KEPT:]}}
         self._write(self.directory / "state.json", json.dumps(state).encode())
 
@@ -295,7 +298,7 @@ class PerpFlow:
 
     def _add(self, row: Mapping[str, Any]) -> None:
         agg_id, price, quantity, ms = int(row["a"]), float(row["p"]), float(row["q"]), int(row["T"])
-        seller_aggressive = bool(row["m"])  # buyer is maker: the seller hit the bid
+        maker = row.get("m")  # buyer is maker: the seller hit the bid; anything but a real bool is an unknown side
         if agg_id < self.next_id:
             return  # already counted (overlap after a restart)
         if agg_id > self.next_id:
@@ -309,6 +312,10 @@ class PerpFlow:
         key = _day_key(ms)
         if agg_id < self.upto.get(key, 0):
             return  # counted in the saved day file already
+        if not isinstance(maker, bool):
+            self.unknown_side += 1  # id and time are counted above; the volume goes on neither side
+            return
+        seller_aggressive = maker
         bucket = ms // 1000 // BUCKET_SECONDS * BUCKET_SECONDS
         tick = self.spec.tick
         level = round(math.floor(price / tick + 1e-9) * tick, 8)  # 84.15 / 0.05 = 1682.999… stays on 84.15
@@ -385,6 +392,7 @@ class PerpFlow:
         since = self.segments[0][0] if self.segments else None
         return {"since": datetime.fromtimestamp(since / 1000, tz=timezone.utc).isoformat() if since else None,
                 "next_id": self.next_id, "gaps": len(self.gaps), "last_gap": self.gaps[-1] if self.gaps else None,
+                "unknown_side": self.unknown_side,
                 "checks": len(checked), "checks_ok": sum(1 for c in checked if c["ok"]), "last_check": checked[-1] if checked else None,
                 "failed_hours": [c["hour"] for c in checked if not c["ok"]][-10:],
                 "calls": self.calls}
