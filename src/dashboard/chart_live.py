@@ -125,7 +125,7 @@ GROUP_NAMES = {
     "plans_short": "TIM-Pläne SHORT 15m", "plans_mid": "TIM-Pläne MID 1h", "plans_long": "TIM-Pläne LONG 1D",
     "plans_old": "TIM-Pläne Testversionen 30m",
     "gamma": "Options-Gamma (Deribit)",
-    "gamma_ob": "Gamma-Zonen mit Orderbuch-Mauer (bestätigt)",
+    "gamma_ob": "Gamma-Level mit Orderbuch-Mauer",
     "reading": "TIM-Deutung Englisch (nur angemeldet)", "reading_de": "TIM-Deutung Deutsch (nur angemeldet)",
     "liq": "Liquidations-Heatmap (Modell, keine echten Liquidationen)",
     "liqev": "Liquidationen (echt, Binance + Bybit)",

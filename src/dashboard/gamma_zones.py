@@ -1,16 +1,20 @@
-"""Gamma zones confirmed by the order book: display and shadow log, no signal, no order.
+"""Gamma levels with an order-book wall nearby: display and shadow log, no signal, no order.
 
 Uzi 21.11.2026: "die besonderen Gamma-Preiszonen einzeichnen mithilfe des Orderbuches". The options levels of
 :mod:`src.dashboard.gamma_data` (Deribit) alone were hardly reliable as price levels (review of 17.11.2026). The
-order book shows where large resting orders really stand right now. A gamma level counts as a confirmed zone
-when a standing wall of our own Binance perpetual recording (:mod:`src.research_lab.orderbook.walls`, at least
-30 minutes old) lies within ``TOLERANCE_PCT`` of it.
+order book shows where large resting orders really stand right now. A gamma level is drawn as a zone when a
+standing wall of our own Binance perpetual recording (:mod:`src.research_lab.orderbook.walls`, at least
+30 minutes old) lies within ``TOLERANCE_PCT`` of it. That says a wall stands near the level, not that a gamma
+effect is confirmed.
+
+Both sources must be fresh and plausible before any zone is shown (1.2, 24.11.2026): the order book (``walls_as_of``)
+and the gamma snapshot (``gamma_as_of``). Every view carries both times, so the UI and the API can show them.
 
 Three parts:
 
-* ``refresh`` follows the recorder's archive and stores walls and confirmed zones in ``state.gamma_zones``.
-* ``chart_drawings`` draws each confirmed zone as a band (group "gamma_ob").
-* ``track`` / ``update`` keep a shadow log of every visit to a confirmed zone: gehalten (price left on the side
+* ``refresh`` follows the recorder's archive and stores walls and zones in ``state.gamma_zones``.
+* ``chart_drawings`` draws each zone as a band (group "gamma_ob").
+* ``track`` / ``update`` keep a shadow log of every visit to a zone: gehalten (price left on the side
   it came from) or gebrochen (price went through), and whether the wall was pulled during the visit.
 
 The rule is frozen (``RULESET``) before any outcome was seen. Order-flow rules cannot be backtested here (no
@@ -27,15 +31,29 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from src.dashboard import gamma_data
 from src.research_lab.orderbook import walls as wall_rules
 
-RULESET = "gamma-orderbuch/1.1"  # 1.1 (22.11.2026): every standing wall counts, not only the 5 largest per side
+# 1.1 (22.11.2026): every standing wall counts, not only the 5 largest per side.
+# 1.2 (24.11.2026): zones only when the gamma snapshot is fresh too (no old, missing or future ``as_of``) and the book
+# time is not in the future. Point in time: a source time after now (even by a second) is not yet available, so no
+# zone; a skew beyond ``FUTURE_SKEW`` is flagged apart as a probable clock error (diagnosis only, not a gate).
+# Rollback-safe: 1.2 writes its own file (``log_path``), the 1.1 log stays byte for byte as it was, so a revert to 1.1
+# sees only 1.1 visits and a return to 1.2 continues its own file. Visits beyond ``MAX_VISITS`` go to an archive
+# file next to it (append only), never lost.
+RULESET = "gamma-orderbuch/1.2"
 SCHEMA = "tim_gamma_zone_watch/1"
 LEVEL_KEYS = ("flip", "call_wall", "put_wall", "oi_call", "oi_put")  # expected move and max pain are no gamma levels
 TOLERANCE_PCT = 0.003   # wall within 0.3 % of the gamma level
 PAD_PCT = 0.001         # a visit ends when the price is 0.1 % outside the zone
 STALE_AFTER = timedelta(minutes=10)  # walls older than this are not drawn (recorder or reader stands still)
-VERDICT_FROM = 30       # closed visits before the first verdict
+GAMMA_STALE_AFTER = gamma_data.STALE_AFTER  # gamma snapshot older than this: no zones (same limit as the gamma lines)
+FUTURE_SKEW = timedelta(seconds=60)  # diagnosis: a source time more than this ahead of now is a clock error
+# Statuses with a fresh book: the price is known, so the runtime may advance the shadow log (open visits close by
+# price). Only "OK" ever opens a visit (``track``).
+WATCH_STATUSES = ("OK", "NO_GAMMA", "STALE_GAMMA", "FUTURE_GAMMA", "UNKNOWN_GAMMA_TIME")
+VERDICT_FROM = 30       # closed visits (gehalten + gebrochen, censored ones not) before the first verdict
+CENSORED = "zensiert"   # visit interrupted by a gap or a version switch: no outcome observed
 MAX_VISITS = 500
 DEFAULT_PATH = Path("data/journal/tim_gamma_zone_watch.json")
 ROOT_ENV = "TIM_ORDERBOOK_ROOT"
@@ -80,22 +98,70 @@ def confirm(levels: Sequence[Mapping[str, Any]], walls: Sequence[Mapping[str, An
     return merged
 
 
+def _parse_time(value: Any) -> datetime | None:
+    """ISO time with a zone, else None (a naive or unparsable time cannot be compared with now)."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
+
+
+def gamma_check(gamma: Mapping[str, Any] | None, now: datetime) -> tuple[str, str | None, dict[str, Any]]:
+    """Status of the gamma snapshot for the zones: OK, NO_GAMMA, STALE_GAMMA, FUTURE_GAMMA or UNKNOWN_GAMMA_TIME.
+
+    Two times (Mission 07): ``as_of`` is when TIM received the snapshot (availability, must be <= now) and
+    ``source_as_of`` the oldest source time of the rows (freshness). Freshness is never inferred from the receipt:
+    without a source time the status is UNKNOWN_GAMMA_TIME and no zone is shown."""
+    times: dict[str, Any] = {"gamma_as_of": None, "gamma_age_seconds": None, "gamma_source_as_of": None,
+                             "gamma_clock_skew_suspect": False}
+    if not gamma or not gamma.get("levels"):
+        return "NO_GAMMA", "kein Gamma-Stand", times
+    moment = _parse_time(gamma.get("as_of"))
+    if moment is None:
+        return "NO_GAMMA", "Gamma-Stand ohne gültige Zeit, Zonen ausgeblendet", times
+    source = _parse_time(gamma.get("source_as_of"))
+    age = now - (source or moment)
+    times = {"gamma_as_of": moment.isoformat(), "gamma_age_seconds": int(age.total_seconds()) if source else None,
+             "gamma_source_as_of": source.isoformat() if source else None,
+             "gamma_clock_skew_suspect": now - moment < -FUTURE_SKEW or age < -FUTURE_SKEW}
+    if now - moment < timedelta(0) or (source is not None and source > moment) or age < timedelta(0):
+        return "FUTURE_GAMMA", "Gamma-Stand liegt in der Zukunft, Zonen ausgeblendet", times
+    if source is None:
+        return "UNKNOWN_GAMMA_TIME", "Gamma-Quellzeit unbekannt (nur Empfangszeit), Zonen ausgeblendet", times
+    if age > GAMMA_STALE_AFTER:
+        return "STALE_GAMMA", "Gamma-Stand ist alt, Zonen ausgeblendet", times
+    return "OK", None, times
+
+
 def build(gamma: Mapping[str, Any] | None, walls_view: Mapping[str, Any] | None, now: datetime | None = None) -> dict[str, Any]:
-    """View for state, API and chart from a gamma snapshot and the walls view of :class:`walls.Tail`."""
+    """View for state, API and chart from a gamma snapshot and the walls view of :class:`walls.Tail`.
+
+    Only status OK carries zones. Every view carries ``gamma_as_of``, ``gamma_age_seconds`` and ``walls_as_of``
+    (None when unknown). Book checks come first (without a fresh book nothing is known), then the gamma checks.
+    """
     now = now or datetime.now(timezone.utc)
+    gamma_status, gamma_note, gamma_times = gamma_check(gamma, now)
     out: dict[str, Any] = {"ruleset": RULESET, "walls_ruleset": wall_rules.RULESET, "as_of": now.isoformat(),
-                           "status": "OK", "note": None, "walls": [], "zones": [], "mid": None}
+                           "status": "OK", "note": None, "walls": [], "zones": [], "mid": None,
+                           "walls_as_of": None, "walls_clock_skew_suspect": False, **gamma_times}
     if not walls_view or walls_view.get("last_event_ms") is None:
         return {**out, "status": "MISSING", "note": "kein Orderbuch-Archiv gefunden oder noch kein Stand"}
     out["mid"] = walls_view.get("mid")
-    out["walls_as_of"] = datetime.fromtimestamp(walls_view["last_event_ms"] / 1000, timezone.utc).isoformat()
+    walls_at = datetime.fromtimestamp(walls_view["last_event_ms"] / 1000, timezone.utc)
+    out["walls_as_of"] = walls_at.isoformat()
+    out["walls_clock_skew_suspect"] = walls_at - now > FUTURE_SKEW
+    if walls_at > now:
+        return {**out, "status": "FUTURE_BOOK", "note": "Orderbuch-Zeit liegt in der Zukunft, Zonen ausgeblendet"}
     if not walls_view.get("caught_up"):
         return {**out, "status": "CATCHING_UP", "note": "Orderbuch-Archiv wird noch eingelesen"}
-    if now - datetime.fromisoformat(out["walls_as_of"]) > STALE_AFTER or not walls_view.get("synced"):
+    if now - walls_at > STALE_AFTER or not walls_view.get("synced"):
         return {**out, "status": "STALE", "note": "Orderbuch-Stand ist alt oder ohne Anschluss, Zonen ausgeblendet"}
     out["walls"] = [dict(w) for w in walls_view.get("walls") or []]   # the largest per side, for the display
-    if not gamma or not gamma.get("levels"):
-        return {**out, "status": "NO_GAMMA", "note": "kein Gamma-Stand"}
+    if gamma_status != "OK":
+        return {**out, "status": gamma_status, "note": gamma_note}
     # Offline check 22.11.2026 (5 h real book): with only the 5 largest walls per side a smaller wall right at the
     # put wall dropped out, zones were missing in 130 of 319 minutes and flickered. Zones look at every standing wall.
     every = walls_view.get("walls_all")
@@ -150,9 +216,11 @@ def chart_drawings(view: Mapping[str, Any] | None, watch: Mapping[str, Any] | No
     notes = []
     counts = summary(watch) if watch else None
     if view.get("status") == "OK":
-        text = f"Gamma-Zonen mit Orderbuch: {len(drawings)} bestätigt"
+        text = f"Gamma-Level mit Orderbuch-Mauer: {len(drawings)}"
         if counts and counts["closed"]:
             text += f", Berührungen {counts['closed']} ({counts['held']} gehalten, {counts['broken']} gebrochen), Urteil ab {VERDICT_FROM}"
+            if counts.get("censored"):
+                text += f", {counts['censored']} wegen Beobachtungslücke ohne Ergebnis"
         notes.append(text + ".")
     elif view.get("note"):
         notes.append(f"Gamma-Zonen: {view['note']}.")
@@ -161,8 +229,20 @@ def chart_drawings(view: Mapping[str, Any] | None, watch: Mapping[str, Any] | No
 
 # --- shadow log ---------------------------------------------------------------------------------------------------
 
+def log_path(path: Path = DEFAULT_PATH) -> Path:
+    """The file of the current ruleset next to ``path`` (``path`` itself holds the 1.1 log and is never written)."""
+    path = Path(path)
+    return path.with_name(f"{path.stem}.{RULESET.replace('/', '-')}{path.suffix}")
+
+
+def archive_path(path: Path = DEFAULT_PATH) -> Path:
+    target = log_path(path)
+    return target.with_name(target.stem + ".archive.jsonl")
+
+
 def load(path: Path = DEFAULT_PATH) -> dict[str, Any] | None:
-    target = Path(path)
+    """The shadow log of the current ruleset (see :func:`log_path`)."""
+    target = log_path(path)
     if not target.is_file():
         return None
     try:
@@ -179,11 +259,34 @@ def _save(state: Mapping[str, Any], path: Path) -> None:
 
 
 def summary(state: Mapping[str, Any] | None) -> dict[str, int]:
-    visits = (state or {}).get("visits") or []
-    return {"open": len((state or {}).get("open") or []), "closed": len(visits),
+    """Counts of the current ``RULESET`` only. Visits of an earlier ruleset (1.1 visits carry no ``ruleset``) are
+    never counted in; should a log hold some, they show in ``earlier_open`` / ``earlier_closed``."""
+    every = (state or {}).get("visits") or []
+    every_open = (state or {}).get("open") or []
+    visits = [v for v in every if v.get("ruleset") == RULESET]
+    opened = [v for v in every_open if v.get("ruleset") == RULESET]
+    censored = [v for v in visits if v.get("outcome") == CENSORED]
+    observed = [v for v in visits if v.get("outcome") != CENSORED]
+    return {"open": len(opened), "closed": len(observed), "censored": len(censored),
             "held": sum(1 for v in visits if v["outcome"] == "gehalten"),
             "broken": sum(1 for v in visits if v["outcome"] == "gebrochen"),
-            "pulled": sum(1 for v in visits if v.get("wall_pulled"))}
+            "pulled": sum(1 for v in visits if v.get("wall_pulled")),
+            "earlier_open": len(every_open) - len(opened), "earlier_closed": len(every) - len(visits)}
+
+
+def _gap_reason(previous: Mapping[str, Any], at: str) -> str | None:
+    """Why the watch was interrupted before ``at``: a pause longer than ``STALE_AFTER`` (runtime down, book stale,
+    restart), time going back, or an unreadable last time. None when the step follows the last one closely."""
+    if not previous.get("updated_at"):
+        return None
+    last, now = _parse_time(str(previous["updated_at"])), _parse_time(at)
+    if last is None or now is None:
+        return "Zeit unlesbar"
+    if now < last:
+        return "Zeit rückwärts"
+    if now - last > STALE_AFTER:
+        return "Beobachtungslücke"
+    return None
 
 
 def track(state: Mapping[str, Any] | None, view: Mapping[str, Any], price: float, at: str) -> dict[str, Any]:
@@ -192,13 +295,29 @@ def track(state: Mapping[str, Any] | None, view: Mapping[str, Any], price: float
     A visit opens when the price stands in a confirmed zone and the price of the step before lay outside it (so
     the side it came from is known). The zone is frozen at that moment. The visit closes when the price is more
     than the pad outside: on the side it came from = gehalten, on the other side = gebrochen. If the zone is no
-    longer confirmed while the visit runs, ``wall_pulled`` is set; the visit still ends by price.
+    longer shown while the visit runs, ``wall_pulled`` is set; the visit still ends by price.
+
+    Invalid states (any status but OK: book missing, old or in the future, gamma missing, old or in the future)
+    never open a visit. Open visits go on: they still close by price, and ``wall_pulled`` is not set, because the
+    zones are unknown then (not gone).
+
+    Censoring (Mission 07, Codex #372): the gap check comes before any outcome. After a pause longer than
+    ``STALE_AFTER`` (or time going back), and for open visits of another ruleset, the open visits end as ``zensiert``
+    with the reason and the last watched moment, never as gehalten or gebrochen: the price may have gone anywhere in
+    between. ``summary`` counts them apart; the verdict denominator is gehalten + gebrochen only. New visits carry ``ruleset``; visits of earlier rulesets are kept as they are.
     """
     previous = state or {}
     out = {"schema": SCHEMA, "ruleset": RULESET, "started_at": previous.get("started_at") or at, "open": [],
+           "archived": int(previous.get("archived") or 0),
            "visits": list(previous.get("visits") or []), "last_price": price, "updated_at": at}
     zones = (view.get("zones") or []) if view.get("status") == "OK" else None   # None: nothing known about the book now
+    gap = _gap_reason(previous, at)
     for visit in previous.get("open") or []:
+        reason = gap or ("Versionswechsel" if visit.get("ruleset") != RULESET else None)
+        if reason:      # censored (Mission 07): the path in between was not watched, so no outcome is claimed
+            out["visits"].append({**visit, "closed_at": at, "outcome": CENSORED, "censor_reason": reason,
+                                  "observed_until": previous.get("updated_at")})
+            continue
         pad = visit["pad"]
         if zones is not None and not any(z["wall_low"] == visit["wall_low"] and z["side"] == visit["side"] for z in zones):
             visit = {**visit, "wall_pulled": True}
@@ -209,9 +328,8 @@ def track(state: Mapping[str, Any] | None, view: Mapping[str, Any], price: float
         else:
             out["open"].append(visit)
     last = previous.get("last_price")
-    if last is not None and previous.get("updated_at"):
-        if datetime.fromisoformat(at) - datetime.fromisoformat(str(previous["updated_at"])) > STALE_AFTER:
-            last = None   # after a pause the side the price came from is not known
+    if gap:
+        last = None   # after a pause the side the price came from is not known
     for zone in zones or []:
         if not zone["low"] <= price <= zone["high"] or last is None or zone["low"] <= last <= zone["high"]:
             continue
@@ -221,8 +339,7 @@ def track(state: Mapping[str, Any] | None, view: Mapping[str, Any], price: float
                             "low": zone["low"], "high": zone["high"], "side": zone["side"], "wall_low": zone["wall_low"],
                             "wall_qty": zone["wall_qty"], "wall_usd": zone["wall_usd"], "wall_ratio": zone["wall_ratio"],
                             "pad": price * PAD_PCT, "entry_price": price, "from": "unten" if last < zone["low"] else "oben",
-                            "wall_pulled": False})
-    out["visits"] = out["visits"][-MAX_VISITS:]
+                            "wall_pulled": False, "ruleset": RULESET})
     return out
 
 
@@ -232,5 +349,48 @@ def update(path: Path, view: Mapping[str, Any] | None, price: float | None, now:
         return None
     at = (now or datetime.now(timezone.utc)).isoformat()
     state = track(load(path), view, float(price), at)
-    _save(state, Path(path))
+    overflow = state["visits"][:-MAX_VISITS]
+    if overflow:                                   # retention: keep the newest in the log, the rest archived, not lost
+        total = _archive(archive_path(path), overflow)
+        state = {**state, "visits": state["visits"][-MAX_VISITS:], "archived": total}
+    _save(state, log_path(path))
     return state
+
+
+def _visit_id(visit: Mapping[str, Any]) -> str:
+    return f"{visit.get('opened_at')}|{visit.get('key')}|{visit.get('wall_low')}|{visit.get('closed_at')}"
+
+
+def read_archive(path: Path) -> list[dict[str, Any]]:
+    """Archived visits; a line cut by a crash is skipped, never fatal."""
+    out = []
+    if Path(path).is_file():
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict):
+                out.append(row)
+    return out
+
+
+def _archive(path: Path, visits: Sequence[Mapping[str, Any]]) -> int:
+    """Append visits not yet in the archive, then fsync; the log is saved only after this. Returns the archive size.
+
+    Crash-safe and idempotent: a crash after the append and before the log is saved leaves the overflow in the log, the
+    next step offers the same visits again and they are skipped by id; a half-written last line is cut off by a newline
+    before the next append and skipped when read."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    known = {_visit_id(v) for v in read_archive(path)}
+    new = [v for v in visits if _visit_id(v) not in known]
+    if not new:
+        return len(known)
+    with path.open("ab") as fh:
+        if fh.tell() and path.read_bytes()[-1:] != b"\n":
+            fh.write(b"\n")
+        for visit in new:
+            fh.write((json.dumps(visit, ensure_ascii=False, default=str) + "\n").encode("utf-8"))
+        fh.flush()
+        os.fsync(fh.fileno())
+    return len(known) + len(new)
