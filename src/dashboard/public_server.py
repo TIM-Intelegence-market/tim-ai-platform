@@ -31,9 +31,9 @@ from src.dashboard.security import _require_loopback_host
 
 DEFAULT_PORT = 8780
 PLAN_PATHS = frozenset({"/chart", "/api/chart/live"})  # open, but TIM's plans on them need the login
-PAGES = ("/chart", "/journal", "/journal/trade", "/live", "/reading")
+PAGES = ("/chart", "/guide", "/journal", "/journal/trade", "/live", "/reading")
 # Query keys a public page or API may pass on; everything else is dropped before rendering.
-QUERY_KEYS = {"/chart": ("symbol", "tf"), "/journal": ("rule",), "/journal/trade": ("rule", "id"), "/live": (), "/reading": ("tf", "lang"), "/api/chart/live": ("symbol", "tf", "market"), "/api/plan-journal": ("rule",)}
+QUERY_KEYS = {"/chart": ("symbol", "tf"), "/guide": ("lang",), "/journal": ("rule",), "/journal/trade": ("rule", "id"), "/live": (), "/reading": ("tf", "lang"), "/api/chart/live": ("symbol", "tf", "market"), "/api/plan-journal": ("rule",)}
 PAGE_TTL = 10.0        # seconds a rendered public page is reused
 API_TTL = 5.0          # seconds a data answer is reused
 RATE_PER_MINUTE = 120  # requests per client and minute
@@ -284,6 +284,8 @@ class PublicDashboardServer:
 
         if path == "/chart":
             return public_en.chart_page(query.get("symbol"), query.get("tf"), self.summary_html(member))
+        if path == "/guide":
+            return public_en.guide_page(query.get("lang"))
         if path == "/live":
             return public_en.live_page(self.live_status())
         if path == "/reading":

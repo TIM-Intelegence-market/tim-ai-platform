@@ -27,7 +27,7 @@ from src.dashboard.plan_journal import FILLED, OPEN, RULE_LEVEL, RULE_STRUCT, RU
 LOCAL = ZoneInfo("Europe/Berlin")
 DISCLAIMER = ("Research, not financial advice. Observation and paper tracking only: no orders, no recommendations. "
               "Data: public Binance candles and TIM's own analysis; the view can be delayed or incomplete.")
-NAV = (("/chart", "Chart"), ("/reading", "Chart reading"), ("/journal", "Paper journal"), ("/live", "Live account"))
+NAV = (("/chart", "Chart"), ("/guide", "Layout guide"), ("/reading", "Chart reading"), ("/journal", "Paper journal"), ("/live", "Live account"))
 REPO = "https://github.com/TIM-Intelegence-market/tim-ai-platform"
 
 GROUPS_EN = {
@@ -914,6 +914,14 @@ def reading_page(card: str, timeframe: str, lang: str) -> str:
     bar = "<div class='rd-bar'>" + link("en", "English", not de) + link("de", "Deutsch", de) + "</div>"
     body = _hero(title, intro) + f"<section class='cc-section'>{bar}</section>" + chart + f"<section class='cc-section'>{card}</section>"
     return shell(title, "/reading", body, extra_css=READING_CSS, disclaimer=READING_DISCLAIMER)
+
+
+def guide_page(lang: str | None) -> str:
+    """Guide to the chart layouts in English or German (Uzi 28.11.2026); open like the chart, no script."""
+    from src.dashboard.layout_guide import guide_body
+
+    de = lang == "de"
+    return shell("Layout-Anleitung" if de else "Layout guide", "/guide", guide_body("de" if de else "en"), extra_css=JOURNAL_CSS)
 
 
 def live_page(status: Mapping[str, Any] | None, now: Any = None) -> str:
