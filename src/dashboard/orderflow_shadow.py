@@ -5,6 +5,8 @@ this shadow reads them and the Live-Orderflow-Lage (src/orderflow/live_state.py)
 
 - ``gate_at_plan`` / ``gate_at_fill``: the wave when the plan appeared and when it filled. BESTÄTIGT when the
   wave runs with the plan and is not exhausted, GEGEN when it runs against the plan, NEUTRAL otherwise.
+  UNBEKANNT (Paket B, #372) when the aggressor side of too much volume is unknown (known share below
+  ``MIN_KNOWN_SHARE`` in any window of the Lage): no wave is evidence then, and it is not counted as neutral flow.
   Later we can read off whether "only enter with confirmation" would have helped.
 - ``of_exit``: once a plan is filled, the shadow leaves when the wave turns against the position (strength >= 2)
   or the own wave shows exhaustion. The shadow's R is compared with the journal's own exit (fixed targets).
@@ -21,7 +23,11 @@ Judgement after ``TARGET_TRADES`` closed plans, by Uzi. Nothing here trades or c
 from __future__ import annotations
 
 import json
+import math
 import os
+import re
+from decimal import Decimal
+from fractions import Fraction
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -31,7 +37,14 @@ DEFAULT_PATH = Path("data/journal/tim_orderflow_shadow.json")
 TARGET_TRADES = 30
 COST_R_PER_SIDE_BPS = 5  # Kraken taker, as measured 04.11.2026 (exit_variants.KRAKEN)
 AGAINST_STRENGTH = 2
-BESTAETIGT, GEGEN, NEUTRAL = "BESTÄTIGT", "GEGEN", "NEUTRAL"
+BESTAETIGT, GEGEN, NEUTRAL, UNBEKANNT = "BESTÄTIGT", "GEGEN", "NEUTRAL", "UNBEKANNT"
+OHNE_LAGE = "OHNE LAGE"  # summary only: NEUTRAL because no Lage was there, kept apart from a Lage without a wave
+# Policy, not calibrated (24.11.2026, before any data with unknown sides): below this share of volume with a known
+# side in ANY window of the Lage (1m, 5m, 15m; the lowest counts) the shadow neither judges nor exits. Exactly 0.95
+# is still judged. Live Binance spot trades always carry the side, so this should never trigger; if it does, it is
+# a data problem to look at, not a threshold to tune.
+MIN_KNOWN_SHARE = 0.95
+MIN_KNOWN = Fraction(95, 100)  # the same threshold as an exact fraction; the decision is 20 * unknown <= total
 WITH = {"LONG": "auf", "SHORT": "ab"}
 # UTC hour -> session. Fixed UTC bounds so the label never moves with daylight saving.
 SESSIONS = ((0, "Asien"), (7, "London"), (13, "London+NY"), (16, "NY"), (21, "nach NY"))
@@ -47,6 +60,102 @@ def _time(value: Any) -> datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
 
+SIDE_SCHEMA = "side-evidence/1"
+_DECIMAL = re.compile(r"[0-9]+(\.[0-9]+)?")
+
+
+def _exact(raw: Any) -> tuple[str, Fraction | None]:
+    """(state, value) of one side-evidence amount. Only a plain decimal string (digits, optional point and digits; no
+    sign, exponent, space, NaN or infinity) is a VALUE; it is read exactly. A float, int, bool or any other type is
+    INVALID: the policy never takes a binary number (#376, 27.11.: ``float(volume)`` turned a share just below 95 %
+    into 95 %). A missing key or ``None`` is MISSING."""
+    if raw is _ABSENT or raw is None:
+        return "MISSING", None
+    if not isinstance(raw, str) or not _DECIMAL.fullmatch(raw):
+        return "INVALID", None
+    return "VALUE", Fraction(Decimal(raw))
+
+
+_ABSENT = object()
+# Which windows of the Lage a signal model reads (F4, #372 Mission 07-FINAL). A model's verdict needs the known-side
+# check on every one of its windows; a window that is not in the Lage is missing evidence, not an empty window.
+#   welle:       direction, strength, phase, exhaustion come from 5m (delta, volume, range) and 1m (range)
+#   level:       absorption and imbalance at a level come from the trades of the last 15m
+#   of-schatten: the shadow gate and exit judge the wave and keep the level rows, so all three
+REQUIRED_WINDOWS = {"welle": ("1m", "5m"), "level": ("15m",), "of-schatten": ("1m", "5m", "15m")}
+GATE_MODEL = "of-schatten"
+
+
+def side_evidence(window: Any) -> tuple[str, Fraction | None, Fraction | None]:
+    """(state, known, unknown) of one window's ``side_evidence`` (``live_state`` writes it, schema ``side-evidence/1``).
+
+    MISSING: no evidence block or an amount absent/null (e.g. a Lage written before this schema). INVALID: not a
+    mapping, another schema, or an amount that is not a plain decimal string. VALUE: both amounts exact."""
+    if not isinstance(window, Mapping):
+        return "INVALID", None, None
+    evidence = window.get("side_evidence", _ABSENT)
+    if evidence is _ABSENT or evidence is None:
+        return "MISSING", None, None
+    if not isinstance(evidence, Mapping) or evidence.get("schema") != SIDE_SCHEMA:
+        return "INVALID", None, None
+    (known_state, known), (unknown_state, unknown) = (_exact(evidence.get("known", _ABSENT)),
+                                                      _exact(evidence.get("unknown", _ABSENT)))
+    states = {known_state, unknown_state}
+    if "INVALID" in states:
+        return "INVALID", None, None
+    if "MISSING" in states:
+        return "MISSING", None, None
+    return "VALUE", known, unknown
+
+
+def known_side(lage: Mapping[str, Any] | None, model: str = GATE_MODEL) -> dict[str, Any]:
+    """Known-side check over the Lage's windows, exact from producer to consumer (reference: ``docs/ORDERFLOW_REFERENZ_AB.md``).
+
+    The policy reads only each window's ``side_evidence`` (exact decimal strings of known and unknown volume), never
+    the display floats ``volume``/``unknown_volume``. A window with ``total = known + unknown > 0`` passes when
+    ``20 * unknown <= total`` (known share >= 95 %, equality passes), in exact rational arithmetic. ``ok`` is True only
+    when every window ``model`` needs (``REQUIRED_WINDOWS``) is there, every window present carries valid evidence and
+    every window with volume passes. An unknown ``model`` raises ``KeyError``. Otherwise False with ``status``
+    MISSING (``windows``, a needed window or evidence absent), INVALID (evidence there but unusable), EMPTY (no window
+    has volume) or BELOW; INVALID before MISSING before EMPTY/BELOW. ``share`` is the lowest share, display only."""
+    required = REQUIRED_WINDOWS[model]
+    lowest: Fraction | None = None
+    below = invalid = missing = False
+    windows = (lage or {}).get("windows")
+    if windows is None:
+        return {"ok": False, "status": "MISSING", "share": None}
+    if not isinstance(windows, Mapping):
+        return {"ok": False, "status": "INVALID", "share": None}
+    if any(name not in windows for name in required):
+        missing = True
+    for window in windows.values():
+        state, known, unknown = side_evidence(window)
+        if state == "INVALID":
+            invalid = True
+            continue
+        if state == "MISSING":
+            missing = True
+            continue
+        total = known + unknown
+        if total > 0:
+            share = known / total
+            lowest = share if lowest is None else min(lowest, share)
+            below = below or 20 * unknown > total
+    display = float(lowest) if lowest is not None else None
+    if invalid:
+        return {"ok": False, "status": "INVALID", "share": display}
+    if missing:
+        return {"ok": False, "status": "MISSING", "share": display}
+    if lowest is None:
+        return {"ok": False, "status": "EMPTY", "share": None}
+    return {"ok": not below, "status": "BELOW" if below else "OK", "share": display}
+
+
+def known_share(lage: Mapping[str, Any] | None) -> float | None:
+    """Lowest raw share of volume with a known side (display); the decision uses :func:`known_side`."""
+    return known_side(lage)["share"]
+
+
 def lage_view(lage: Mapping[str, Any] | None) -> dict[str, Any] | None:
     """The part of the Lage worth keeping on a plan (small, no thresholds, no level table)."""
     if not lage or lage.get("stale") or lage.get("price") is None:
@@ -55,10 +164,18 @@ def lage_view(lage: Mapping[str, Any] | None) -> dict[str, Any] | None:
     near = [{"name": l["name"], "distance_pct": l["distance_pct"], "absorption": l.get("absorption"),
              "imbalance": l.get("imbalance")} for l in (lage.get("levels") or [])[:3]]
     perp = lage.get("perp") or {}
+    windows = lage.get("windows")
+    five = windows.get("5m") if isinstance(windows, Mapping) else None
     return {"as_of": lage.get("as_of"), "price": lage.get("price"), "direction": wave.get("direction"),
             "strength": wave.get("strength"), "phase": wave.get("phase"), "exhaustion": bool(wave.get("exhaustion")),
-            "tempo": lage.get("tempo"), "delta_5m": (lage.get("windows") or {}).get("5m", {}).get("delta"),
-            "perp_delta_5m": perp.get("delta_5m"), "levels": near}
+            "tempo": lage.get("tempo"), "delta_5m": five.get("delta") if isinstance(five, Mapping) else None,
+            "perp_delta_5m": perp.get("delta_5m"), "levels": near, **side_fields(lage)}
+
+
+def side_fields(lage: Mapping[str, Any]) -> dict[str, Any]:
+    """The known-side result every view of the Lage must carry before :func:`gate` may judge it."""
+    side = known_side(lage)
+    return {"known_share": side["share"], "side_ok": side["ok"], "side_status": side["status"]}
 
 
 def session_of(moment: datetime) -> str:
@@ -79,7 +196,10 @@ def timing(moment: datetime, candles_30m: Sequence[Mapping[str, Any]]) -> dict[s
 
 
 def gate(direction: str, view: Mapping[str, Any] | None) -> str:
-    """BESTÄTIGT: wave with the plan and not exhausted. GEGEN: wave against the plan. NEUTRAL: no wave or no data."""
+    """BESTÄTIGT: wave with the plan and not exhausted. GEGEN: wave against the plan. NEUTRAL: no wave or no data.
+    UNBEKANNT: the side of too much volume is unknown, so neither a wave nor its absence says anything."""
+    if side_unknown(view):
+        return UNBEKANNT
     if not view or view.get("direction") in (None, "keine"):
         return NEUTRAL
     if view["direction"] == WITH.get(direction):
@@ -87,8 +207,26 @@ def gate(direction: str, view: Mapping[str, Any] | None) -> str:
     return GEGEN
 
 
+def side_unknown(view: Mapping[str, Any] | None) -> bool:
+    """True when the view's side check failed or was never made. Views noted before Mission 07 carry only
+    ``known_share``: then the raw share is compared. A view with neither field (written before Paket B, or a share of
+    ``None``) has no evidence about the side and is unknown, never known (fail closed). No view at all is not a
+    side problem: that is NEUTRAL / OHNE LAGE, decided by the caller."""
+    if not view:
+        return False
+    if "side_ok" in view:
+        return view["side_ok"] is not True
+    share = view.get("known_share")
+    if isinstance(share, bool) or not isinstance(share, (int, float)) or not math.isfinite(share):
+        return True
+    return share < MIN_KNOWN_SHARE
+
+
 def should_exit(direction: str, view: Mapping[str, Any] | None) -> str | None:
-    """Reason to leave now, or None: wave against the position (strength >= AGAINST_STRENGTH) or own wave exhausted."""
+    """Reason to leave now, or None: wave against the position (strength >= AGAINST_STRENGTH) or own wave exhausted.
+    Never on a Lage whose side is too often unknown."""
+    if side_unknown(view):
+        return None
     if not view or view.get("direction") in (None, "keine"):
         return None
     if view["direction"] != WITH.get(direction):
@@ -135,6 +273,9 @@ def summary(state: Mapping[str, Any]) -> dict[str, Any]:
     by_gate: dict[str, dict[str, Any]] = {}
     for plan in closed:
         verdict = plan.get("gate_at_fill") or plan.get("gate_at_plan") or NEUTRAL
+        seen = plan.get("lage_at_fill") if plan.get("gate_at_fill") else plan.get("lage_at_plan")
+        if verdict == NEUTRAL and not seen:
+            verdict = OHNE_LAGE   # missing evidence is not neutral flow (Mission 05, #372)
         row = by_gate.setdefault(verdict, {"n": 0, "sum_net_r": 0.0})
         row["n"] += 1
         row["sum_net_r"] = round(row["sum_net_r"] + float(plan["journal"]["net_r"]), 4)
@@ -150,7 +291,8 @@ def summary(state: Mapping[str, Any]) -> dict[str, Any]:
             row["n"] += 1
             row["sum_net_r"] = round(row["sum_net_r"] + float(plan["journal"]["net_r"]), 4)
     with_exit = [p for p in closed if p.get("of_exit")]
-    return {"plans": len(plans), "with_lage": sum(bool(p.get("lage_at_plan")) for p in plans), "closed": len(closed), "target": TARGET_TRADES, "judgeable": len(closed) >= TARGET_TRADES,
+    return {"plans": len(plans), "with_lage": sum(bool(p.get("lage_at_plan")) for p in plans),
+            "side_unknown": sum(UNBEKANNT in (p.get("gate_at_plan"), p.get("gate_at_fill")) for p in plans), "closed": len(closed), "target": TARGET_TRADES, "judgeable": len(closed) >= TARGET_TRADES,
             "by_gate": by_gate, "by_session": by_session, "by_volume": by_volume,
             "of_exit": {"n": len(with_exit),
                         "sum_shadow_net_r": round(sum(float(p["of_exit"]["net_r"]) for p in with_exit), 4),
