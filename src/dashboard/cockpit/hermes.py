@@ -79,7 +79,7 @@ def build_hermes(state: Any, now: datetime | None = None, token: str = "", asked
         from src.dashboard import daily_report, plan_opinion
 
         report = daily_report.latest(getattr(state, "daily_report_path", None))
-        stored = plan_opinion.load(getattr(state, "plan_opinion_path", None) or plan_opinion.DEFAULT_PATH) or {}
+        stored = plan_opinion.load_current(getattr(state, "plan_opinion_path", None) or plan_opinion.DEFAULT_PATH) or {}
         recent = sorted((p for p in (stored.get("plans") or {}).values() if p.get("opinion")),
                         key=lambda p: str(p.get("created_at")), reverse=True)[:5]
         opinions = {"summary": stored.get("summary") or plan_opinion.summary(stored), "recent": recent}

@@ -96,10 +96,10 @@ def evaluate(state: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from src.dashboard.orderflow_shadow import DEFAULT_PATH, load
+    from src.dashboard.orderflow_shadow import DEFAULT_PATH, current_path, load
 
     args = sys.argv[1:] if argv is None else argv
-    state = load(Path(args[0]) if args else DEFAULT_PATH)
+    state = load(current_path(Path(args[0]) if args else DEFAULT_PATH))   # E1: the pit/1 file
     if state is None:
         print("Kein Orderflow-Schatten gefunden", file=sys.stderr)
         return 2

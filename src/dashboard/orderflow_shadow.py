@@ -26,12 +26,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from src.dashboard import pit_lage as pit
+from src.dashboard.pit_lage import PIT_VERSION
+
 SCHEMA = "tim_orderflow_shadow/1"
 DEFAULT_PATH = Path("data/journal/tim_orderflow_shadow.json")
 TARGET_TRADES = 30
 COST_R_PER_SIDE_BPS = 5  # Kraken taker, as measured 04.11.2026 (exit_variants.KRAKEN)
 AGAINST_STRENGTH = 2
 BESTAETIGT, GEGEN, NEUTRAL = "BESTÄTIGT", "GEGEN", "NEUTRAL"
+OHNE_LAGE = "OHNE LAGE"  # summary only: NEUTRAL because no Lage was there, kept apart from a Lage without a wave
 WITH = {"LONG": "auf", "SHORT": "ab"}
 # UTC hour -> session. Fixed UTC bounds so the label never moves with daylight saving.
 SESSIONS = ((0, "Asien"), (7, "London"), (13, "London+NY"), (16, "NY"), (21, "nach NY"))
@@ -123,18 +127,37 @@ def load(path: Path) -> dict[str, Any] | None:
 
 
 def _save(state: Mapping[str, Any], path: Path) -> None:
+    """Atomic: a crash leaves the old file or the new one, never half of it."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+    with tmp.open("w", encoding="utf-8") as fh:
+        fh.write(json.dumps(state, ensure_ascii=False, indent=1, default=str))
+        fh.flush()
+        os.fsync(fh.fileno())
     os.replace(tmp, path)
 
 
+def current_path(path: Path = DEFAULT_PATH, symbol: str = "BTCUSDT") -> Path:
+    """The file this version writes and every reader of the shadow should read (E1, see ``pit_lage.versioned_path``)."""
+    return pit.versioned_path(path, symbol)
+
+
+def load_current(path: Path = DEFAULT_PATH, symbol: str = "BTCUSDT") -> dict[str, Any] | None:
+    return load(current_path(path, symbol))
+
+
 def summary(state: Mapping[str, Any]) -> dict[str, Any]:
-    plans = list((state.get("plans") or {}).values())
+    """Statistics over plans noted with point-in-time Lage (``pit``); older plans are only counted (``legacy``)."""
+    every = list((state.get("plans") or {}).values())
+    plans = [p for p in every if p.get("pit")]
+    legacy = [p for p in every if not p.get("pit")]
     closed = [p for p in plans if p.get("journal", {}).get("status") == "CLOSED" and p["journal"].get("net_r") is not None]
     by_gate: dict[str, dict[str, Any]] = {}
     for plan in closed:
         verdict = plan.get("gate_at_fill") or plan.get("gate_at_plan") or NEUTRAL
+        seen = plan.get("lage_at_fill") if plan.get("gate_at_fill") else plan.get("lage_at_plan")
+        if verdict == NEUTRAL and not seen:
+            verdict = OHNE_LAGE   # missing evidence is not neutral flow (Mission 05, #372)
         row = by_gate.setdefault(verdict, {"n": 0, "sum_net_r": 0.0})
         row["n"] += 1
         row["sum_net_r"] = round(row["sum_net_r"] + float(plan["journal"]["net_r"]), 4)
@@ -152,19 +175,31 @@ def summary(state: Mapping[str, Any]) -> dict[str, Any]:
     with_exit = [p for p in closed if p.get("of_exit")]
     return {"plans": len(plans), "with_lage": sum(bool(p.get("lage_at_plan")) for p in plans), "closed": len(closed), "target": TARGET_TRADES, "judgeable": len(closed) >= TARGET_TRADES,
             "by_gate": by_gate, "by_session": by_session, "by_volume": by_volume,
+            "pit": PIT_VERSION, "legacy": {"plans": len(legacy), "closed": sum(1 for p in legacy if (p.get("journal") or {}).get("status") == "CLOSED"),
+                                          "note": "vor pit/1 notiert, Lage-Zeitpunkt ungeprüft, nicht in der Statistik"},
             "of_exit": {"n": len(with_exit),
                         "sum_shadow_net_r": round(sum(float(p["of_exit"]["net_r"]) for p in with_exit), 4),
                         "sum_journal_net_r": round(sum(float(p["journal"]["net_r"]) for p in with_exit), 4)}}
 
 
 def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | None,
-           now: datetime | None = None, series: Mapping[str, Sequence[Mapping[str, Any]]] | None = None) -> dict[str, Any]:
-    """One step: new plans get the gate and the timing, filled plans are watched for the orderflow exit, closed plans get the journal result."""
+           now: datetime | None = None, series: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
+           symbol: str | None = None) -> dict[str, Any]:
+    """One step: new plans get the gate and the timing, filled plans are watched for the orderflow exit, closed plans get the journal result.
+
+    Point-in-time (Paket E): the Lage at plan and at fill is the one known at ``created_at`` / ``filled_at``
+    (:func:`src.dashboard.pit_lage.lage_at`), never the current one; without it the field is ``None`` with a status
+    ``UNKNOWN_*``. The orderflow exit is a live decision: it uses the current Lage, and only once that was taken after
+    the fill. Records written before ``pit/1`` are left as they are.
+    """
     from src.dashboard.plan_journal import load_view
 
     now = now or datetime.now(timezone.utc)
-    state = load(Path(path)) or {"schema": SCHEMA, "started_at": _iso(now), "sources": [Path(p).name for p in journal_paths],
-                                 "costs": f"{COST_R_PER_SIDE_BPS} bps je Seite", "plans": {}}
+    key_symbol = (symbol or (lage or {}).get("symbol") or "BTCUSDT").upper()
+    pit.observe(lage, now, key_symbol)
+    target = current_path(path, key_symbol)       # E1: never the earlier version's file
+    state = load(target) or {"schema": SCHEMA, "started_at": _iso(now), "sources": [Path(p).name for p in journal_paths],
+                             "costs": f"{COST_R_PER_SIDE_BPS} bps je Seite", "plans": {}, "pit": PIT_VERSION, "symbol": key_symbol}
     started = _time(state["started_at"])
     view = lage_view(lage)
     from src.dashboard.chart_model import clean_candles
@@ -181,19 +216,28 @@ def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | 
             key = str(entry["id"])
             record = plans.get(key)
             if record is None:
+                known, status = pit.lage_at(key_symbol, entry["created_at"], until=now)
+                at_plan = lage_view(known)
                 record = plans[key] = {"id": entry["id"], "journal_file": Path(journal_path).name, "timeframe": entry.get("timeframe"),
                                        "direction": entry.get("direction"), "created_at": entry["created_at"],
-                                       "entry": entry.get("entry"), "stop": entry.get("stop"),
-                                       "lage_at_plan": view, "gate_at_plan": gate(str(entry.get("direction")), view),
+                                       "entry": entry.get("entry"), "stop": entry.get("stop"), "pit": PIT_VERSION, "symbol": key_symbol,
+                                       "lage_at_plan": at_plan, "lage_at_plan_status": status,
+                                       "gate_at_plan": gate(str(entry.get("direction")), at_plan),
                                        "timing_at_plan": timing(_time(entry["created_at"]), candles_30m)}
             record["journal"] = {"status": entry.get("status"), "filled_at": entry.get("filled_at"), "closed_at": entry.get("closed_at"),
                                  "exit_reason": entry.get("exit_reason"), "exit_price": entry.get("exit_price"), "net_r": entry.get("net_r")}
             if entry.get("filled_at") and "gate_at_fill" not in record:
                 record["fill_price"] = entry.get("fill_price") or entry.get("entry")
-                record["lage_at_fill"] = view
-                record["gate_at_fill"] = gate(str(entry.get("direction")), view)
+                if record.get("pit"):
+                    known, status = pit.lage_at(key_symbol, entry["filled_at"], until=now)
+                    at_fill = lage_view(known)
+                    record["lage_at_fill_status"] = status
+                else:  # a pre-pit/1 plan keeps the old way for its own fill, still counted apart in summary()
+                    at_fill = view
+                record["lage_at_fill"] = at_fill
+                record["gate_at_fill"] = gate(str(entry.get("direction")), at_fill)
                 record["timing_at_fill"] = timing(_time(entry["filled_at"]), candles_30m)
-            if entry.get("status") == "FILLED" and not record.get("of_exit") and view:
+            if entry.get("status") == "FILLED" and not record.get("of_exit") and view and pit.live_after(view, entry.get("filled_at"), now):
                 reason = should_exit(str(entry.get("direction")), view)
                 if reason:
                     r = r_of({**entry, "fill_price": record.get("fill_price")}, float(view["price"]))
@@ -202,5 +246,6 @@ def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | 
                                              "gross_r": r[0], "net_r": r[1], "lage": view}
     state["checked_at"] = _iso(now)
     state["summary"] = summary(state)
-    _save(state, Path(path))
+    state["previous_version"] = pit.previous_file(path) if Path(path) != target else None
+    _save(state, target)
     return state

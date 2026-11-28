@@ -17,7 +17,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from src.dashboard import pit_lage as pit
 from src.dashboard.orderflow_shadow import _iso, _save, _time, lage_view, load
+from src.dashboard.pit_lage import PIT_VERSION
 
 SCHEMA = "tim_plan_opinion/1"
 DEFAULT_PATH = Path("data/journal/tim_plan_opinion.json")
@@ -51,7 +53,7 @@ def prompt(record: Mapping[str, Any], symbol: str = "BTCUSDT") -> str:
     view = record.get("lage_at_plan")
     if view:
         lines.append(
-            f"Orderflow jetzt: Preis {_num(view.get('price'))}, Welle {view.get('direction') or 'keine'} (Stärke {view.get('strength')}, "
+            f"Orderflow zur Planzeit: Preis {_num(view.get('price'))}, Welle {view.get('direction') or 'keine'} (Stärke {view.get('strength')}, "
             f"Phase {view.get('phase')}, Erschöpfung {'ja' if view.get('exhaustion') else 'nein'}), Tempo {view.get('tempo')}, "
             f"Delta 5 Minuten {view.get('delta_5m')}, Perp-Delta 5 Minuten {view.get('perp_delta_5m')}.")
         near = [f"{l.get('name')} {l.get('distance_pct')} % entfernt (Absorption {l.get('absorption')}, Imbalance {l.get('imbalance')})"
@@ -59,7 +61,7 @@ def prompt(record: Mapping[str, Any], symbol: str = "BTCUSDT") -> str:
         if near:
             lines.append("Nahe Level: " + "; ".join(near) + ".")
     else:
-        lines.append("Orderflow: gerade keine frischen Daten.")
+        lines.append("Orderflow zur Planzeit: unbekannt (kein Stand aus dieser Zeit).")
     lines.append("Antworte auf Deutsch in genau drei Zeilen und sonst nichts:\nDAFÜR: <ein Satz>\nDAGEGEN: <ein Satz>\n"
                  "URTEIL: DAFÜR oder DAGEGEN oder NEUTRAL")
     return "\n".join(lines)[:MAX_PROMPT]
@@ -83,7 +85,10 @@ def _hermes(text: str) -> Mapping[str, Any]:
 
 
 def summary(state: Mapping[str, Any]) -> dict[str, Any]:
-    plans = list((state.get("plans") or {}).values())
+    """Statistics over plans asked with point-in-time Lage (``pit``); older plans are only counted (``legacy``)."""
+    every = list((state.get("plans") or {}).values())
+    plans = [p for p in every if p.get("pit")]
+    legacy = [p for p in every if not p.get("pit")]
     judged = [p for p in plans if (p.get("opinion") or {}).get("verdict")]
     closed = [p for p in judged if p.get("journal", {}).get("status") == "CLOSED" and p["journal"].get("net_r") is not None]
     by_verdict: dict[str, dict[str, Any]] = {}
@@ -93,7 +98,17 @@ def summary(state: Mapping[str, Any]) -> dict[str, Any]:
         row["wins"] += float(plan["journal"]["net_r"]) > 0
         row["sum_net_r"] = round(row["sum_net_r"] + float(plan["journal"]["net_r"]), 4)
     return {"plans": len(plans), "with_opinion": len(judged), "closed": len(closed), "target": TARGET_TRADES,
-            "judgeable": len(closed) >= TARGET_TRADES, "by_verdict": by_verdict}
+            "judgeable": len(closed) >= TARGET_TRADES, "by_verdict": by_verdict,
+            "pit": PIT_VERSION, "legacy": {"plans": len(legacy), "note": "vor pit/1 gefragt, Lage-Zeitpunkt ungeprüft, nicht in der Statistik"}}
+
+
+def current_path(path: Path = DEFAULT_PATH, symbol: str = "BTCUSDT") -> Path:
+    """The file this version writes and every reader of the second opinion should read (E1)."""
+    return pit.versioned_path(path, symbol)
+
+
+def load_current(path: Path = DEFAULT_PATH, symbol: str = "BTCUSDT") -> dict[str, Any] | None:
+    return load(current_path(path, symbol))
 
 
 def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | None, now: datetime | None = None,
@@ -103,10 +118,12 @@ def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | 
 
     now = now or datetime.now(timezone.utc)
     path = Path(path)
-    state = load(path) or {"schema": SCHEMA, "started_at": _iso(now), "sources": [Path(p).name for p in journal_paths],
+    key_symbol = symbol.upper()
+    pit.observe(lage, now, key_symbol)
+    target = current_path(path, key_symbol)       # E1: never the earlier version's file
+    state = load(target) or {"pit": PIT_VERSION, "symbol": key_symbol, "schema": SCHEMA, "started_at": _iso(now), "sources": [Path(p).name for p in journal_paths],
                            "note": "Nur Kommentar, kein Eingriff in Pläne oder Handel", "plans": {}}
     started = _time(state["started_at"])
-    view = lage_view(lage)
     plans = state["plans"]
     for journal_path in journal_paths:
         journal = load_view(Path(journal_path))
@@ -115,10 +132,15 @@ def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | 
         for entry in journal.get("entries") or []:
             if entry.get("excluded") or not entry.get("created_at") or _time(entry["created_at"]) < started:
                 continue
-            record = plans.setdefault(str(entry["id"]), {
-                "id": entry["id"], "journal_file": Path(journal_path).name, "timeframe": entry.get("timeframe"),
-                "direction": entry.get("direction"), "created_at": entry["created_at"], "entry": entry.get("entry"),
-                "stop": entry.get("stop"), "targets": list(entry.get("targets") or [])[:3], "lage_at_plan": view, "attempts": 0})
+            record = plans.get(str(entry["id"]))
+            if record is None:
+                # Point-in-time (Paket E): the Lage known at the plan's creation, never the current one; else UNKNOWN.
+                known, status = pit.lage_at(key_symbol, entry["created_at"], until=now)
+                record = plans[str(entry["id"])] = {
+                    "id": entry["id"], "journal_file": Path(journal_path).name, "timeframe": entry.get("timeframe"),
+                    "direction": entry.get("direction"), "created_at": entry["created_at"], "entry": entry.get("entry"),
+                    "stop": entry.get("stop"), "targets": list(entry.get("targets") or [])[:3], "pit": PIT_VERSION,
+                    "symbol": key_symbol, "lage_at_plan": lage_view(known), "lage_at_plan_status": status, "attempts": 0}
             record["journal"] = {"status": entry.get("status"), "filled_at": entry.get("filled_at"), "closed_at": entry.get("closed_at"),
                                  "exit_reason": entry.get("exit_reason"), "net_r": entry.get("net_r")}
     calls = 0
@@ -146,5 +168,6 @@ def update(path: Path, journal_paths: Sequence[Path], lage: Mapping[str, Any] | 
             record["last_error"] = str(reply.get("error") or "keine Antwort")[:200]
     state["checked_at"] = _iso(now)
     state["summary"] = summary(state)
-    _save(state, path)
+    state["previous_version"] = pit.previous_file(path) if path != target else None
+    _save(state, target)
     return state
