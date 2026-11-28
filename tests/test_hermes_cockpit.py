@@ -359,5 +359,6 @@ def test_empty_journals_read_as_no_evidence_and_small_samples_are_named(tmp_path
     lines = daily_report.facts({"1d": journal}, None, [], NOW.replace(hour=0), NOW)
     assert "Papier-Journal 1d: 1 neue Pläne, keiner geschlossen, also kein Ergebnis." in lines and not any("+0.00 R" in line for line in lines)
     assert "Modell" in GROUP_NAMES["liq"] and "keine echten" in GROUP_NAMES["liq"]
-    summary = orderflow_shadow.summary({"plans": {"a": {"lage_at_plan": {"price": 1}}, "b": {"lage_at_plan": None}}})
-    assert summary["plans"] == 2 and summary["with_lage"] == 1
+    summary = orderflow_shadow.summary({"plans": {"a": {"pit": "pit/1", "lage_at_plan": {"price": 1}},
+                                                  "b": {"pit": "pit/1", "lage_at_plan": None}, "old": {"lage_at_plan": {"price": 2}}}})
+    assert summary["plans"] == 2 and summary["with_lage"] == 1 and summary["legacy"]["plans"] == 1  # Paket E: pre-pit apart

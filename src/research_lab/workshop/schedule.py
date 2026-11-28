@@ -325,7 +325,7 @@ class Workshop:
             result["report_error"] = f"{type(exc).__name__}: {exc}"[:200]
         try:  # R-ABS-1 (absorption shadow, frozen 17.11.2026): read only, one file per week, changes nothing
             from src.dashboard import absorption_shadow, orderflow_shadow
-            state = orderflow_shadow.load(self.root / orderflow_shadow.DEFAULT_PATH)
+            state = orderflow_shadow.load_current(self.root / orderflow_shadow.DEFAULT_PATH)   # E1: pit/1 file
             if state is not None:
                 folder = self.research / "reports"
                 folder.mkdir(parents=True, exist_ok=True)

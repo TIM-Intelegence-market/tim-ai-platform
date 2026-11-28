@@ -1,19 +1,32 @@
 """Orderflow-Schatten (src/dashboard/orderflow_shadow.py) and the Lage tile/section (src/dashboard/orderflow_tile.py)."""
 from __future__ import annotations
 
+import pytest
+
 import json
 from datetime import datetime, timedelta, timezone
 
 from src.dashboard import orderflow_shadow as shadow
 from src.dashboard import orderflow_tile as tile
 from src.dashboard.plan_journal import SCHEMA
+from src.dashboard import pit_lage
 
 T0 = datetime(2026, 11, 8, 12, 0, tzinfo=timezone.utc)
 
 
+@pytest.fixture(autouse=True)
+def _fresh_pit_history():
+    """Paket E: the Lage history is per process; every test starts without one."""
+    pit_lage.reset()
+    yield
+    pit_lage.reset()
+
+
 def lage(direction: str, strength: int = 2, exhaustion: bool = False, price: float = 75000.0, at: datetime = T0) -> dict:
-    return {"schema": "orderflow-lage/1", "symbol": "BTCUSDT", "as_of": at.isoformat(), "price": price, "stale": False,
-            "tempo": 1.8, "windows": {"1m": {"delta": 0.5}, "5m": {"delta": 3.0 if direction == "auf" else -3.0, "volume": 10.0}, "15m": {}},
+    return {"schema": "orderflow-lage/2", "symbol": "BTCUSDT", "as_of": at.isoformat(), "price": price, "stale": False,
+            "tempo": 1.8, "windows": {"1m": {"delta": 0.5, "volume": 1.0, "unknown_volume": 0.0},
+                        "5m": {"delta": 3.0 if direction == "auf" else -3.0, "volume": 10.0, "unknown_volume": 0.0},
+                        "15m": {"volume": 30.0, "unknown_volume": 0.0}},
             "wave": {"direction": direction, "strength": strength, "phase": "läuft", "exhaustion": exhaustion},
             "levels": [{"name": "Vortag VAL", "price": 74950.0, "distance_pct": -0.07, "bid": 10.0, "ask": 1.0, "delta": -9.0,
                         "imbalance": "Verkäufer", "absorption": True}],
@@ -80,7 +93,7 @@ def test_update_follows_a_plan_through_fill_exit_and_close(tmp_path):
     s = state["summary"]
     assert s["closed"] == 1 and s["by_gate"][shadow.BESTAETIGT]["n"] == 1 and s["by_gate"][shadow.BESTAETIGT]["sum_net_r"] == -1.01
     assert s["of_exit"]["n"] == 1 and s["of_exit"]["sum_shadow_net_r"] > 0 > s["of_exit"]["sum_journal_net_r"]
-    assert s["judgeable"] is False and shadow.load(path)["schema"] == shadow.SCHEMA
+    assert s["judgeable"] is False and shadow.load_current(path)["schema"] == shadow.SCHEMA
 
 
 def test_update_skips_old_excluded_and_blocked(tmp_path):
@@ -91,10 +104,10 @@ def test_update_skips_old_excluded_and_blocked(tmp_path):
     write_journal(journal, old, excluded, plan("OPEN", id="new"))
     state = shadow.update(path, [journal], None, now=T0)
     assert list(state["plans"]) == ["new"] and state["plans"]["new"]["gate_at_plan"] == shadow.NEUTRAL
-    before = path.read_text()
+    before = shadow.current_path(path).read_text()
     journal.write_text("{not json")  # a broken journal is skipped, the shadow keeps its plans
     state = shadow.update(path, [journal], lage("auf"), now=T0 + timedelta(minutes=1))
-    assert list(state["plans"]) == ["new"] and before != path.read_text()
+    assert list(state["plans"]) == ["new"] and before != shadow.current_path(path).read_text()
 
 
 def test_tile_and_section():
@@ -151,9 +164,9 @@ def test_update_records_timing_and_summary(tmp_path):
     out = tmp_path / "shadow.json"
     state = shadow.update(out, [journal], lage("auf"), now=T0 + timedelta(hours=2), series={"30m": candles_30m(T0)})
     # started_at is now, so the plan created before it is skipped; restart with an earlier start.
-    data = json.loads(out.read_text())
+    data = json.loads(shadow.current_path(out).read_text())
     data["started_at"] = (T0 - timedelta(hours=1)).isoformat()
-    out.write_text(json.dumps(data))
+    shadow.current_path(out).write_text(json.dumps(data))
     state = shadow.update(out, [journal], lage("auf"), now=T0 + timedelta(hours=2), series={"30m": candles_30m(T0)})
     record = state["plans"]["p1"]
     assert record["timing_at_plan"]["session"] == "London" and record["timing_at_plan"]["volume_vs_hour"] == 2.0

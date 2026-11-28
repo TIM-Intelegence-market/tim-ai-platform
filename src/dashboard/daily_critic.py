@@ -203,7 +203,7 @@ def update(path: Path, sources: Mapping[str, Source], now: datetime | None = Non
 
 def state_sources(state: Any, root: Path | str = ".", symbol: str = "BTCUSDT") -> dict[str, Source]:
     """The sources of the running TIM: journals, shadows, Control Center, live chart, merges, what waits for Uzi."""
-    from src.dashboard import orderflow_shadow, waiting_on_uzi
+    from src.dashboard import orderflow_shadow, plan_opinion, waiting_on_uzi
     from src.dashboard.state import plan_journal_paths
 
     def chart() -> list[str]:
@@ -226,7 +226,8 @@ def state_sources(state: Any, root: Path | str = ".", symbol: str = "BTCUSDT") -
     journals = {"15m": state.plan_journal_short_path, "1h": state.plan_journal_mid_path, "1d": state.plan_journal_long_path}
     return {
         "Papier-Journale": lambda: journal_facts(journals, datetime.now(timezone.utc)),
-        "Schatten": lambda: shadow_facts({"Orderflow-Schatten": orderflow_shadow.DEFAULT_PATH, "Zweitmeinung": state.plan_opinion_path}),
+        "Schatten": lambda: shadow_facts({"Orderflow-Schatten": orderflow_shadow.current_path(orderflow_shadow.DEFAULT_PATH),
+                                          "Zweitmeinung": plan_opinion.current_path(state.plan_opinion_path)}),   # E1
         "Control Center": cockpit,
         "Chart": chart,
         "Merges": lambda: merge_facts(root),

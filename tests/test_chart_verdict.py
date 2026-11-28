@@ -1,6 +1,8 @@
 """Chart-Urteil (src/dashboard/chart_verdict.py): Chart-Lage without look-ahead, frozen rules, paper shadow."""
 from __future__ import annotations
 
+import pytest
+
 import json
 from datetime import timedelta
 
@@ -8,6 +10,15 @@ from src.dashboard import chart_verdict as cv
 from src.dashboard.plan_journal import SCHEMA
 from tests.test_analysis_summary import NOW, _trending_series
 from tests.test_orderflow_shadow import lage
+from src.dashboard import pit_lage
+
+
+@pytest.fixture(autouse=True)
+def _fresh_pit_history():
+    """Paket E: the Lage history is per process; every test starts without one."""
+    pit_lage.reset()
+    yield
+    pit_lage.reset()
 
 
 def chart(**extra) -> dict:
@@ -127,3 +138,37 @@ def test_chart_page_shows_the_verdict(tmp_path, monkeypatch):
     state.plan_journal_path = tmp_path / "tim.json"
     page = render_chart_page(state, symbol="BTCUSDT")
     assert "tc-verdict" in page
+
+
+def test_paket_e_plan_gets_the_lage_of_its_moment_or_none(tmp_path):
+    """Paket E (#372): a Lage taken after the plan never counts; the one known at the plan does."""
+    series = _trending_series()
+    journal, path = tmp_path / "tim_plan_journal_mid.json", tmp_path / "verdict.json"
+    cv.update(path, [journal], series, lage("ab", at=NOW - timedelta(seconds=40)), now=NOW - timedelta(seconds=30))
+    _journal(journal, _plan("p1", NOW))
+    state = cv.update(path, [journal], series, lage("auf", at=NOW + timedelta(seconds=30)), now=NOW + timedelta(minutes=1))
+    record = state["plans"]["tim_plan_journal_mid.json:p1"]
+    assert record["lage_at_plan_status"] == pit_lage.OK and record["pit"] == pit_lage.PIT_VERSION
+    assert record["chart_at_plan"]["orderflow"]["direction"] == "ab"
+    pit_lage.reset()
+    path2 = tmp_path / "verdict2.json"
+    cv.update(path2, [journal], series, None, now=NOW - timedelta(minutes=1))
+    state = cv.update(path2, [journal], series, lage("auf", at=NOW + timedelta(seconds=30)), now=NOW + timedelta(minutes=1))
+    record = state["plans"]["tim_plan_journal_mid.json:p1"]
+    # the plan is dated after that first decision time: unknown for that reason (round 5), never the newest Lage
+    assert record["lage_at_plan_status"] == pit_lage.UNKNOWN_FUTURE_TIME and record["chart_at_plan"]["orderflow"] is None
+
+
+def test_r7_never_judges_a_wave_whose_side_is_not_proven():
+    """Mission 07-FINAL: the chart verdict uses the shadow's gate, so it needs the known-side check too."""
+    base = lage("auf", price=73700.0, at=NOW)
+    legacy = {**base, "windows": {name: {"volume": 10.0, "delta": 3.0} for name in ("1m", "5m", "15m")}}  # no unknown_volume
+    for broken, status in ((legacy, "MISSING"), ({**base, "windows": {"5m": base["windows"]["5m"]}}, "MISSING"),
+                           ({k: v for k, v in base.items() if k != "windows"}, "MISSING")):
+        flow = cv.orderflow_view(broken, NOW)
+        assert flow["side_ok"] is False and flow["side_status"] == status
+        v = cv.judge("LONG", 73700.0, chart(orderflow=flow), stop=73400.0, target=74000.0)
+        assert "R7" not in sides(v) and any(text.startswith("R7 Seite") for text in v["skipped"])
+    v = cv.judge("LONG", 73700.0, chart(orderflow={"direction": "auf", "strength": 2, "levels": []}), stop=73400.0, target=74000.0)
+    assert "R7" not in sides(v)                                    # a stored view without the fields is not judged either
+    assert sides(cv.judge("LONG", 73700.0, chart(orderflow=cv.orderflow_view(base, NOW)), stop=73400.0, target=74000.0))["R7"] == cv.FOR

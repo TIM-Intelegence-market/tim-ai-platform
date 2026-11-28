@@ -581,7 +581,7 @@ def _verdict_section(state: Any) -> str:
             lage = dict(getattr(state, "orderflow_live", None) or {})
             trades = getattr(state, "footprint", None)
         view = chart_verdict.current(state.chart_series(), lage or None, trades=trades or None)
-        return chart_verdict.render_de(view, chart_verdict.load(chart_verdict.DEFAULT_PATH))
+        return chart_verdict.render_de(view, chart_verdict.load_current(chart_verdict.DEFAULT_PATH))   # E1: pit/1 file
     except Exception as exc:  # noqa: BLE001 - the chart must still render
         return f"<section class='cc-section tc-verdict'><p class='cc-note'>Chart-Urteil nicht verfügbar: {_safe(type(exc).__name__)}</p></section>"
 

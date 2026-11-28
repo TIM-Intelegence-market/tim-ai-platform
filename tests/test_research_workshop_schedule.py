@@ -150,7 +150,7 @@ def test_weekly_round_writes_absorption_report_when_shadow_exists(tmp_path: Path
     import json
 
     workshop = _workshop(tmp_path)
-    shadow = tmp_path / "data/journal/tim_orderflow_shadow.json"
+    shadow = tmp_path / "data/journal/tim_orderflow_shadow.BTCUSDT.pit-1.json"   # E1: the versioned file
     shadow.parent.mkdir(parents=True, exist_ok=True)
     shadow.write_text(json.dumps({"plans": {}}), encoding="utf-8")
     learned = workshop.run_once(_utc("2026-11-01T02:30:00Z"))["ran"]["weekly"]["self_improve"]

@@ -1,0 +1,265 @@
+"""Point-in-time Orderflow-Lage for the shadows (Paket E, #372, Uzi 24.11.2026 "GO E").
+
+Orderflow-Schatten, Zweitmeinung and Chart-Urteil note the Live-Orderflow-Lage at a plan's creation and fill. Until
+now they took whatever Lage was current when their step ran: after a pause or a restart a plan from 11:00 got the
+Lage of 12:00, and the Chart-Urteil accepted a Lage up to ten minutes *after* the plan. This module is the one place
+that answers "which Lage was known at moment t?":
+
+- ``observe(lage, seen_at)`` keeps every Lage a consumer saw, per symbol, with ``seen_at`` as its availability. The
+  real availability is at the latest ``seen_at`` (the consumer holds it then), so the check is conservative: it may
+  say UNKNOWN where a Lage existed, never the other way round.
+- ``lage_at(symbol, t)`` returns the newest kept Lage with ``as_of <= t``, ``last_trade_at <= t``, ``seen_at <= t``
+  and ``t - as_of <= MAX_AGE`` (one-sided, no tolerance after t), not stale. Otherwise ``None`` with a reason
+  (``UNKNOWN_*``). A missing historical Lage is never replaced by the current one.
+- ``store_until(store, t)`` cuts a footprint store (spot or perp, rows ``[bucket_time, level, bid, ask]``) to the
+  buckets that had ended by t, so value levels and naked POCs drawn for t see no later trade. Limit: the stores keep no
+  arrival time per row, so a bucket written later (backfill after a gap, revision) still counts once its bucket time
+  is before t. The cut says so (``rows_arrival``): ``"UNVERIFIED"`` whenever the store was written after t.
+
+- ``observe_store(store, seen_at, symbol)`` / ``store_known_at(store, symbol, t)`` (Mission 07, shared contract
+  ``src/orderflow/pit_contract.py``): the footprint store is noted in a per-symbol ``RevisionLog`` each time a consumer
+  holds it (at ``max(seen_at, updated_at)``; a store without ``updated_at`` is not noted). The view at t has, per closed
+  bucket, only the revision seen by t: a backfill or a revision after t is not evidence at t (UNKNOWN), and nothing
+  UNVERIFIED reaches a judgement. ``store_until`` stays as the plain cut (display, tests) and keeps saying UNVERIFIED.
+
+The history lives in memory: after a restart older moments are UNKNOWN. Plans recorded before ``PIT_VERSION`` keep
+their values untouched and are counted apart (``legacy``) by the consumers.
+
+Versioned files (E1, Mission 06, Uzi "GO E1"): each consumer writes ``pit/1`` records to its own file per symbol,
+:func:`versioned_path` (``tim_orderflow_shadow.BTCUSDT.pit-1.json`` next to ``tim_orderflow_shadow.json``). The file of
+the earlier version is never written again, byte for byte: a revert reads only its own records (no mixing with
+``pit/1``), a return to ``pit/1`` continues its own file. Open cases stay with the version that opened them.
+"""
+from __future__ import annotations
+
+from collections import deque
+from copy import deepcopy
+from collections.abc import Mapping
+from datetime import datetime, timedelta, timezone
+from threading import Lock
+from typing import Any
+
+from src.orderflow.pit_contract import RevisionLog, bucket_size
+
+PIT_VERSION = "pit/1"
+MAX_AGE = timedelta(minutes=3)  # the Lage refreshes every 10 s and consumers run every minute: 3 min is ample
+KEEP = timedelta(hours=12)
+OK = "OK"
+UNKNOWN_NO_HISTORY = "UNKNOWN_NO_HISTORY"  # nothing kept from that time (restart, gap, start of the shadow)
+UNKNOWN_TOO_OLD = "UNKNOWN_TOO_OLD"  # the newest Lage known at t is older than MAX_AGE
+UNKNOWN_STALE = "UNKNOWN_STALE"  # the Lage known at t said itself that its trades were stale
+UNKNOWN_NO_TIME = "UNKNOWN_NO_TIME"  # target time missing or unreadable
+UNKNOWN_FUTURE_TIME = "UNKNOWN_FUTURE_TIME"  # target lies after the decision time: what will be known then is not known yet
+
+_LOCK = Lock()
+_HISTORY: dict[str, deque[dict[str, Any]]] = {}
+_STORES: dict[str, RevisionLog] = {}
+_COMPLETE: dict[str, dict[str, tuple[float, Any]]] = {}  # per symbol: day -> (first seen, flag value)
+
+
+def versioned_path(path: Any, symbol: str = "BTCUSDT", version: str = PIT_VERSION) -> "Path":
+    """The file of ``version`` and ``symbol`` next to ``path``; a path that already is one is returned unchanged."""
+    from pathlib import Path
+
+    target = Path(path)
+    tag = f".{symbol.upper()}.{version.replace('/', '-')}"
+    if target.stem.endswith(tag):
+        return target
+    return target.with_name(f"{target.stem}{tag}{target.suffix}")
+
+
+def previous_file(path: Any) -> dict[str, Any] | None:
+    """Read-only facts about the earlier version's file (never written): name, plan count. None if there is none."""
+    import json
+    from pathlib import Path
+
+    target = Path(path)
+    if not target.is_file():
+        return None
+    try:
+        plans = (json.loads(target.read_text(encoding="utf-8")) or {}).get("plans") or {}
+    except (ValueError, AttributeError):
+        return {"file": target.name, "readable": False, "untouched": True}
+    return {"file": target.name, "plans": len(plans), "untouched": True,
+            "note": "Datei der früheren Version, wird nicht mehr geschrieben"}
+
+
+def _time(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        moment = value
+    else:
+        try:
+            moment = datetime.fromisoformat(str(value))
+        except (TypeError, ValueError):
+            return None
+    return moment if moment.tzinfo is not None else None
+
+
+def _symbol(lage: Mapping[str, Any] | None, default: str = "BTCUSDT") -> str:
+    return str((lage or {}).get("symbol") or default).upper()
+
+
+def observe(lage: Mapping[str, Any] | None, seen_at: datetime, symbol: str | None = None) -> None:
+    """Keep ``lage`` as available from ``seen_at`` on; the same ``as_of`` is kept once (first sighting wins)."""
+    if not lage or _time(lage.get("as_of")) is None or seen_at.tzinfo is None:
+        return
+    last = lage.get("last_trade_at")
+    if _time(lage.get("as_of")) > seen_at or (last and (_time(last) is None or _time(last) > seen_at)):
+        return  # dated after its own sighting: it cannot have been available then, so it is no evidence
+    key = (symbol or _symbol(lage)).upper()
+    with _LOCK:
+        kept = _HISTORY.setdefault(key, deque())
+        if any(item["lage"].get("as_of") == lage.get("as_of") for item in kept):
+            return
+        kept.append({"seen_at": seen_at, "lage": deepcopy(dict(lage))})  # nested fields too: a later change must not rewrite history
+        newest = max(item["seen_at"] for item in kept)
+        while kept and kept[0]["seen_at"] < newest - KEEP:
+            kept.popleft()
+
+
+def reset(symbol: str | None = None) -> None:
+    """Forget the history (tests, or one symbol)."""
+    with _LOCK:
+        if symbol is None:
+            _HISTORY.clear()
+            _STORES.clear()
+            _COMPLETE.clear()
+        else:
+            _HISTORY.pop(symbol.upper(), None)
+            _STORES.pop(symbol.upper(), None)
+            _COMPLETE.pop(symbol.upper(), None)
+
+
+def lage_at(symbol: str, target: Any, max_age: timedelta = MAX_AGE, *,
+            until: Any = None) -> tuple[dict[str, Any] | None, str]:
+    """The Lage known at ``target`` and its status; ``(None, UNKNOWN_*)`` when there is none.
+
+    ``until`` is the decision time of the caller: a ``target`` after it is ``UNKNOWN_FUTURE_TIME``, because the
+    history cannot yet hold what will have been seen by then.
+    """
+    moment = _time(target)
+    if moment is None:
+        return None, UNKNOWN_NO_TIME
+    if until is not None:
+        limit = _time(until)
+        if limit is None:
+            return None, UNKNOWN_NO_TIME
+        if moment > limit:
+            return None, UNKNOWN_FUTURE_TIME
+    with _LOCK:
+        kept = list(_HISTORY.get(symbol.upper()) or ())
+    known = []
+    for item in kept:
+        lage = item["lage"]
+        as_of = _time(lage.get("as_of"))
+        last = lage.get("last_trade_at")
+        last_time = _time(last) if last else None
+        if as_of is None or as_of > moment or item["seen_at"] > moment:
+            continue
+        if last and (last_time is None or last_time > moment):
+            continue
+        known.append((as_of, lage))
+    if not known:
+        return None, UNKNOWN_NO_HISTORY
+    as_of, lage = max(known, key=lambda pair: pair[0])
+    if moment - as_of > max_age:
+        return None, UNKNOWN_TOO_OLD
+    if lage.get("stale") or lage.get("price") is None:
+        return None, UNKNOWN_STALE
+    return deepcopy(lage), OK  # the caller gets its own copy, the history stays as first seen
+
+
+def live_after(lage: Mapping[str, Any] | None, moment: Any, until: Any, max_age: timedelta = MAX_AGE) -> bool:
+    """True when the current ``lage`` may carry a live exit decided at ``until`` for a fill at ``moment``.
+
+    It was taken at or after the fill, not after the decision time, is at most ``max_age`` old at the decision,
+    and its last trade (when stated) is readable and not after the decision. Anything else is no evidence.
+    """
+    as_of, since, limit = _time((lage or {}).get("as_of")), _time(moment), _time(until)
+    if as_of is None or since is None or limit is None or not since <= as_of <= limit:
+        return False
+    if limit - as_of > max_age:
+        return False
+    last = (lage or {}).get("last_trade_at")
+    return not last or (_time(last) is not None and _time(last) <= limit)
+
+
+def store_until(store: Mapping[str, Any] | None, target: Any) -> dict[str, Any] | None:
+    """A footprint store cut to the buckets that had ended by ``target``; days not finished by then lose ``complete``."""
+    moment = _time(target)
+    if not store or moment is None:
+        return None
+    bucket, _ = bucket_size(store)   # no assumed width (F1): without it nothing can be called closed
+    if bucket is None:
+        return None
+    limit = moment.timestamp()
+    days = {}
+    for key, rows in (store.get("days") or {}).items():
+        kept = [row for row in rows if float(row[0]) + bucket <= limit]
+        if kept:
+            days[key] = kept
+    complete = {}
+    for key, value in (store.get("complete") or {}).items():
+        try:
+            day_end = datetime.fromisoformat(key).replace(tzinfo=timezone.utc) + timedelta(days=1)
+        except ValueError:
+            continue
+        if key in days and day_end.timestamp() <= limit:
+            complete[key] = value
+    bubbles = {}
+    for key, rows in (store.get("bubbles") or {}).items():
+        kept = [row for row in rows if isinstance(row, (list, tuple)) and row and float(row[0]) <= limit * 1000]  # ms
+        if kept:
+            bubbles[key] = kept
+    written = _time(store.get("updated_at"))
+    arrival = "OK" if written is not None and written <= moment else "UNVERIFIED"
+    return {**store, "days": days, "complete": complete, "bubbles": bubbles, "cut_at": moment.isoformat(),
+            "rows_arrival": arrival}
+
+
+def observe_store(store: Mapping[str, Any] | None, seen_at: datetime, symbol: str = "BTCUSDT") -> int:
+    """Note the footprint store as held at ``max(seen_at, updated_at)``; without ``updated_at`` nothing is noted."""
+    written = _time((store or {}).get("updated_at"))
+    if not store or written is None or seen_at.tzinfo is None:
+        return 0
+    seen = max(seen_at, written)
+    with _LOCK:
+        log = _STORES.setdefault(symbol.upper(), RevisionLog(keep_seconds=KEEP.total_seconds()))
+        flags = _COMPLETE.setdefault(symbol.upper(), {})
+        for day, value in (store.get("complete") or {}).items():
+            flags.setdefault(str(day), (seen.timestamp(), value))
+    return log.observe(store.get("days") or {}, seen)
+
+
+def store_known_at(store: Mapping[str, Any] | None, symbol: str, target: Any) -> dict[str, Any] | None:
+    """The store as TIM knew it at ``target``: closed buckets in the revision seen by then, nothing seen later.
+
+    ``complete`` day flags count from the moment they were first seen (and only for days that ended by ``target``);
+    bubbles (no revision history of their own) are kept only when the store itself was written by ``target``. ``rows_arrival`` is ``"PIT"`` (every kept row was seen by t) and ``rows_counts`` says how many
+    buckets were left out as UNKNOWN or taken in an earlier revision. None without a store, a time, or any observation.
+    """
+    moment = _time(target)
+    if not store or moment is None:
+        return None
+    with _LOCK:
+        log = _STORES.get(symbol.upper())
+        flags = dict(_COMPLETE.get(symbol.upper()) or {})
+    if log is None:
+        return None
+    bucket, _ = bucket_size(store)
+    if bucket is None:
+        return None
+    days, counts = log.rows_at(moment, bucket)
+    written = _time(store.get("updated_at"))
+    plain = store_until(store, moment) if written is not None and written <= moment else None
+    limit = moment.timestamp()
+    complete = {}
+    for day, (seen, value) in flags.items():
+        try:
+            ended = (datetime.fromisoformat(day).replace(tzinfo=timezone.utc) + timedelta(days=1)).timestamp() <= limit
+        except ValueError:
+            continue
+        if ended and seen <= limit and day in days:
+            complete[day] = value
+    return {**store, "days": days, "complete": complete, "bubbles": (plain or {}).get("bubbles", {}),
+            "cut_at": moment.isoformat(), "rows_arrival": "PIT", "rows_counts": counts}
