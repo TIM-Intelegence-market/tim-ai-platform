@@ -54,3 +54,37 @@ diesem Plan. Die Studie (Orderbuch-Ungleichgewicht in einer Range) bekommt danac
 - Binance trennt spätestens nach 24 h; jede Neuverbindung erzeugt eine kurze, markierte Lücke.
 - Snapshot-Abrufe kosten Request-Gewicht; nur beim Start und nach Lücken, nie periodisch.
 - L2-Aggregat: keine Akteure, kein sicherer Nachweis von Spoofing oder Icebergs.
+
+## Integritäts-Audit (Paket D)
+
+Nur lesend und zeilenweise (konstanter Speicher, schreibt nie ins Archiv; Bericht als JSON auf stdout,
+`--out` nur außerhalb von `--root`):
+
+```
+python -m src.research_lab.orderbook audit --root ~/Documents/TIM/orderbook/binance --symbol BTCUSDT \
+    [--start ISO] [--end ISO] [--window-hours 72] [--pause-seconds 10] [--open-grace-seconds 120] [--out FILE]
+```
+
+- **Zeitabdeckung**: Anteil des Zeitraums mit Depth-Ereignissen; jeder Abstand > 1 s zählt ganz als Lücke.
+  Pausen > `--pause-seconds` stehen mit Start, Ende, Dauer und Hinweis (`gap_row`, `restart`,
+  `after_damaged_segment`) in der Liste, ab 10 min zusätzlich als Ausfall. Der Nenner steht im Bericht
+  (`period`, ohne `--start/--end` erstes bis letztes Ereignis).
+- **Ereignisvollständigkeit**: Update-ID-Kette wie im Buchnachbau (`pu` = vorheriges `u`, erstes Ereignis nach
+  Snapshot mit `U <= lastUpdateId <= u`). Brüche einzeln gelistet; `gap`-Zeilen und Sitzungsstart setzen die
+  Kette zurück (erklärt), eine Synchronisierung danach zählt als Resync.
+- **Segmente**: `ok`, `damaged` (kein sauberes gzip-Ende, kaputte oder halbe Zeile, leer) oder `open`: das
+  neueste Segment der neuesten Sitzung ohne gzip-Ende, zuletzt vor höchstens `--open-grace-seconds` geändert.
+  Überlappende Sitzungen werden gelistet.
+- **Buchgültigkeit**: Ereignisse ohne synchronisiertes Buch (vor dem ersten Snapshot, nach Bruch, `gap`-Zeile
+  oder Neustart bis zum nächsten Sync) zählen als "unsynced": nicht abgedeckt in `book_coverage`, und ein
+  solcher Abschnitt über 60 s beendet ein sauberes Fenster. Ereignisse ganz ohne Snapshot ergeben FAIL.
+- **Abnahme "72 h durchgehend"** (Konstanten in `audit.py`, vor Blick auf die Daten festgelegt, nicht
+  nachjustieren): ein 72-h-Fenster ohne Pause > 60 s, ohne unsynced-Abschnitt > 60 s, ohne Sequenzbruch, ohne
+  beschädigtes Segment, unlesbare Zeile oder Überlappung, mit Abdeckung (Ereignisse *und* gültiges Buch)
+  ≥ 99,9 % (höchstens 259 s Lücke). Ergebnis PASS/FAIL mit Gründen, längster sauberer Abschnitt und bestem
+  Fenster. Das P3-Kriterium oben (99,5 % gültige Sekunden) ist ein eigenes Gate und steht getrennt unter
+  `acceptance.p3_valid_seconds`.
+- **Welches Fenster**: `period.scope` = `current` (`--current`: genau die letzten 72 h bis jetzt, Zustand des
+  laufenden Recorders, ein laufender Ausfall zählt mit), `explicit` (`--start/--end`) oder `historical`
+  (erstes bis letztes Ereignis: bestes *historisches* Fenster, kein Betriebszustand).
+- Alle Zeiten UTC als ISO und Epoch-ms; `--start/--end` ohne Offset gelten als UTC.
